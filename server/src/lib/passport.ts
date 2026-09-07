@@ -12,7 +12,7 @@ export function setupPassport() {
   passport.deserializeUser(async (id: string, done) => {
     try {
       const user = await prisma.user.findUnique({ where: { id } });
-      done(null, user);
+      done(null, user as unknown as Express.User);
     } catch (err) {
       done(err);
     }
@@ -27,7 +27,7 @@ export function setupPassport() {
         const valid = await bcrypt.compare(password, user.password);
         if (!valid) return done(null, false, { message: 'Invalid credentials' });
         if (!user.isActive) return done(null, false, { message: 'Account is disabled' });
-        return done(null, user);
+        return done(null, user as unknown as Express.User);
       } catch (err) {
         return done(err);
       }
@@ -70,7 +70,7 @@ export function setupPassport() {
               });
             }
 
-            return done(null, user);
+            return done(null, user as unknown as Express.User);
           } catch (err) {
             return done(err as Error);
           }
@@ -110,7 +110,7 @@ export function setupPassport() {
               });
             }
 
-            return done(null, user);
+            return done(null, user as unknown as Express.User);
           } catch (err) {
             return done(err);
           }
