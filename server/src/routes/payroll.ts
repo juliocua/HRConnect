@@ -104,7 +104,6 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       return {
         payrollRunId: payrollRun.id,
         employeeId: emp.id,
-        basicSalary: emp.basicSalary,
         ...computed,
         daysWorked: 22, // default working days in a month — refine with actual attendance
       };

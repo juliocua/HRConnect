@@ -3,8 +3,11 @@ import { verifyToken, JwtPayload } from '../lib/jwt';
 
 declare global {
   namespace Express {
-    interface Request {
-      user?: JwtPayload;
+    interface User {
+      userId: string;
+      email: string;
+      role: string;
+      employeeId?: string;
     }
   }
 }
@@ -16,7 +19,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   }
   try {
     const token = header.slice(7);
-    req.user = verifyToken(token);
+    req.user = verifyToken(token) as Express.User;
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
