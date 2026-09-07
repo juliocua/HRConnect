@@ -270,7 +270,7 @@ function ManualEntryModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
                 </select>
               </div>
             </div>
-            {form.status !== 'ABSENT' && (
+            {(form.status as string) !== 'ABSENT' && (
               <div className="form-grid form-grid-2">
                 <div className="form-group">
                   <label>Time In</label>

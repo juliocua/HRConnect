@@ -64,7 +64,7 @@ export default function Sidebar() {
           <div key={section.section} className="sidebar-section">
             <div className="sidebar-section-label">{section.section}</div>
             {section.links.map((link) => {
-              const isActive = link.exact
+              const isActive = ('exact' in link && link.exact)
                 ? location.pathname === link.to
                 : location.pathname.startsWith(link.to);
               return (
