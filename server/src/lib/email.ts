@@ -1,16 +1,4 @@
-import nodemailer from 'nodemailer';
-
-function getTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT ?? '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-}
+import { Resend } from 'resend';
 
 function fmt(amount: number) {
   return `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
@@ -21,15 +9,15 @@ function fmtDate(iso: string | Date) {
 }
 
 export async function sendInvoiceEmail(to: string, billing: any, pdfBuffer: Buffer) {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    throw new Error('SMTP not configured. Add SMTP_USER and SMTP_PASS to your .env file.');
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY not configured.');
   }
 
-  const transporter = getTransporter();
+  const resend = new Resend(process.env.RESEND_API_KEY);
   const invoiceNo = billing.id.slice(-8).toUpperCase();
-  const from = process.env.SMTP_FROM ?? `"HRConnect" <${process.env.SMTP_USER}>`;
+  const from = process.env.SMTP_FROM ?? 'HRConnect <noreply@hrconnect.app>';
 
-  await transporter.sendMail({
+  await resend.emails.send({
     from,
     to,
     subject: `Invoice #${invoiceNo} — ${billing.client.name} — ${fmtDate(billing.billingDate)}`,
@@ -80,7 +68,6 @@ export async function sendInvoiceEmail(to: string, billing: any, pdfBuffer: Buff
       {
         filename: `invoice-${invoiceNo}.pdf`,
         content: pdfBuffer,
-        contentType: 'application/pdf',
       },
     ],
   });

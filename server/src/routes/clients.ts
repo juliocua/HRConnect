@@ -23,6 +23,7 @@ const PolicySchema = z.object({
   type: z.string().min(1),
   title: z.string().min(1),
   description: z.string().min(1),
+  value: z.string().optional().nullable(),
 });
 
 // GET /api/clients

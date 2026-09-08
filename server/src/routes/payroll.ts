@@ -157,16 +157,25 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
     }
 
     // Fetch employees filtered by payPeriodType
-    // Types 1 and 2: only employees whose client.payPeriodType matches
+    // Types 1 and 2: only employees whose client has an EMPLOYEE_PAY_PERIOD policy matching the type
     // Types 7 and 9: all active employees (special / 13th month)
     const employeeWhere: any = { status: { in: ['ACTIVE', 'ON_LEAVE'] } };
     if (payPeriodType === 1 || payPeriodType === 2) {
-      employeeWhere.client = { payPeriodType };
+      const clientPolicies = await prisma.clientPolicy.findMany({
+        where: { type: 'EMPLOYEE_PAY_PERIOD', value: String(payPeriodType) },
+        select: { clientId: true },
+      });
+      const clientIds = clientPolicies.map((p: any) => p.clientId);
+      if (clientIds.length > 0) {
+        employeeWhere.clientId = { in: clientIds };
+      } else {
+        // No clients have this pay period type configured — return empty run
+        employeeWhere.clientId = { in: [] };
+      }
     }
 
     const employees = await prisma.employee.findMany({
       where: employeeWhere,
-      include: { client: { select: { payPeriodType: true } } },
     });
 
     const payrollRun = existing
@@ -185,7 +194,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
     const attendanceMap = new Map<string, number>();
     const allAttendance = await prisma.attendance.findMany({
       where: {
-        employeeId: { in: employees.map(e => e.id) },
+        employeeId: { in: employees.map((e: any) => e.id) },
         date: { gte: periodStart, lte: periodEnd },
         status: { in: ['PRESENT', 'LATE', 'HALF_DAY'] },
       },
@@ -198,7 +207,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       attendanceMap.set(att.employeeId, current + increment);
     }
 
-    const records = employees.map(emp => {
+    const records = employees.map((emp: any) => {
       const computed = computePayroll(emp.basicSalary);
       const daysWorked = attendanceMap.get(emp.id) ?? 0;
       return {

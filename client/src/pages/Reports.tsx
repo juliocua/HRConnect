@@ -25,6 +25,7 @@ const GROUP_BY_OPTIONS: Record<ReportType, { value: string; label: string }[]> =
     { value: 'status', label: 'Status' },
   ],
   'attendance-summary': [
+    { value: 'client', label: 'Client' },
     { value: 'department', label: 'Department' },
   ],
 };
@@ -109,6 +110,7 @@ interface DeploymentRow {
 
 interface AttendanceSummaryRow {
   employee: { id: string; firstName: string; lastName: string; position: string; department: { name: string } | null };
+  client?: { id: string; name: string } | null;
   present: number;
   late: number;
   absent: number;
@@ -156,6 +158,83 @@ const GROUP_ROW_STYLE: React.CSSProperties = {
 const DETAIL_ROW_STYLE: React.CSSProperties = {
   background: 'var(--color-surface)',
 };
+
+// ── CSV export helper ──────────────────────────────────────────────────────────
+function exportCSV(rows: Record<string, string | number>[], filename: string) {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(r => headers.map(h => {
+      const val = String(r[h] ?? '');
+      return val.includes(',') || val.includes('"') || val.includes('\n')
+        ? `"${val.replace(/"/g, '""')}"`
+        : val;
+    }).join(','))
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function buildCSVRows(reportType: ReportType, data: any[]): Record<string, string | number>[] {
+  if (!data || !data.length) return [];
+  if (reportType === 'billing-summary') {
+    return (data as BillingSummaryRow[]).map(r => ({
+      Client: r.client.name,
+      Invoices: r.invoiceCount,
+      'Total Billed': r.totalBilled,
+      Collected: r.totalPaid,
+      Outstanding: r.totalPending,
+      'Collection Rate %': r.totalBilled > 0 ? Math.round((r.totalPaid / r.totalBilled) * 100) : 0,
+    }));
+  }
+  if (reportType === 'margin') {
+    return (data as MarginRow[]).map(r => ({
+      Employee: `${r.employee.firstName} ${r.employee.lastName}`,
+      Position: r.employee.position,
+      Department: r.employee.department?.name ?? '',
+      Client: r.client?.name ?? '',
+      'Resource Cost': r.resourceCost,
+      'Payroll Cost': r.payrollCost,
+      Margin: r.margin,
+      'Margin %': r.marginPct.toFixed(2),
+    }));
+  }
+  if (reportType === 'deployment') {
+    return (data as DeploymentRow[]).map(r => ({
+      Employee: `${r.employee.firstName} ${r.employee.lastName}`,
+      Position: r.employee.position,
+      Department: r.employee.department?.name ?? '',
+      Status: r.employee.status,
+      Client: r.client?.name ?? 'On Bench',
+      'Resource Cost': r.resourceCost ?? 0,
+      'Payroll Cost': r.payrollCost ?? 0,
+    }));
+  }
+  if (reportType === 'attendance-summary') {
+    return (data as AttendanceSummaryRow[]).map(r => ({
+      Employee: `${r.employee.firstName} ${r.employee.lastName}`,
+      Position: r.employee.position,
+      Department: r.employee.department?.name ?? '',
+      Client: r.client?.name ?? '',
+      Present: r.present,
+      Late: r.late,
+      Absent: r.absent,
+      'On Leave': r.onLeave,
+      'Total Days': r.total,
+      'Attendance Rate %': r.attendanceRate.toFixed(2),
+    }));
+  }
+  return [];
+}
 
 export default function Reports() {
   const today = new Date().toISOString().slice(0, 10);
@@ -206,7 +285,7 @@ export default function Reports() {
 
   const selectedType = REPORT_TYPES.find(r => r.key === reportType)!;
   const needsDates = reportType === 'billing-summary' || reportType === 'attendance-summary';
-  const needsClients = reportType === 'billing-summary' || reportType === 'margin' || reportType === 'deployment';
+  const needsClients = reportType === 'billing-summary' || reportType === 'margin' || reportType === 'deployment' || reportType === 'attendance-summary';
   const needsEmployees = reportType === 'margin' || reportType === 'deployment' || reportType === 'attendance-summary';
   const groupByOptions = GROUP_BY_OPTIONS[reportType];
 
@@ -222,49 +301,47 @@ export default function Reports() {
       </div>
 
       {/* Report type selector */}
-      <div className="grid-4" style={{ marginBottom: 24 }}>
+      <div className="grid-4" style={{ marginBottom: 20 }}>
         {REPORT_TYPES.map(r => (
           <div
             key={r.key}
             onClick={() => { setReportType(r.key); setHasRun(false); setGroupBy(''); }}
             style={{
-              padding: '16px', borderRadius: 12, cursor: 'pointer',
+              padding: '14px', borderRadius: 12, cursor: 'pointer',
               background: reportType === r.key ? 'var(--color-primary-light)' : 'var(--color-surface)',
               border: `2px solid ${reportType === r.key ? 'var(--color-primary)' : 'var(--color-border)'}`,
               transition: 'all 0.15s',
             }}
           >
-            <div style={{ fontSize: 24, marginBottom: 8 }}>{r.icon}</div>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{r.label}</div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.4 }}>{r.desc}</div>
+            <div style={{ fontSize: 22, marginBottom: 6 }}>{r.icon}</div>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{r.label}</div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.4 }}>{r.desc}</div>
           </div>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div className="card-header" style={{ marginBottom: 16 }}>
-          <div>
-            <div className="card-title">{selectedType.icon} {selectedType.label}</div>
-            <div className="card-subtitle">{selectedType.desc}</div>
-          </div>
-        </div>
-        <div className="form-grid form-grid-2" style={{ gap: 14, marginBottom: 16 }}>
+      {/* Compact Filters */}
+      <div className="card" style={{ marginBottom: 20, padding: '14px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', whiteSpace: 'nowrap', marginRight: 4 }}>
+            {selectedType.icon} {selectedType.label}:
+          </span>
+
           {needsDates && (
             <>
-              <div className="form-group">
-                <label>From Date</label>
-                <input type="date" className="form-control" value={from} onChange={e => setFrom(e.target.value)} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>From</label>
+                <input type="date" className="form-control" style={{ width: 140, fontSize: 13, padding: '5px 8px' }} value={from} onChange={e => setFrom(e.target.value)} />
               </div>
-              <div className="form-group">
-                <label>To Date</label>
-                <input type="date" className="form-control" value={to} onChange={e => setTo(e.target.value)} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>To</label>
+                <input type="date" className="form-control" style={{ width: 140, fontSize: 13, padding: '5px 8px' }} value={to} onChange={e => setTo(e.target.value)} />
               </div>
             </>
           )}
+
           {needsClients && (
-            <div className="form-group">
-              <label>Clients</label>
+            <div style={{ minWidth: 160 }}>
               <MultiSelect
                 label="Clients"
                 options={clients.map(c => ({ id: c.id, name: c.name }))}
@@ -273,9 +350,9 @@ export default function Reports() {
               />
             </div>
           )}
+
           {needsEmployees && (
-            <div className="form-group">
-              <label>Employees</label>
+            <div style={{ minWidth: 160 }}>
               <MultiSelect
                 label="Employees"
                 options={employees.map(e => ({ id: e.id, name: `${e.firstName} ${e.lastName}` }))}
@@ -284,40 +361,43 @@ export default function Reports() {
               />
             </div>
           )}
+
           {groupByOptions.length > 0 && (
-            <div className="form-group">
-              <label>Group By</label>
-              <select
-                className="form-control"
-                value={groupBy}
-                onChange={e => setGroupBy(e.target.value)}
-              >
-                <option value="">— No Grouping (show all rows) —</option>
-                {groupByOptions.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
+            <select
+              className="form-control"
+              style={{ width: 160, fontSize: 13, padding: '5px 8px' }}
+              value={groupBy}
+              onChange={e => setGroupBy(e.target.value)}
+            >
+              <option value="">No Grouping</option>
+              {groupByOptions.map(o => (
+                <option key={o.value} value={o.value}>Group by {o.label}</option>
+              ))}
+            </select>
           )}
+
+          <button
+            className="btn btn-primary"
+            style={{ whiteSpace: 'nowrap' }}
+            onClick={runReport}
+            disabled={isFetching}
+          >
+            {isFetching ? '⏳ Generating…' : '▶ Run Report'}
+          </button>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={runReport}
-          disabled={isFetching}
-        >
-          {isFetching ? '⏳ Generating…' : '▶ Run Report'}
-        </button>
       </div>
 
       {/* Results */}
       {hasRun && (
         <div className="card">
           <div className="card-header">
-            <div className="card-title">
-              Results
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div className="card-title">
+                Results
+              </div>
               {groupBy && (
                 <span style={{
-                  marginLeft: 10, fontSize: 12, fontWeight: 600,
+                  fontSize: 12, fontWeight: 600,
                   background: 'var(--color-primary-light)', color: 'var(--color-primary)',
                   padding: '2px 10px', borderRadius: 99,
                 }}>
@@ -325,9 +405,23 @@ export default function Reports() {
                 </span>
               )}
             </div>
-            {rowCount > 0 && (
-              <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{rowCount} row{rowCount !== 1 ? 's' : ''}</span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {rowCount > 0 && (
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{rowCount} row{rowCount !== 1 ? 's' : ''}</span>
+              )}
+              {reportData && Array.isArray(reportData) && reportData.length > 0 && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: 12 }}
+                  onClick={() => {
+                    const rows = buildCSVRows(reportType, reportData);
+                    exportCSV(rows, `${reportType}-${new Date().toISOString().slice(0, 10)}.csv`);
+                  }}
+                >
+                  ⬇ CSV
+                </button>
+              )}
+            </div>
           </div>
           {isFetching ? (
             <div className="loading-center" style={{ padding: 48 }}><div className="spinner" /></div>
@@ -709,28 +803,32 @@ function AttendanceTable({ data, groupBy }: { data: AttendanceSummaryRow[]; grou
   if (data.length === 0) return <EmptyResult />;
   const avgRate = data.length > 0 ? data.reduce((s, r) => s + r.attendanceRate, 0) / data.length : 0;
 
-  if (groupBy === 'department') {
-    type AttGroup = {
-      name: string;
-      count: number;
-      totalPresent: number;
-      totalAbsent: number;
-      totalOnLeave: number;
-      totalDays: number;
-      avgRate: number;
-    };
-    const groups = groupRows<AttendanceSummaryRow, AttGroup>(
-      data,
-      r => r.employee.department?.name ?? '— No Department —',
-      (name, rows) => {
-        const totalPresent = rows.reduce((s, r) => s + r.present, 0);
-        const totalAbsent = rows.reduce((s, r) => s + r.absent, 0);
-        const totalOnLeave = rows.reduce((s, r) => s + r.onLeave, 0);
-        const totalDays = rows.reduce((s, r) => s + r.total, 0);
-        const avg = rows.length > 0 ? rows.reduce((s, r) => s + r.attendanceRate, 0) / rows.length : 0;
-        return { name, count: rows.length, totalPresent, totalAbsent, totalOnLeave, totalDays, avgRate: avg };
-      }
-    ).sort((a, b) => b.avgRate - a.avgRate);
+  type AttGroup = {
+    name: string;
+    count: number;
+    totalPresent: number;
+    totalAbsent: number;
+    totalOnLeave: number;
+    totalDays: number;
+    avgRate: number;
+  };
+
+  const makeGroupFn = (keyFn: (r: AttendanceSummaryRow) => string) =>
+    groupRows<AttendanceSummaryRow, AttGroup>(data, keyFn, (name, rows) => {
+      const totalPresent = rows.reduce((s, r) => s + r.present, 0);
+      const totalAbsent = rows.reduce((s, r) => s + r.absent, 0);
+      const totalOnLeave = rows.reduce((s, r) => s + r.onLeave, 0);
+      const totalDays = rows.reduce((s, r) => s + r.total, 0);
+      const avg = rows.length > 0 ? rows.reduce((s, r) => s + r.attendanceRate, 0) / rows.length : 0;
+      return { name, count: rows.length, totalPresent, totalAbsent, totalOnLeave, totalDays, avgRate: avg };
+    }).sort((a, b) => b.avgRate - a.avgRate);
+
+  if (groupBy === 'department' || groupBy === 'client') {
+    const keyFn = groupBy === 'client'
+      ? (r: AttendanceSummaryRow) => r.client?.name ?? '— No Client —'
+      : (r: AttendanceSummaryRow) => r.employee.department?.name ?? '— No Department —';
+
+    const groups = makeGroupFn(keyFn);
 
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
     const toggle = (name: string) => setExpanded(prev => {
@@ -745,13 +843,13 @@ function AttendanceTable({ data, groupBy }: { data: AttendanceSummaryRow[]; grou
           <SummaryBox label="Employees" value={String(data.length)} color="#EFF6FF" />
           <SummaryBox label="Avg Attendance Rate" value={`${avgRate.toFixed(1)}%`} color="#F0FDF4" />
           <SummaryBox label="Total Absent Days" value={String(data.reduce((s, r) => s + r.absent, 0))} color="#FEF2F2" />
-          <SummaryBox label="Departments" value={String(groups.length)} color="#FFFBEB" />
+          <SummaryBox label={groupBy === 'client' ? 'Clients' : 'Departments'} value={String(groups.length)} color="#FFFBEB" />
         </div>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Department</th>
+                <th>{groupBy === 'client' ? 'Client' : 'Department'}</th>
                 <th style={{ textAlign: 'right' }}>Employees</th>
                 <th style={{ textAlign: 'right' }}>Present</th>
                 <th style={{ textAlign: 'right' }}>Absent</th>
@@ -785,7 +883,11 @@ function AttendanceTable({ data, groupBy }: { data: AttendanceSummaryRow[]; grou
                       <tr key={r.employee.id} style={DETAIL_ROW_STYLE}>
                         <td style={{ paddingLeft: 40 }}>
                           <div style={{ fontSize: 13 }}>{r.employee.firstName} {r.employee.lastName}</div>
-                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{r.employee.position}</div>
+                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                            {r.employee.position}
+                            {groupBy === 'client' && r.employee.department ? ` · ${r.employee.department.name}` : ''}
+                            {groupBy === 'department' && r.client ? ` · ${r.client.name}` : ''}
+                          </div>
                         </td>
                         <td style={{ textAlign: 'right' }}>—</td>
                         <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>{r.present}</td>

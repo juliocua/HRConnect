@@ -112,7 +112,6 @@ model Client {
   specificRequest String?      @db.Text
   billingCycle    BillingCycle @default(MONTHLY)
   billingDate     Int?
-  payPeriodType   Int?         // 1=semi-monthly 1st, 2=semi-monthly 2nd, 7=special, 9=13th month
   activeContract  Boolean      @default(true)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -138,6 +137,7 @@ model ClientPolicy {
   type        String
   title       String
   description String   @db.Text
+  value       String?  // structured value for special types (e.g. EMPLOYEE_PAY_PERIOD: '1','2','7','9')
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -145,21 +145,22 @@ model ClientPolicy {
 }
 
 model Billing {
-  id             String        @id @default(cuid())
-  clientId       String
-  client         Client        @relation(fields: [clientId], references: [id])
-  billingDate    DateTime
-  dueDate        DateTime?
-  amount         Float
-  status         BillingStatus @default(PENDING)
-  paidAt         DateTime?
-  paymentRef     String?
-  paymentLinkId  String?
-  paymentLinkUrl String?
-  notes          String?
-  lineItems      Json?         // [{ description: string, amount: number }]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id                   String        @id @default(cuid())
+  clientId             String
+  client               Client        @relation(fields: [clientId], references: [id])
+  billingDate          DateTime
+  dueDate              DateTime?
+  amount               Float
+  status               BillingStatus @default(PENDING)
+  paidAt               DateTime?
+  paymentRef           String?
+  paymentScreenshotUrl String?
+  paymentLinkId        String?
+  paymentLinkUrl       String?
+  notes                String?
+  lineItems            Json?         // [{ description: string, amount: number }]
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   @@map("billings")
 }

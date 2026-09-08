@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatPHP } from '@/lib/payroll';
@@ -18,6 +18,8 @@ export default function ClientBilling() {
   const [generated, setGenerated] = useState<(Billing & { client: { id: string; name: string } })[]>([]);
   const [skipped, setSkipped] = useState<{ clientId: string; name: string; reason: string }[]>([]);
   const [showAll, setShowAll] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [markPaidBillingId, setMarkPaidBillingId] = useState<string | null>(null);
 
   // Additional line items
   type LineItem = { description: string; amount: number };
@@ -63,14 +65,6 @@ export default function ClientBilling() {
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ['billing-summary'] });
       qc.invalidateQueries({ queryKey: ['billing-all'] });
-    },
-  });
-
-  const markPaid = useMutation({
-    mutationFn: (billingId: string) => api.put(`/billing/${billingId}/mark-paid`, {}),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['billing-all'] });
-      qc.invalidateQueries({ queryKey: ['billing-summary'] });
     },
   });
 
@@ -130,7 +124,6 @@ export default function ClientBilling() {
     setSelected(new Set(ids));
   };
 
-  // Compute amount for a client
   const clientAmount = (c: any) =>
     (c.employees ?? []).reduce((sum: number, e: any) => sum + (e.resourceCost ?? 0), 0);
 
@@ -414,73 +407,350 @@ export default function ClientBilling() {
               <div>No billing records yet</div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
               {recentBillings.map(b => (
-                <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{b.client.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{fmtDate(b.billingDate)}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>{formatPHP(b.amount)}</div>
-                    <span className={`badge ${b.status === 'PAID' ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: 11 }}>
-                      {b.status}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                <div key={b.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  {/* Main row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
+                    {/* Expand toggle */}
                     <button
                       className="btn btn-ghost btn-sm"
-                      style={{ fontSize: 11 }}
-                      onClick={() => downloadPDF(b.id, b.client.name)}
-                      title="Download PDF"
+                      style={{ fontSize: 12, padding: '2px 6px', color: 'var(--color-text-muted)', minWidth: 24 }}
+                      onClick={() => setExpandedId(prev => prev === b.id ? null : b.id)}
+                      title="View details"
                     >
-                      📄 PDF
+                      {expandedId === b.id ? '▲' : '▼'}
                     </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ fontSize: 11 }}
-                      disabled={sendingInvoice === b.id}
-                      onClick={() => sendInvoice(b.id)}
-                      title="Send invoice by email"
-                    >
-                      {sendingInvoice === b.id ? '…' : '📧 Email'}
-                    </button>
-                    {sendMsg?.id === b.id && (
-                      <div style={{ fontSize: 10, color: sendMsg.ok ? '#15803D' : '#DC2626', maxWidth: 120, textAlign: 'right' }}>
-                        {sendMsg.text}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{b.client.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                        #{b.id.slice(-8).toUpperCase()} · {fmtDate(b.billingDate)}
                       </div>
-                    )}
-                    {b.status === 'PENDING' && (
-                      <>
-                        {b.paymentLinkUrl && (
-                          <a href={b.paymentLinkUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none', fontSize: 11 }}>
-                            🔗 Link
-                          </a>
-                        )}
-                        <button
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{formatPHP(b.amount)}</div>
+                      <span className={`badge ${b.status === 'PAID' ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: 11 }}>
+                        {b.status}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 11 }}
+                        onClick={() => downloadPDF(b.id, b.client.name)}
+                        title="Download PDF"
+                      >
+                        📄 PDF
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 11 }}
+                        disabled={sendingInvoice === b.id}
+                        onClick={() => sendInvoice(b.id)}
+                        title="Send invoice by email"
+                      >
+                        {sendingInvoice === b.id ? '…' : '📧 Email'}
+                      </button>
+                      {sendMsg?.id === b.id && (
+                        <div style={{ fontSize: 10, color: sendMsg.ok ? '#15803D' : '#DC2626', maxWidth: 120, textAlign: 'right' }}>
+                          {sendMsg.text}
+                        </div>
+                      )}
+                      {b.status === 'PENDING' && (
+                        <>
+                          {b.paymentLinkUrl && (
+                            <a href={b.paymentLinkUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none', fontSize: 11 }}>
+                              🔗 Link
+                            </a>
+                          )}
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ fontSize: 11 }}
+                            disabled={resend.isPending}
+                            onClick={() => resend.mutate(b.id)}
+                          >
+                            Resend
+                          </button>
+                          <button
+                            className="btn btn-success btn-sm"
+                            style={{ fontSize: 11 }}
+                            onClick={() => setMarkPaidBillingId(b.id)}
+                          >
+                            Paid
+                          </button>
+                        </>
+                      )}
+                      {b.status === 'PAID' && (b as any).paymentScreenshotUrl && (
+                        <a
+                          href={(b as any).paymentScreenshotUrl}
+                          target="_blank"
+                          rel="noreferrer"
                           className="btn btn-ghost btn-sm"
-                          style={{ fontSize: 11 }}
-                          disabled={resend.isPending}
-                          onClick={() => resend.mutate(b.id)}
+                          style={{ fontSize: 11, textDecoration: 'none' }}
                         >
-                          Resend
-                        </button>
-                        <button
-                          className="btn btn-success btn-sm"
-                          style={{ fontSize: 11 }}
-                          disabled={markPaid.isPending}
-                          onClick={() => { if (confirm('Mark as paid?')) markPaid.mutate(b.id); }}
-                        >
-                          Paid
-                        </button>
-                      </>
-                    )}
+                          🖼 Proof
+                        </a>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Expanded inline details */}
+                  {expandedId === b.id && (
+                    <InvoiceDetail billing={b} />
+                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
+      </div>
+
+      {markPaidBillingId && (
+        <MarkPaidModal
+          billingId={markPaidBillingId}
+          onClose={() => setMarkPaidBillingId(null)}
+          onSaved={() => {
+            setMarkPaidBillingId(null);
+            qc.invalidateQueries({ queryKey: ['billing-all'] });
+            qc.invalidateQueries({ queryKey: ['billing-summary'] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Inline expandable invoice detail
+function InvoiceDetail({ billing }: { billing: any }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['billing-detail', billing.id],
+    queryFn: () => api.get(`/billing/${billing.id}`).then(r => r.data),
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '8px 0 12px 36px' }}>
+        <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+      </div>
+    );
+  }
+
+  const b = data ?? billing;
+  const lineItems: any[] = b.lineItems ?? [];
+  const employees: any[] = b.employees ?? [];
+
+  return (
+    <div style={{ margin: '0 0 12px 36px', padding: 14, background: 'var(--color-surface-2)', borderRadius: 8, fontSize: 13 }}>
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Invoice No.</div>
+          <div style={{ fontWeight: 700 }}>#{b.id.slice(-8).toUpperCase()}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Billing Date</div>
+          <div>{fmtDate(b.billingDate)}</div>
+        </div>
+        {b.paidAt && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Paid On</div>
+            <div>{fmtDate(b.paidAt)}</div>
+          </div>
+        )}
+        {b.paymentRef && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Ref No.</div>
+            <div style={{ fontWeight: 600 }}>{b.paymentRef}</div>
+          </div>
+        )}
+        {b.paymentScreenshotUrl && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Proof</div>
+            <a href={b.paymentScreenshotUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)', fontSize: 12 }}>View screenshot →</a>
+          </div>
+        )}
+      </div>
+
+      {employees.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Deployed Resources</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                <th style={{ textAlign: 'left', fontSize: 11, color: 'var(--color-text-muted)', padding: '4px 0', fontWeight: 600 }}>Name</th>
+                <th style={{ textAlign: 'left', fontSize: 11, color: 'var(--color-text-muted)', padding: '4px 0', fontWeight: 600 }}>Position</th>
+                <th style={{ textAlign: 'right', fontSize: 11, color: 'var(--color-text-muted)', padding: '4px 0', fontWeight: 600 }}>Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((e: any) => (
+                <tr key={e.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  <td style={{ padding: '5px 0', fontSize: 12 }}>{e.firstName} {e.lastName}</td>
+                  <td style={{ padding: '5px 0', fontSize: 12, color: 'var(--color-text-muted)' }}>{e.position ?? '—'}</td>
+                  <td style={{ padding: '5px 0', fontSize: 12, textAlign: 'right', fontWeight: 600 }}>{formatPHP(e.resourceCost ?? 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {lineItems.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Additional Charges</div>
+          {lineItems.map((li: any, i: number) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0' }}>
+              <span>{li.description}</span>
+              <span style={{ fontWeight: 600 }}>{formatPHP(li.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--color-border)', paddingTop: 8, marginTop: 4 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>
+          Total: {formatPHP(b.amount)}
+        </div>
+      </div>
+
+      {b.notes && (
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+          Notes: {b.notes}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Mark Paid Modal
+function MarkPaidModal({ billingId, onClose, onSaved }: {
+  billingId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [paymentRef, setPaymentRef] = useState('');
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setScreenshotFile(file);
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setScreenshotPreview(url);
+    } else {
+      setScreenshotPreview(null);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentRef.trim()) { setError('Payment reference is required.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      let paymentScreenshotUrl: string | undefined;
+
+      // Step 1: Upload screenshot if provided
+      if (screenshotFile) {
+        const fd = new FormData();
+        fd.append('file', screenshotFile);
+        const uploadRes = await api.post(`/billing/${billingId}/payment-proof`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        paymentScreenshotUrl = uploadRes.data.url;
+      }
+
+      // Step 2: Mark as paid
+      await api.put(`/billing/${billingId}/mark-paid`, {
+        paymentRef: paymentRef.trim(),
+        paymentScreenshotUrl,
+      });
+
+      onSaved();
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Failed to mark as paid.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 440 }}>
+        <div className="modal-header">
+          <h2 className="modal-title">Mark as Paid</h2>
+          <button className="icon-btn" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
+
+            <div className="form-group">
+              <label>Payment Reference * <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>(GCash ref, check no., transfer ID…)</span></label>
+              <input
+                className="form-control"
+                required
+                placeholder="e.g. GCash #123456789"
+                value={paymentRef}
+                onChange={e => setPaymentRef(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Payment Screenshot <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>(optional)</span></label>
+              <div
+                style={{
+                  border: '2px dashed var(--color-border)', borderRadius: 8, padding: 16,
+                  textAlign: 'center', cursor: 'pointer', background: 'var(--color-surface-2)',
+                }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {screenshotPreview ? (
+                  <img
+                    src={screenshotPreview}
+                    alt="Preview"
+                    style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 6, objectFit: 'contain' }}
+                  />
+                ) : (
+                  <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
+                    <div style={{ fontSize: 24, marginBottom: 6 }}>🖼</div>
+                    Click to upload proof of payment
+                    <div style={{ fontSize: 11, marginTop: 4 }}>PNG, JPG, or PDF · max 10 MB</div>
+                  </div>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
+              {screenshotFile && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, fontSize: 12 }}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>{screenshotFile.name}</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: 11, color: 'var(--color-danger)' }}
+                    onClick={() => { setScreenshotFile(null); setScreenshotPreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                  >Remove</button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-success" disabled={saving}>
+              {saving ? 'Saving…' : '✓ Confirm Payment'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

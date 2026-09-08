@@ -19,6 +19,18 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Convert ISO DateTime or HH:MM string to HH:MM for <input type="time">
+function toTimeInput(t: string | null | undefined, fallback: string): string {
+  if (!t) return fallback;
+  if (t.includes('T') || t.length > 8) {
+    const d = new Date(t);
+    if (!isNaN(d.getTime())) {
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+  }
+  return t.slice(0, 5); // ensure HH:MM
+}
+
 export default function Attendance() {
   const qc = useQueryClient();
   const [date, setDate] = useState(todayStr());
@@ -185,8 +197,8 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
     employeeId: initial?.employeeId ?? '',
     date: initial?.date ?? defaultDate,
     status: initial?.status ?? 'PRESENT' as AttendanceStatus,
-    timeIn: initial?.timeIn ?? '08:00',
-    timeOut: initial?.timeOut ?? '17:00',
+    timeIn: toTimeInput(initial?.timeIn, '08:00'),
+    timeOut: toTimeInput(initial?.timeOut, '17:00'),
     overtimeHrs: initial?.overtimeHrs ?? 0,
     notes: initial?.notes ?? '',
   });
@@ -285,6 +297,14 @@ function formatDate(iso: string) {
 
 function formatTime(t: string) {
   if (!t) return '—';
+  // Handle ISO DateTime strings (e.g. "2026-09-01T08:00:00.000Z")
+  if (t.includes('T') || t.length > 8) {
+    const d = new Date(t);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+  }
+  // Plain HH:MM
   const [h, m] = t.split(':');
   const hour = parseInt(h);
   return `${hour % 12 || 12}:${m} ${hour < 12 ? 'AM' : 'PM'}`;

@@ -1,5 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { prisma } from '../lib/prisma';
 import { authenticate, requireRole } from '../middleware/authenticate';
 import { generateInvoicePDF } from '../lib/invoice-pdf';
@@ -10,6 +13,28 @@ router.use(authenticate);
 
 const PAYMONGO_SECRET = process.env.PAYMONGO_SECRET_KEY ?? '';
 const PAYMONGO_BASE = 'https://api.paymongo.com/v1';
+
+// ── Multer for payment screenshots ────────────────────────────────────────────
+
+const screenshotStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.join(__dirname, '../../uploads/payment-proofs');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `proof-${Date.now()}${ext}`);
+  },
+});
+const uploadScreenshot = multer({
+  storage: screenshotStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
 
 // ── PayMongo helpers ──────────────────────────────────────────────────────────
 
@@ -291,14 +316,35 @@ router.post('/:id/resend', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req:
 // PUT /api/billing/:id/mark-paid  — manually mark as paid
 router.put('/:id/mark-paid', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { paymentRef } = z.object({ paymentRef: z.string().optional() }).parse(req.body);
+    const { paymentRef, paymentScreenshotUrl } = z.object({
+      paymentRef: z.string().min(1, 'Payment reference is required'),
+      paymentScreenshotUrl: z.string().optional().nullable(),
+    }).parse(req.body);
+
     const billing = await prisma.billing.update({
       where: { id: req.params.id },
-      data: { status: 'PAID', paidAt: new Date(), paymentRef },
+      data: { status: 'PAID', paidAt: new Date(), paymentRef, paymentScreenshotUrl: paymentScreenshotUrl ?? undefined },
     });
     res.json(billing);
   } catch (err) { next(err); }
 });
+
+// POST /api/billing/:id/payment-proof  — upload payment screenshot
+router.post(
+  '/:id/payment-proof',
+  requireRole('HR_MANAGER', 'SUPER_ADMIN'),
+  uploadScreenshot.single('screenshot'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+      const serverUrl = process.env.SERVER_URL ?? '';
+      const url = `${serverUrl}/uploads/payment-proofs/${req.file.filename}`;
+
+      res.json({ url });
+    } catch (err) { next(err); }
+  }
+);
 
 // POST /api/billing/webhook/paymongo  — PayMongo webhook (no auth middleware)
 router.post('/webhook/paymongo', async (req: Request, res: Response) => {
@@ -445,6 +491,7 @@ router.get('/reports/attendance-summary', async (req: Request, res: Response, ne
       select: {
         id: true, firstName: true, lastName: true, avatarColor: true, position: true,
         department: { select: { name: true } },
+        client: { select: { id: true, name: true } },
       },
     });
     const empIds = employees.map(e => e.id);
@@ -476,7 +523,7 @@ router.get('/reports/attendance-summary', async (req: Request, res: Response, ne
       const s = stats.get(e.id) ?? { present: 0, late: 0, absent: 0, halfDay: 0, onLeave: 0, totalOT: 0 };
       const total = s.present + s.absent + s.halfDay + s.onLeave;
       const attendanceRate = total > 0 ? ((s.present + s.halfDay * 0.5) / total) * 100 : 0;
-      return { employee: e, ...s, total, attendanceRate };
+      return { employee: e, client: (empMap.get(e.id) as any)?.client ?? null, ...s, total, attendanceRate };
     });
 
     res.json(rows);
@@ -521,7 +568,7 @@ router.post('/:id/send-invoice', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async
 
     res.json({ sent: true, email: toEmail });
   } catch (err: any) {
-    if (err.message?.includes('SMTP not configured')) {
+    if (err.message?.includes('RESEND_API_KEY') || err.message?.includes('not configured')) {
       return res.status(503).json({ error: err.message });
     }
     next(err);

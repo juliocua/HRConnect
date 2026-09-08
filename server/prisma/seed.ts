@@ -355,20 +355,23 @@ async function main() {
   // ── 9. Payroll runs ───────────────────────────────────────────────────────
   console.log('Creating payroll runs…');
   const payrollMonths = [
-    { period: '2026-06', year: 2026, month: 6, status: 'PAID'   as const },
-    { period: '2026-07', year: 2026, month: 7, status: 'PAID'   as const },
-    { period: '2026-08', year: 2026, month: 8, status: 'POSTED' as const },
+    { period: 'Jun 2026 · Type 1 (1st Half)', year: 2026, month: 6, payPeriodType: 1, periodStart: new Date(2026, 4, 26), periodEnd: new Date(2026, 5, 10), status: 'PAID'   as const },
+    { period: 'Jun 2026 · Type 2 (2nd Half)', year: 2026, month: 6, payPeriodType: 2, periodStart: new Date(2026, 5, 11), periodEnd: new Date(2026, 5, 25), status: 'PAID'   as const },
+    { period: 'Jul 2026 · Type 1 (1st Half)', year: 2026, month: 7, payPeriodType: 1, periodStart: new Date(2026, 5, 26), periodEnd: new Date(2026, 6, 10), status: 'PAID'   as const },
+    { period: 'Jul 2026 · Type 2 (2nd Half)', year: 2026, month: 7, payPeriodType: 2, periodStart: new Date(2026, 6, 11), periodEnd: new Date(2026, 6, 25), status: 'PAID'   as const },
+    { period: 'Aug 2026 · Type 1 (1st Half)', year: 2026, month: 8, payPeriodType: 1, periodStart: new Date(2026, 6, 26), periodEnd: new Date(2026, 7, 10), status: 'POSTED' as const },
+    { period: 'Aug 2026 · Type 2 (2nd Half)', year: 2026, month: 8, payPeriodType: 2, periodStart: new Date(2026, 7, 11), periodEnd: new Date(2026, 7, 25), status: 'POSTED' as const },
   ];
 
   let totalPayrollRecords = 0;
   for (const m of payrollMonths) {
     const run = await prisma.payrollRun.create({
-      data: { period: m.period, year: m.year, month: m.month, status: m.status, runById: 'seed' },
+      data: { period: m.period, year: m.year, month: m.month, payPeriodType: m.payPeriodType, periodStart: m.periodStart, periodEnd: m.periodEnd, status: m.status, runById: 'seed' },
     });
 
     for (const emp of employees) {
       const basic      = emp.basicSalary;
-      const daysWorked = m.status === 'PAID' ? 22 : 20;
+      const daysWorked = m.status === 'PAID' ? 20 : 18;
       const grossPay   = basic;
       // SSS: employer rate ~9.5%, employee 4.5%, ceiling ₱30k
       const sssBracket  = Math.min(basic, 30_000);
@@ -451,7 +454,7 @@ async function main() {
   // ── Done ──────────────────────────────────────────────────────────────────
   console.log('\n✅  Seed complete!\n');
   console.log('┌─────────────────────────────────────────────────────┐');
-  console.log('│  Demo credentials                                   │');
+  console.log('│  Demo credentials                                    │');
   console.log('├─────────────────────────────────────────────────────┤');
   console.log('│  Super Admin   admin@hrconnect.demo / Admin@2026    │');
   console.log('│  HR Manager    camille.ramos@hrconnect.demo         │');
