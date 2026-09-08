@@ -283,6 +283,17 @@ function LeaveModal({ employees, onClose, onSaved }: {
     queryFn: () => api.get('/leave/types').then(r => r.data),
   });
 
+  const { data: balances = [] } = useQuery<LeaveBalance[]>({
+    queryKey: ['leave-balances-modal', form.employeeId],
+    queryFn: () => api.get(`/leave/balances/${form.employeeId}`).then(r => r.data),
+    enabled: !!form.employeeId,
+  });
+
+  const selectedBalance = balances.find(b => b.leaveTypeId === form.leaveTypeId);
+  const availableDays = selectedBalance
+    ? selectedBalance.totalDays - selectedBalance.usedDays - selectedBalance.pendingDays
+    : null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -323,6 +334,11 @@ function LeaveModal({ employees, onClose, onSaved }: {
                   <option key={t.id} value={t.id}>{t.name} ({t.daysPerYear}d/yr · {t.isPaid ? 'Paid' : 'Unpaid'})</option>
                 ))}
               </select>
+              {availableDays !== null && (
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  Available balance: <strong style={{ color: availableDays > 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{availableDays} day{availableDays !== 1 ? 's' : ''}</strong>
+                </div>
+              )}
             </div>
             <div className="form-grid form-grid-2">
               <div className="form-group">
