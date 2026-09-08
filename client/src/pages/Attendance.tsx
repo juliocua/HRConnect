@@ -19,6 +19,13 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Convert ISO DateTime or YYYY-MM-DD string to YYYY-MM-DD for <input type="date">
+function toDateInput(t: string | null | undefined, fallback: string): string {
+  if (!t) return fallback;
+  if (t.includes('T')) return t.slice(0, 10);
+  return t.slice(0, 10);
+}
+
 // Convert ISO DateTime or HH:MM string to HH:MM for <input type="time">
 function toTimeInput(t: string | null | undefined, fallback: string): string {
   if (!t) return fallback;
@@ -195,7 +202,7 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
   const isEdit = !!initial;
   const [form, setForm] = useState({
     employeeId: initial?.employeeId ?? '',
-    date: initial?.date ?? defaultDate,
+    date: toDateInput(initial?.date, defaultDate),
     status: initial?.status ?? 'PRESENT' as AttendanceStatus,
     timeIn: toTimeInput(initial?.timeIn, '08:00'),
     timeOut: toTimeInput(initial?.timeOut, '17:00'),
@@ -247,7 +254,7 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
             <div className="form-grid form-grid-2">
               <div className="form-group">
                 <label>Date *</label>
-                <input type="date" className="form-control" required value={form.date} onChange={e => set('date', e.target.value)} disabled={isEdit} />
+                <input type="date" className="form-control" required value={form.date} onChange={e => set('date', e.target.value)} />
               </div>
               <div className="form-group">
                 <label>Status *</label>
