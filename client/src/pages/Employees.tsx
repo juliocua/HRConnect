@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client } from '@/types';
@@ -132,8 +132,11 @@ export default function Employees() {
                 <tr key={e.id}>
                   <td>
                     <div className="emp-info">
-                      <div className="emp-avatar" style={{ background: e.avatarColor }}>
-                        {e.firstName[0]}{e.lastName[0]}
+                      <div className="emp-avatar" style={{ background: e.avatarColor, overflow: 'hidden', padding: 0 }}>
+                        {e.photoUrl
+                          ? <img src={e.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                          : <>{e.firstName[0]}{e.lastName[0]}</>
+                        }
                       </div>
                       <div>
                         <div className="emp-name">{e.firstName} {e.lastName}</div>
@@ -555,6 +558,39 @@ function EmployeeModal({
 function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
   employee: Employee; onClose: () => void; onEdit: () => void;
 }) {
+  const qc = useQueryClient();
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+
+  const handlePhotoUpload = async (file: File) => {
+    setPhotoError('');
+    setPhotoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      await api.post(`/employees/${e.id}/photo`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    } catch (err: any) {
+      setPhotoError(err?.response?.data?.error ?? 'Upload failed');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!confirm('Remove this employee\'s photo?')) return;
+    setPhotoUploading(true);
+    try {
+      await api.delete(`/employees/${e.id}/photo`);
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={ev => ev.target === ev.currentTarget && onClose()}>
       <div className="modal">
@@ -567,10 +603,50 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
         </div>
         <div className="modal-body">
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8 }}>
-            <div className="emp-avatar" style={{ width: 60, height: 60, fontSize: 20, background: e.avatarColor }}>
-              {e.firstName[0]}{e.lastName[0]}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20, marginBottom: 8 }}>
+            {/* Photo / Avatar */}
+            <div style={{ flexShrink: 0 }}>
+              <div style={{
+                width: 80, height: 100, borderRadius: 10,
+                background: e.avatarColor, overflow: 'hidden',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 26, fontWeight: 800, color: '#fff',
+              }}>
+                {e.photoUrl
+                  ? <img src={e.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                  : <>{e.firstName[0]}{e.lastName[0]}</>
+                }
+              </div>
+              {/* Upload / Remove buttons */}
+              <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={ev => ev.target.files?.[0] && handlePhotoUpload(ev.target.files[0])}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: 11, padding: '3px 8px' }}
+                  disabled={photoUploading}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {photoUploading ? '…' : e.photoUrl ? '📷 Change' : '📷 Add Photo'}
+                </button>
+                {e.photoUrl && !photoUploading && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: 11, padding: '3px 8px', color: 'var(--color-danger)' }}
+                    onClick={handleRemovePhoto}
+                  >✕</button>
+                )}
+              </div>
+              {photoError && <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 4 }}>{photoError}</div>}
             </div>
+
             <div>
               <div style={{ fontSize: 20, fontWeight: 800 }}>{e.firstName} {e.lastName}</div>
               <div style={{ color: 'var(--color-text-secondary)', marginTop: 2 }}>{e.position} · {e.department.name}</div>

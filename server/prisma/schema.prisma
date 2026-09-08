@@ -74,6 +74,7 @@ model Employee {
   pagibigNo    String?
   tinNo        String?
   avatarColor  String         @default("#2563EB")
+  photoUrl     String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -111,6 +112,7 @@ model Client {
   specificRequest String?      @db.Text
   billingCycle    BillingCycle @default(MONTHLY)
   billingDate     Int?
+  payPeriodType   Int?         // 1=semi-monthly 1st, 2=semi-monthly 2nd, 7=special, 9=13th month
   activeContract  Boolean      @default(true)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -263,16 +265,19 @@ model LeaveBalance {
 // ── Payroll ───────────────────────────────────────────────────────────────────
 
 model PayrollRun {
-  id        String        @id @default(cuid())
-  period    String        // "2026-09"
-  year      Int
-  month     Int
-  status    PayrollStatus @default(DRAFT)
-  runById   String
-  runAt     DateTime      @default(now())
-  records   PayrollRecord[]
+  id            String        @id @default(cuid())
+  period        String        // e.g. "2026-09 · Type 1" or "Christmas Bonus 2026"
+  year          Int
+  month         Int
+  payPeriodType Int           @default(1)  // 1=semi-monthly 1st, 2=semi-monthly 2nd, 7=special, 9=13th month
+  description   String?       // label for type 7 and 9
+  periodStart   DateTime      @db.Date
+  periodEnd     DateTime      @db.Date
+  status        PayrollStatus @default(DRAFT)
+  runById       String
+  runAt         DateTime      @default(now())
+  records       PayrollRecord[]
 
-  @@unique([year, month])
   @@map("payroll_runs")
 }
 

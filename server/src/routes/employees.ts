@@ -1,8 +1,32 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { prisma } from '../lib/prisma';
 import { authenticate } from '../middleware/authenticate';
+
+// ── Photo upload config ───────────────────────────────────────────────────────
+const uploadsDir = path.join(process.cwd(), 'uploads', 'photos');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+const photoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (req, _file, cb) => {
+    const ext = '.jpg';
+    cb(null, `employee-${req.params.id}-${Date.now()}${ext}`);
+  },
+});
+
+const photoUpload = multer({
+  storage: photoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
 
 const router = Router();
 router.use(authenticate);
@@ -255,6 +279,61 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
   } catch (err) {
     next(err);
   }
+});
+
+// POST /api/employees/:id/photo — upload employee photo
+router.post('/:id/photo', photoUpload.single('photo'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const employee = await prisma.employee.findUnique({ where: { id: req.params.id } });
+    if (!employee) {
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    // Delete old photo if exists
+    if (employee.photoUrl) {
+      const oldFilename = employee.photoUrl.split('/uploads/photos/').pop();
+      if (oldFilename) {
+        const oldPath = path.join(uploadsDir, oldFilename);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+    }
+
+    const baseUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3001}`;
+    const photoUrl = `${baseUrl}/uploads/photos/${req.file.filename}`;
+
+    const updated = await prisma.employee.update({
+      where: { id: req.params.id },
+      data: { photoUrl },
+      include: { department: true },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/employees/:id/photo — remove employee photo
+router.delete('/:id/photo', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const employee = await prisma.employee.findUnique({ where: { id: req.params.id } });
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
+    if (employee.photoUrl) {
+      const oldFilename = employee.photoUrl.split('/uploads/photos/').pop();
+      if (oldFilename) {
+        const oldPath = path.join(uploadsDir, oldFilename);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+    }
+
+    const updated = await prisma.employee.update({
+      where: { id: req.params.id },
+      data: { photoUrl: null },
+      include: { department: true },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
 });
 
 // GET /api/employees/departments/list

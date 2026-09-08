@@ -46,6 +46,7 @@ export interface Employee {
   pagibigNo?: string;
   tinNo?: string;
   avatarColor: string;
+  photoUrl?: string | null;
   createdAt: string;
   user?: { id: string; email: string; isActive: boolean } | null;
 }
@@ -140,13 +141,17 @@ export interface PayrollRun {
   period: string;
   year: number;
   month: number;
+  payPeriodType: number;
+  description?: string;
+  periodStart: string;
+  periodEnd: string;
   status: PayrollStatus;
   runAt: string;
   records: PayrollRecord[];
 }
 
 export interface MyPayrollRecord extends Omit<PayrollRecord, 'employee'> {
-  payrollRun: { period: string; year: number; month: number; status: PayrollStatus };
+  payrollRun: { period: string; year: number; month: number; payPeriodType: number; status: PayrollStatus };
 }
 
 // ── Clients & Billing ─────────────────────────────────────────────────────────
@@ -174,6 +179,7 @@ export interface Client {
   specificRequest?: string;
   billingCycle: BillingCycle;
   billingDate?: number | null;
+  payPeriodType?: number | null;
   activeContract: boolean;
   createdAt: string;
   policies?: ClientPolicy[];

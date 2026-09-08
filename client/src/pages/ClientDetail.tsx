@@ -10,6 +10,13 @@ const CYCLE_LABELS: Record<BillingCycle, string> = {
   EVERY_30TH: 'Every 30th', MONTHLY: 'Monthly',
 };
 
+const PAY_PERIOD_TYPE_LABELS: Record<number, string> = {
+  1: 'Type 1 (1st Half)',
+  2: 'Type 2 (2nd Half)',
+  7: 'Type 7 (Special)',
+  9: 'Type 9 (13th Month)',
+};
+
 const POLICY_TYPES = [
   { value: 'WORK_HOURS', label: 'Work Hours' },
   { value: 'ATTENDANCE', label: 'Attendance Policy' },
@@ -73,9 +80,12 @@ export default function ClientDetail() {
               {client.activeContract ? 'Active Contract' : 'Inactive'}
             </span>
           </div>
-          <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 13, color: 'var(--color-text-muted)' }}>
+          <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 13, color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
             {client.address && <span>📍 {client.address}</span>}
             <span>🔄 Billing: {CYCLE_LABELS[client.billingCycle]}{client.billingDate && client.billingCycle === 'MONTHLY' ? ` (day ${client.billingDate})` : ''}</span>
+            {client.payPeriodType && (
+              <span>📅 Pay Period: {PAY_PERIOD_TYPE_LABELS[client.payPeriodType] ?? `Type ${client.payPeriodType}`}</span>
+            )}
             <span>👥 {client.employees?.length ?? 0} deployed</span>
           </div>
         </div>

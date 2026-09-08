@@ -11,10 +11,17 @@ const CYCLE_LABELS: Record<BillingCycle, string> = {
   MONTHLY: 'Monthly',
 };
 
+const PAY_PERIOD_LABELS: Record<number, string> = {
+  1: 'Type 1 — Semi-monthly 1st half (paid on 15th)',
+  2: 'Type 2 — Semi-monthly 2nd half (paid end of month)',
+  7: 'Type 7 — Special pay (ad-hoc)',
+  9: 'Type 9 — 13th month pay (ad-hoc)',
+};
+
 const BLANK: Partial<Client> = {
   name: '', address: '', contactName: '', contactEmail: '', contactPhone: '',
   servicesOffered: '', specificRequest: '', billingCycle: 'MONTHLY',
-  billingDate: null, activeContract: true,
+  billingDate: null, payPeriodType: null, activeContract: true,
 };
 
 export default function Clients() {
@@ -209,6 +216,26 @@ function ClientModal({ client, onClose, onSaved }: {
               <div className="form-group">
                 <label>Contact Number</label>
                 <input className="form-control" value={form.contactPhone ?? ''} onChange={e => set('contactPhone', e.target.value)} />
+              </div>
+            </div>
+
+            <SectionLabel>Payroll</SectionLabel>
+            <div className="form-grid form-grid-2" style={{ gap: 12 }}>
+              <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                <label>Employee Pay Period Type</label>
+                <select
+                  className="form-control"
+                  value={form.payPeriodType ?? ''}
+                  onChange={e => set('payPeriodType', e.target.value ? parseInt(e.target.value) : null)}
+                >
+                  <option value="">— Not set —</option>
+                  {Object.entries(PAY_PERIOD_LABELS).map(([v, label]) => (
+                    <option key={v} value={v}>{label}</option>
+                  ))}
+                </select>
+                <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  Determines which payroll run this client's employees are included in
+                </div>
               </div>
             </div>
 

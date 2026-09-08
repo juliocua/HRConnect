@@ -45,6 +45,9 @@ setupPassport();
 app.use(passport.initialize());
 app.use(passport.session());
 
+// ── Static: uploaded files ────────────────────────────────────────────────────
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);

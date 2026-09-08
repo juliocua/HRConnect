@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -29,6 +29,37 @@ export default function HubProfile() {
 
   const initials = `${employee.firstName[0]}${employee.lastName[0]}`.toUpperCase();
   const onSaved = () => qc.invalidateQueries({ queryKey: ['hub-profile'] });
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+
+  const handlePhotoUpload = async (file: File) => {
+    setPhotoError('');
+    setPhotoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      await api.post(`/employees/${employee.id}/photo`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      onSaved();
+    } catch (err: any) {
+      setPhotoError(err?.response?.data?.error ?? 'Upload failed');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!confirm('Remove your profile photo?')) return;
+    setPhotoUploading(true);
+    try {
+      await api.delete(`/employees/${employee.id}/photo`);
+      onSaved();
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -43,31 +74,66 @@ export default function HubProfile() {
           Personal
         </div>
 
-        {/* Avatar */}
+        {/* Profile Photo */}
         <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Profile Picture</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Profile Photo</div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
+            {/* Photo / Avatar display */}
             <div style={{
-              width: 64, height: 64, borderRadius: '50%',
-              background: employee.avatarColor,
+              width: 80, height: 100, borderRadius: 10,
+              background: employee.avatarColor, overflow: 'hidden',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 22, fontWeight: 800, color: '#fff', flexShrink: 0,
-            }}>{initials}</div>
+              fontSize: 24, fontWeight: 800, color: '#fff', flexShrink: 0,
+            }}>
+              {employee.photoUrl
+                ? <img src={employee.photoUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                : initials
+              }
+            </div>
+
             <div>
-              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
-                Choose a color for your avatar
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 10 }}>
+                Half-body portrait photo (recommended 400 × 500 px, max 5 MB)
               </div>
-              <AvatarColorPicker
-                employeeId={employee.id}
-                current={employee.avatarColor}
-                initials={initials}
-                onSaved={onSaved}
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={ev => ev.target.files?.[0] && handlePhotoUpload(ev.target.files[0])}
               />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={photoUploading}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {photoUploading ? 'Uploading…' : employee.photoUrl ? '📷 Change Photo' : '📷 Upload Photo'}
+                </button>
+                {employee.photoUrl && !photoUploading && (
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={handleRemovePhoto}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              {photoError && <div style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 6 }}>{photoError}</div>}
             </div>
           </div>
         </div>
 
         <div style={{ height: 1, background: 'var(--color-border)', marginBottom: 20 }} />
+
+        {/* Avatar color */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Avatar Color <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--color-text-muted)' }}>(used when no photo)</span></div>
+          <AvatarColorPicker
+            employeeId={employee.id}
+            current={employee.avatarColor}
+            initials={initials}
+            onSaved={onSaved}
+          />
+        </div>
 
         {/* Change password */}
         <div>
