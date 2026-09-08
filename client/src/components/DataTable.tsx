@@ -116,14 +116,8 @@ export function DataTable<T>({
 
   return (
     <div className="datatable-wrapper">
-      {/* Toolbar */}
-      <div className="datatable-toolbar">
-        <input
-          className="datatable-search"
-          placeholder={globalFilterPlaceholder}
-          value={globalFilter}
-          onChange={e => setGlobalFilter(e.target.value)}
-        />
+      {/* Toolbar: export buttons left, search right */}
+      <div className="datatable-toolbar" style={{ marginBottom: 12 }}>
         <div className="datatable-actions">
           <button className="btn btn-sm btn-secondary" onClick={exportCSV} title="Export CSV">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
@@ -142,19 +136,41 @@ export function DataTable<T>({
             PDF
           </button>
         </div>
+
+        {/* Search with magnifying glass icon */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <svg
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            style={{ position: 'absolute', left: 10, width: 15, height: 15, color: 'var(--color-text-muted)', pointerEvents: 'none' }}
+          >
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            className="datatable-search"
+            placeholder={globalFilterPlaceholder}
+            value={globalFilter}
+            onChange={e => setGlobalFilter(e.target.value)}
+            style={{ paddingLeft: 32, paddingRight: 12, paddingTop: 7, paddingBottom: 7 }}
+          />
+        </div>
       </div>
 
       {/* Table */}
       <div className="table-container">
         <table className="data-table">
-          <thead>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
             {table.getHeaderGroups().map(hg => (
               <tr key={hg.id}>
                 {hg.headers.map(header => (
                   <th
                     key={header.id}
                     onClick={header.column.getToggleSortingHandler()}
-                    style={{ cursor: header.column.getCanSort() ? 'pointer' : 'default', userSelect: 'none' }}
+                    style={{
+                      cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                      userSelect: 'none',
+                      background: 'var(--color-surface)',
+                    }}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
                     {header.column.getIsSorted() === 'asc' ? ' ↑'
@@ -186,11 +202,23 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* Pagination: left = size + count, right = page controls */}
       <div className="datatable-pagination">
-        <span className="datatable-info">
-          {totalRows === 0 ? 'No records' : `${from}–${to} of ${totalRows}`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <select
+            className="datatable-page-size"
+            value={currentPageSize}
+            onChange={e => table.setPageSize(Number(e.target.value))}
+          >
+            {[10, 20, 50, 100].map(n => (
+              <option key={n} value={n}>{n} / page</option>
+            ))}
+          </select>
+          <span className="datatable-info">
+            {totalRows === 0 ? 'No records' : `${from}–${to} of ${totalRows}`}
+          </span>
+        </div>
+
         <div className="datatable-page-btns">
           <button
             className="btn btn-sm btn-secondary"
@@ -216,15 +244,6 @@ export function DataTable<T>({
             disabled={!table.getCanNextPage()}
           >»</button>
         </div>
-        <select
-          className="datatable-page-size"
-          value={currentPageSize}
-          onChange={e => table.setPageSize(Number(e.target.value))}
-        >
-          {[10, 20, 50, 100].map(n => (
-            <option key={n} value={n}>{n} / page</option>
-          ))}
-        </select>
       </div>
     </div>
   );

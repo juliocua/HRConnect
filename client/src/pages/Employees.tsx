@@ -1,6 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { DataTable } from '@/components/DataTable';
 import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client } from '@/types';
 
 const STATUS_COLORS: Record<EmployeeStatus, string> = {
@@ -23,7 +25,6 @@ const AVATAR_COLORS = [
 
 export default function Employees() {
   const qc = useQueryClient();
-  const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -31,10 +32,9 @@ export default function Employees() {
   const [viewTarget, setViewTarget] = useState<Employee | null>(null);
 
   const { data: employees = [], isLoading } = useQuery<Employee[]>({
-    queryKey: ['employees', search, deptFilter, statusFilter],
+    queryKey: ['employees', deptFilter, statusFilter],
     queryFn: () => {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
       if (deptFilter) params.set('departmentId', deptFilter);
       if (statusFilter) params.set('status', statusFilter);
       return api.get(`/employees?${params}`).then(r => r.data);
@@ -60,6 +60,82 @@ export default function Employees() {
     }
   };
 
+  const columns = useMemo<ColumnDef<Employee>[]>(() => [
+    {
+      id: 'employee',
+      accessorFn: row => `${row.firstName} ${row.lastName} ${row.email}`,
+      header: 'Employee',
+      cell: ({ row: { original: e } }) => (
+        <div className="emp-info">
+          <div className="emp-avatar" style={{ background: e.avatarColor, overflow: 'hidden', padding: 0 }}>
+            {e.photoUrl
+              ? <img src={e.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+              : <>{e.firstName[0]}{e.lastName[0]}</>
+            }
+          </div>
+          <div>
+            <div className="emp-name">{e.firstName} {e.lastName}</div>
+            <div className="emp-role">{e.email}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'employeeNo',
+      header: 'Emp. No',
+      cell: ({ getValue }) => <span className="td-mono">{getValue() as string}</span>,
+    },
+    {
+      id: 'department',
+      accessorFn: row => row.department.name,
+      header: 'Department',
+    },
+    {
+      accessorKey: 'position',
+      header: 'Position',
+    },
+    {
+      id: 'client',
+      accessorFn: row => row.client?.name ?? '',
+      header: 'Deployed To',
+      cell: ({ getValue }) => {
+        const name = getValue() as string;
+        return name
+          ? <span style={{ fontSize: 13, fontWeight: 600 }}>{name}</span>
+          : <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>—</span>;
+      },
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ getValue }) => {
+        const s = getValue() as EmployeeStatus;
+        return <span className={`badge ${STATUS_COLORS[s]}`}>{STATUS_LABELS[s]}</span>;
+      },
+    },
+    {
+      accessorKey: 'hireDate',
+      header: 'Hire Date',
+      cell: ({ getValue }) => <span className="text-muted text-sm">{formatDate(getValue() as string)}</span>,
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: ({ row: { original: e } }) => (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setViewTarget(e)}>View</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(e)}>Edit</button>
+          {e.status !== 'TERMINATED' && (
+            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => handleDelete(e)}>
+              Terminate
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ], [deleteMutation]);
+
   return (
     <div>
       {/* Header */}
@@ -79,17 +155,6 @@ export default function Employees() {
       {/* Filters */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="filter-bar">
-          <div className="search-box" style={{ flex: 2 }}>
-            <svg className="search-box-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              className="form-control"
-              placeholder="Search by name, email, or position…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
           <select className="form-control" style={{ width: 180 }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
             <option value="">All Departments</option>
             {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -113,63 +178,13 @@ export default function Employees() {
           <div>Try adjusting your filters or add a new employee</div>
         </div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Emp. No</th>
-                <th>Department</th>
-                <th>Position</th>
-                <th>Deployed To</th>
-                <th>Status</th>
-                <th>Hire Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map(e => (
-                <tr key={e.id}>
-                  <td>
-                    <div className="emp-info">
-                      <div className="emp-avatar" style={{ background: e.avatarColor, overflow: 'hidden', padding: 0 }}>
-                        {e.photoUrl
-                          ? <img src={e.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
-                          : <>{e.firstName[0]}{e.lastName[0]}</>
-                        }
-                      </div>
-                      <div>
-                        <div className="emp-name">{e.firstName} {e.lastName}</div>
-                        <div className="emp-role">{e.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="td-mono">{e.employeeNo}</td>
-                  <td>{e.department.name}</td>
-                  <td>{e.position}</td>
-                  <td>
-                    {e.client
-                      ? <span style={{ fontSize: 13, fontWeight: 600 }}>{e.client.name}</span>
-                      : <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>—</span>
-                    }
-                  </td>
-                  <td><span className={`badge ${STATUS_COLORS[e.status]}`}>{STATUS_LABELS[e.status]}</span></td>
-                  <td className="text-muted text-sm">{formatDate(e.hireDate)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setViewTarget(e)}>View</button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => openEdit(e)}>Edit</button>
-                      {e.status !== 'TERMINATED' && (
-                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => handleDelete(e)}>
-                          Terminate
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="card">
+          <DataTable
+            data={employees}
+            columns={columns}
+            globalFilterPlaceholder="Search employees…"
+            exportFilename="Employees"
+          />
         </div>
       )}
 

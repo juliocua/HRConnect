@@ -155,12 +155,10 @@ export default function Attendance() {
           { label: 'On Leave', value: onLeave, icon: '🏖️' },
           { label: 'OT Hours', value: `${overtime.toFixed(1)}h`, icon: '⏱️' },
         ].map(s => (
-          <div key={s.label} className="stat-card" style={{ padding: 16 }}>
-            <div className="stat-icon" style={{ width: 38, height: 38, fontSize: 18, background: 'var(--color-surface-2)' }}>{s.icon}</div>
-            <div>
-              <div className="stat-label">{s.label}</div>
-              <div className="stat-value" style={{ fontSize: 20 }}>{s.value}</div>
-            </div>
+          <div key={s.label} className="card" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20, lineHeight: 1 }}>{s.icon}</span>
+            <span style={{ fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{s.value}</span>
+            <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{s.label}</span>
           </div>
         ))}
       </div>
