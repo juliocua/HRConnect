@@ -163,6 +163,7 @@ export interface ClientPolicy {
   clientId: string;
   type: string;
   title: string;
+  value?: string | null;
   description: string;
   createdAt: string;
   updatedAt: string;
