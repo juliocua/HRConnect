@@ -47,6 +47,7 @@ const EmployeeSchema = z.object({
   philhealthNo: z.string().optional(),
   pagibigNo: z.string().optional(),
   tinNo: z.string().optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional().nullable(),
   avatarColor: z.string().optional(),
   resourceCost: z.number().nonnegative().optional().nullable(),
   payrollCost: z.number().nonnegative().optional().nullable(),

@@ -16,6 +16,7 @@ import payrollRoutes from './routes/payroll';
 import clientRoutes from './routes/clients';
 import billingRoutes from './routes/billing';
 import importRoutes from './routes/import';
+import { startLeaveAccrualJob } from './jobs/leaveAccrual';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -73,6 +74,7 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`HRConnect server running on port ${PORT} [${process.env.NODE_ENV}]`);
+  startLeaveAccrualJob();
 });
 
 export default app;

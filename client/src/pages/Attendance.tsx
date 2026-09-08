@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { DataTable } from '@/components/DataTable';
 import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
 
 const STATUS_COLORS: Record<AttendanceStatus, string> = {
@@ -19,14 +21,12 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Convert ISO DateTime or YYYY-MM-DD string to YYYY-MM-DD for <input type="date">
 function toDateInput(t: string | null | undefined, fallback: string): string {
   if (!t) return fallback;
   if (t.includes('T')) return t.slice(0, 10);
   return t.slice(0, 10);
 }
 
-// Convert ISO DateTime or HH:MM string to HH:MM for <input type="time">
 function toTimeInput(t: string | null | undefined, fallback: string): string {
   if (!t) return fallback;
   if (t.includes('T') || t.length > 8) {
@@ -35,7 +35,7 @@ function toTimeInput(t: string | null | undefined, fallback: string): string {
       return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     }
   }
-  return t.slice(0, 5); // ensure HH:MM
+  return t.slice(0, 5);
 }
 
 export default function Attendance() {
@@ -69,6 +69,69 @@ export default function Attendance() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }),
   });
 
+  const columns = useMemo<ColumnDef<AttendanceRecord>[]>(() => [
+    {
+      id: 'employee',
+      accessorFn: row => `${row.employee.lastName} ${row.employee.firstName}`,
+      header: 'Employee',
+      cell: ({ row: { original: r } }) => (
+        <div className="emp-info">
+          <div className="emp-avatar" style={{ background: r.employee.avatarColor }}>
+            {r.employee.firstName[0]}{r.employee.lastName[0]}
+          </div>
+          <div>
+            <div className="emp-name">{r.employee.firstName} {r.employee.lastName}</div>
+            <div className="emp-role">{r.employee.position}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ getValue }) => {
+        const s = getValue() as AttendanceStatus;
+        return <span className={`badge ${STATUS_COLORS[s]}`}>{STATUS_LABELS[s]}</span>;
+      },
+    },
+    {
+      accessorKey: 'timeIn',
+      header: 'Time In',
+      cell: ({ getValue }) => <span className="td-mono">{getValue() ? formatTime(getValue() as string) : '—'}</span>,
+    },
+    {
+      accessorKey: 'timeOut',
+      header: 'Time Out',
+      cell: ({ getValue }) => <span className="td-mono">{getValue() ? formatTime(getValue() as string) : '—'}</span>,
+    },
+    {
+      accessorKey: 'overtimeHrs',
+      header: 'OT Hours',
+      cell: ({ getValue }) => {
+        const v = getValue() as number;
+        return v > 0 ? <span style={{ color: 'var(--color-warning)', fontWeight: 600 }}>{v}h</span> : <span>—</span>;
+      },
+    },
+    {
+      accessorKey: 'notes',
+      header: 'Notes',
+      cell: ({ getValue }) => <span className="text-muted text-sm">{(getValue() as string) ?? '—'}</span>,
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: ({ row: { original: r } }) => (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => { setEditTarget(r); setShowModal(true); }}>Edit</button>
+          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => {
+            if (confirm('Delete this record?')) deleteMutation.mutate(r.id);
+          }}>Del</button>
+        </div>
+      ),
+    },
+  ], [deleteMutation]);
+
   return (
     <div>
       <div className="page-header">
@@ -87,10 +150,10 @@ export default function Attendance() {
       {/* Quick stats */}
       <div className="grid-4" style={{ marginBottom: 20 }}>
         {[
-          { label: 'Present', value: present, icon: '✅', cls: 'badge-green' },
-          { label: 'Absent', value: absent, icon: '❌', cls: 'badge-red' },
-          { label: 'On Leave', value: onLeave, icon: '🏖️', cls: 'badge-blue' },
-          { label: 'OT Hours', value: `${overtime.toFixed(1)}h`, icon: '⏱️', cls: 'badge-yellow' },
+          { label: 'Present', value: present, icon: '✅' },
+          { label: 'Absent', value: absent, icon: '❌' },
+          { label: 'On Leave', value: onLeave, icon: '🏖️' },
+          { label: 'OT Hours', value: `${overtime.toFixed(1)}h`, icon: '⏱️' },
         ].map(s => (
           <div key={s.label} className="stat-card" style={{ padding: 16 }}>
             <div className="stat-icon" style={{ width: 38, height: 38, fontSize: 18, background: 'var(--color-surface-2)' }}>{s.icon}</div>
@@ -102,7 +165,7 @@ export default function Attendance() {
         ))}
       </div>
 
-      {/* Filters */}
+      {/* Date / Employee filters (server-side) */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="filter-bar">
           <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -119,7 +182,6 @@ export default function Attendance() {
         </div>
       </div>
 
-      {/* Table */}
       {isLoading ? (
         <div className="loading-center"><div className="spinner" /></div>
       ) : records.length === 0 ? (
@@ -132,50 +194,13 @@ export default function Attendance() {
           </button>
         </div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Status</th>
-                <th>Time In</th>
-                <th>Time Out</th>
-                <th>OT Hours</th>
-                <th>Notes</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map(r => (
-                <tr key={r.id}>
-                  <td>
-                    <div className="emp-info">
-                      <div className="emp-avatar" style={{ background: r.employee.avatarColor }}>
-                        {r.employee.firstName[0]}{r.employee.lastName[0]}
-                      </div>
-                      <div>
-                        <div className="emp-name">{r.employee.firstName} {r.employee.lastName}</div>
-                        <div className="emp-role">{r.employee.position}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td><span className={`badge ${STATUS_COLORS[r.status]}`}>{STATUS_LABELS[r.status]}</span></td>
-                  <td className="td-mono">{r.timeIn ? formatTime(r.timeIn) : '—'}</td>
-                  <td className="td-mono">{r.timeOut ? formatTime(r.timeOut) : '—'}</td>
-                  <td>{r.overtimeHrs > 0 ? <span style={{ color: 'var(--color-warning)', fontWeight: 600 }}>{r.overtimeHrs}h</span> : '—'}</td>
-                  <td className="text-muted text-sm">{r.notes ?? '—'}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setEditTarget(r); setShowModal(true); }}>Edit</button>
-                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => {
-                        if (confirm('Delete this record?')) deleteMutation.mutate(r.id);
-                      }}>Del</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="card">
+          <DataTable
+            data={records}
+            columns={columns}
+            globalFilterPlaceholder="Search employees…"
+            exportFilename={`Attendance_${date}`}
+          />
         </div>
       )}
 
@@ -225,7 +250,6 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
       }
       onSaved();
     } catch (err: unknown) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setError((err as any)?.response?.data?.error ?? 'Failed to save');
     } finally {
       setSaving(false);
@@ -304,14 +328,12 @@ function formatDate(iso: string) {
 
 function formatTime(t: string) {
   if (!t) return '—';
-  // Handle ISO DateTime strings (e.g. "2026-09-01T08:00:00.000Z")
   if (t.includes('T') || t.length > 8) {
     const d = new Date(t);
     if (!isNaN(d.getTime())) {
       return d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
     }
   }
-  // Plain HH:MM
   const [h, m] = t.split(':');
   const hour = parseInt(h);
   return `${hour % 12 || 12}:${m} ${hour < 12 ? 'AM' : 'PM'}`;

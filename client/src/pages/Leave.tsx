@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
-import { useAuth } from '@/context/AuthContext';
+import { DataTable } from '@/components/DataTable';
 import type { LeaveRequest, LeaveBalance, LeaveType, Employee, LeaveStatus } from '@/types';
 
 const STATUS_COLORS: Record<LeaveStatus, string> = {
@@ -11,7 +12,6 @@ const STATUS_COLORS: Record<LeaveStatus, string> = {
 
 export default function Leave() {
   const qc = useQueryClient();
-  const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState('');
   const [empFilter, setEmpFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -56,6 +56,101 @@ export default function Leave() {
   const pending = requests.filter(r => r.status === 'PENDING').length;
   const approved = requests.filter(r => r.status === 'APPROVED').length;
 
+  const columns = useMemo<ColumnDef<LeaveRequest>[]>(() => [
+    {
+      id: 'employee',
+      accessorFn: row => `${row.employee.lastName} ${row.employee.firstName}`,
+      header: 'Employee',
+      cell: ({ row: { original: r } }) => (
+        <div className="emp-info">
+          <div className="emp-avatar" style={{ background: r.employee.avatarColor }}>
+            {r.employee.firstName[0]}{r.employee.lastName[0]}
+          </div>
+          <div>
+            <div className="emp-name">{r.employee.firstName} {r.employee.lastName}</div>
+            <div className="emp-role">{r.employee.position}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'leaveType',
+      accessorFn: row => row.leaveType.name,
+      header: 'Leave Type',
+      cell: ({ row: { original: r } }) => (
+        <div>
+          <div>{r.leaveType.name}</div>
+          <div className="text-muted text-sm">{r.leaveType.isPaid ? 'Paid' : 'Unpaid'}</div>
+        </div>
+      ),
+    },
+    {
+      id: 'dates',
+      accessorFn: row => row.startDate,
+      header: 'Dates',
+      cell: ({ row: { original: r } }) => (
+        <div className="text-sm">
+          <div>{formatDate(r.startDate)}</div>
+          {r.startDate !== r.endDate && <div className="text-muted">→ {formatDate(r.endDate)}</div>}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'totalDays',
+      header: 'Days',
+      cell: ({ getValue }) => <strong>{getValue() as number}</strong>,
+    },
+    {
+      accessorKey: 'reason',
+      header: 'Reason',
+      cell: ({ getValue }) => <span className="text-muted text-sm" style={{ maxWidth: 160, display: 'block' }}>{(getValue() as string) ?? '—'}</span>,
+    },
+    {
+      accessorKey: 'filedAt',
+      header: 'Filed',
+      cell: ({ getValue }) => <span className="text-muted text-sm">{formatDate(getValue() as string)}</span>,
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row: { original: r } }) => (
+        <div>
+          <span className={`badge ${STATUS_COLORS[r.status]}`}>{r.status}</span>
+          {r.rejectionNote && (
+            <div className="text-sm text-muted" style={{ marginTop: 3 }} title={r.rejectionNote}>
+              ⚠️ Note
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: ({ row: { original: r } }) => (
+        r.status === 'PENDING' ? (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className="btn btn-success btn-sm"
+              disabled={approveMutation.isPending}
+              onClick={() => approveMutation.mutate(r.id)}
+            >
+              Approve
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ color: 'var(--color-danger)' }}
+              onClick={() => setRejModal(r)}
+            >
+              Reject
+            </button>
+          </div>
+        ) : null
+      ),
+    },
+  ], [approveMutation]);
+
   return (
     <div>
       <div className="page-header">
@@ -76,7 +171,7 @@ export default function Leave() {
 
       {activeTab === 'requests' && (
         <>
-          {/* Filters */}
+          {/* Server-side filters */}
           <div className="card" style={{ marginBottom: 20 }}>
             <div className="filter-bar">
               <select className="form-control" style={{ width: 220 }} value={empFilter} onChange={e => setEmpFilter(e.target.value)}>
@@ -102,79 +197,13 @@ export default function Leave() {
               <div>File a new leave request to get started</div>
             </div>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Leave Type</th>
-                    <th>Dates</th>
-                    <th>Days</th>
-                    <th>Reason</th>
-                    <th>Filed</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {requests.map(r => (
-                    <tr key={r.id}>
-                      <td>
-                        <div className="emp-info">
-                          <div className="emp-avatar" style={{ background: r.employee.avatarColor }}>
-                            {r.employee.firstName[0]}{r.employee.lastName[0]}
-                          </div>
-                          <div>
-                            <div className="emp-name">{r.employee.firstName} {r.employee.lastName}</div>
-                            <div className="emp-role">{r.employee.position}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div>{r.leaveType.name}</div>
-                        <div className="text-muted text-sm">{r.leaveType.isPaid ? 'Paid' : 'Unpaid'}</div>
-                      </td>
-                      <td className="text-sm">
-                        <div>{formatDate(r.startDate)}</div>
-                        {r.startDate !== r.endDate && <div className="text-muted">→ {formatDate(r.endDate)}</div>}
-                      </td>
-                      <td><strong>{r.totalDays}</strong></td>
-                      <td className="text-muted text-sm" style={{ maxWidth: 160 }}>{r.reason ?? '—'}</td>
-                      <td className="text-muted text-sm">{formatDate(r.filedAt)}</td>
-                      <td>
-                        <div>
-                          <span className={`badge ${STATUS_COLORS[r.status]}`}>{r.status}</span>
-                          {r.rejectionNote && (
-                            <div className="text-sm text-muted" style={{ marginTop: 3 }} title={r.rejectionNote}>
-                              ⚠️ Note
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        {r.status === 'PENDING' && (
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              className="btn btn-success btn-sm"
-                              disabled={approveMutation.isPending}
-                              onClick={() => approveMutation.mutate(r.id)}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              style={{ color: 'var(--color-danger)' }}
-                              onClick={() => setRejModal(r)}
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="card">
+              <DataTable
+                data={requests}
+                columns={columns}
+                globalFilterPlaceholder="Search employees or leave type…"
+                exportFilename="LeaveRequests"
+              />
             </div>
           )}
         </>
@@ -203,9 +232,9 @@ export default function Leave() {
             <div className="grid-3">
               {balances.map(b => {
                 const used = b.usedDays;
-                const pending = b.pendingDays;
+                const pendingDays = b.pendingDays;
                 const total = b.totalDays;
-                const remaining = total - used - pending;
+                const remaining = total - used - pendingDays;
                 const pct = Math.max(0, Math.min(100, (used / total) * 100));
                 return (
                   <div key={b.id} className="card">
@@ -223,7 +252,7 @@ export default function Leave() {
                         <div className="text-muted text-sm">Used</div>
                       </div>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-warning)' }}>{pending}</div>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--color-warning)' }}>{pendingDays}</div>
                         <div className="text-muted text-sm">Pending</div>
                       </div>
                       <div style={{ textAlign: 'center' }}>
@@ -278,9 +307,11 @@ function LeaveModal({ employees, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+  // Gender-filtered leave types: pass employeeId so server filters by gender
   const { data: leaveTypes = [] } = useQuery<LeaveType[]>({
-    queryKey: ['leave-types'],
-    queryFn: () => api.get('/leave/types').then(r => r.data),
+    queryKey: ['leave-types', form.employeeId],
+    queryFn: () =>
+      api.get(`/leave/types${form.employeeId ? `?employeeId=${form.employeeId}` : ''}`).then(r => r.data),
   });
 
   const { data: balances = [] } = useQuery<LeaveBalance[]>({
@@ -321,15 +352,15 @@ function LeaveModal({ employees, onClose, onSaved }: {
             {error && <div className="error-msg">{error}</div>}
             <div className="form-group">
               <label>Employee *</label>
-              <select className="form-control" required value={form.employeeId} onChange={e => set('employeeId', e.target.value)}>
+              <select className="form-control" required value={form.employeeId} onChange={e => { set('employeeId', e.target.value); set('leaveTypeId', ''); }}>
                 <option value="">Select employee…</option>
                 {employees.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
               </select>
             </div>
             <div className="form-group">
               <label>Leave Type *</label>
-              <select className="form-control" required value={form.leaveTypeId} onChange={e => set('leaveTypeId', e.target.value)}>
-                <option value="">Select leave type…</option>
+              <select className="form-control" required value={form.leaveTypeId} onChange={e => set('leaveTypeId', e.target.value)} disabled={!form.employeeId}>
+                <option value="">{form.employeeId ? 'Select leave type…' : 'Select an employee first…'}</option>
                 {leaveTypes.map(t => (
                   <option key={t.id} value={t.id}>{t.name} ({t.daysPerYear}d/yr · {t.isPaid ? 'Paid' : 'Unpaid'})</option>
                 ))}

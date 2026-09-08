@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveStatus } from '@/types';
 
 const STATUS_COLORS: Record<LeaveStatus, string> = {
@@ -14,6 +15,7 @@ function fmtDate(iso: string) {
 
 export default function HubLeave() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'requests' | 'balances'>('balances');
   const [showModal, setShowModal] = useState(false);
 
@@ -143,6 +145,7 @@ export default function HubLeave() {
       {showModal && (
         <FileLeaveModal
           balances={balances}
+          employeeId={user?.employeeId ?? null}
           onClose={() => setShowModal(false)}
           onSaved={() => {
             setShowModal(false);
@@ -155,14 +158,15 @@ export default function HubLeave() {
   );
 }
 
-function FileLeaveModal({ balances, onClose, onSaved }: {
+function FileLeaveModal({ balances, employeeId, onClose, onSaved }: {
   balances: LeaveBalance[];
+  employeeId: string | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { data: leaveTypes = [] } = useQuery<LeaveType[]>({
-    queryKey: ['leave-types'],
-    queryFn: () => api.get('/leave/types').then(r => r.data),
+    queryKey: ['leave-types', employeeId],
+    queryFn: () => api.get(`/leave/types${employeeId ? `?employeeId=${employeeId}` : ''}`).then(r => r.data),
   });
 
   const [form, setForm] = useState({

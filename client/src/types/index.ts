@@ -20,6 +20,7 @@ export interface Department {
 
 // ── Employee ──────────────────────────────────────────────────────────────────
 export type EmployeeStatus = 'ACTIVE' | 'ON_LEAVE' | 'INACTIVE' | 'TERMINATED';
+export type EmployeeGender = 'MALE' | 'FEMALE' | 'OTHER';
 
 export interface Employee {
   id: string;
@@ -45,6 +46,7 @@ export interface Employee {
   philhealthNo?: string;
   pagibigNo?: string;
   tinNo?: string;
+  gender?: EmployeeGender | null;
   avatarColor: string;
   photoUrl?: string | null;
   createdAt: string;
@@ -81,7 +83,12 @@ export interface LeaveType {
   name: string;
   daysPerYear: number;
   isPaid: boolean;
-  legalBasis?: string;
+  legalBasis?: string | null;
+  applicableGender: 'ALL' | 'MALE' | 'FEMALE';
+  resetsAnnually: boolean;
+  accruesMonthly: boolean;
+  isManual: boolean;
+  isActive: boolean;
 }
 
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
@@ -121,7 +128,10 @@ export interface PayrollRecord {
   id: string;
   payrollRunId: string;
   employeeId: string;
-  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & { department: Department };
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
+    department: Department;
+    client?: { id: string; name: string } | null;
+  };
   basicSalary: number;
   grossPay: number;
   sssContrib: number;
@@ -130,6 +140,7 @@ export interface PayrollRecord {
   taxableIncome: number;
   withholdingTax: number;
   totalDeductions: number;
+  otherDeductions: number;
   netPay: number;
   daysWorked: number;
   overtimePay: number;

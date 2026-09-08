@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { formatPHP } from '@/lib/payroll';
+import { DataTable } from '@/components/DataTable';
 import type { PayrollRun, PayrollRecord, PayrollStatus } from '@/types';
 
 const STATUS_COLORS: Record<PayrollStatus, string> = {
@@ -13,13 +15,6 @@ const MONTHS = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December',
 ];
-
-const PAY_PERIOD_LABELS: Record<number, string> = {
-  1: 'Type 1 — Semi-monthly 1st half (paid 15th)',
-  2: 'Type 2 — Semi-monthly 2nd half (paid end of month)',
-  7: 'Type 7 — Special pay (ad-hoc)',
-  9: 'Type 9 — 13th month pay (ad-hoc)',
-};
 
 export default function Payroll() {
   const { user } = useAuth();
@@ -50,11 +45,131 @@ export default function Payroll() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (runId: string) => api.delete(`/payroll/run/${runId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll-history'] });
+      setViewRunId(null);
+    },
+  });
+
+  const updateRecordMutation = useMutation({
+    mutationFn: ({ recordId, otherDeductions }: { recordId: string; otherDeductions: number }) =>
+      api.put(`/payroll/${viewRunId}/record/${recordId}`, { otherDeductions }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] }),
+  });
+
   const records = currentRun?.records ?? [];
+  const isDraft = currentRun?.status === 'DRAFT';
   const totalGross = records.reduce((s, r) => s + r.grossPay, 0);
   const totalDeductions = records.reduce((s, r) => s + r.totalDeductions, 0);
+  const totalOtherDeductions = records.reduce((s, r) => s + (r.otherDeductions ?? 0), 0);
   const totalNet = records.reduce((s, r) => s + r.netPay, 0);
   const totalOT = records.reduce((s, r) => s + r.overtimePay, 0);
+
+  const handleOtherDeductionsBlur = useCallback((recordId: string, value: number) => {
+    updateRecordMutation.mutate({ recordId, otherDeductions: value });
+  }, [updateRecordMutation]);
+
+  const columns = useMemo<ColumnDef<PayrollRecord>[]>(() => [
+    {
+      id: 'employee',
+      accessorFn: row => `${row.employee.lastName} ${row.employee.firstName}`,
+      header: 'Employee',
+      cell: ({ row: { original: r } }) => (
+        <div className="emp-info">
+          <div className="emp-avatar" style={{ background: r.employee.avatarColor }}>
+            {r.employee.firstName[0]}{r.employee.lastName[0]}
+          </div>
+          <div>
+            <div className="emp-name">{r.employee.firstName} {r.employee.lastName}</div>
+            <div className="emp-role">{r.employee.position}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'client',
+      accessorFn: row => row.employee.client?.name ?? '',
+      header: 'Client',
+      cell: ({ getValue }) => <span className="text-muted text-sm">{(getValue() as string) || '—'}</span>,
+    },
+    {
+      accessorKey: 'daysWorked',
+      header: 'Days',
+      cell: ({ getValue }) => <span>{getValue() as number}</span>,
+    },
+    {
+      accessorKey: 'basicSalary',
+      header: 'Basic',
+      cell: ({ getValue }) => <span className="td-mono">{formatPHP(getValue() as number)}</span>,
+    },
+    {
+      accessorKey: 'overtimePay',
+      header: 'OT Pay',
+      cell: ({ getValue }) => {
+        const v = getValue() as number;
+        return <span className="td-mono">{v > 0 ? formatPHP(v) : '—'}</span>;
+      },
+    },
+    {
+      accessorKey: 'grossPay',
+      header: 'Gross Pay',
+      cell: ({ getValue }) => <span className="td-mono" style={{ fontWeight: 600 }}>{formatPHP(getValue() as number)}</span>,
+    },
+    {
+      accessorKey: 'sssContrib',
+      header: 'SSS',
+      cell: ({ getValue }) => <span className="td-mono text-muted">{formatPHP(getValue() as number)}</span>,
+    },
+    {
+      accessorKey: 'philhealthContrib',
+      header: 'PhilHealth',
+      cell: ({ getValue }) => <span className="td-mono text-muted">{formatPHP(getValue() as number)}</span>,
+    },
+    {
+      accessorKey: 'pagibigContrib',
+      header: 'Pag-IBIG',
+      cell: ({ getValue }) => <span className="td-mono text-muted">{formatPHP(getValue() as number)}</span>,
+    },
+    {
+      accessorKey: 'withholdingTax',
+      header: 'Tax',
+      cell: ({ getValue }) => <span className="td-mono text-muted">{formatPHP(getValue() as number)}</span>,
+    },
+    {
+      id: 'otherDeductions',
+      accessorKey: 'otherDeductions',
+      header: 'Other Ded.',
+      cell: ({ row: { original: r } }) => isDraft ? (
+        <OtherDeductionsCell
+          recordId={r.id}
+          initialValue={r.otherDeductions ?? 0}
+          onBlur={handleOtherDeductionsBlur}
+          saving={updateRecordMutation.isPending && updateRecordMutation.variables?.recordId === r.id}
+        />
+      ) : (
+        <span className="td-mono text-muted">{(r.otherDeductions ?? 0) > 0 ? formatPHP(r.otherDeductions ?? 0) : '—'}</span>
+      ),
+    },
+    {
+      accessorKey: 'netPay',
+      header: 'Net Pay',
+      cell: ({ getValue }) => (
+        <span className="td-mono" style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
+          {formatPHP(getValue() as number)}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: ({ row: { original: r } }) => (
+        <button className="btn btn-ghost btn-sm" onClick={() => setShowSlip(r)}>Slip</button>
+      ),
+    },
+  ], [isDraft, handleOtherDeductionsBlur, updateRecordMutation]);
 
   return (
     <div>
@@ -65,9 +180,23 @@ export default function Payroll() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {viewRunId && currentRun?.status === 'DRAFT' && isManager && (
-            <button className="btn btn-success" disabled={postMutation.isPending} onClick={() => postMutation.mutate(viewRunId)}>
-              {postMutation.isPending ? 'Posting…' : '✓ Post Payroll'}
-            </button>
+            <>
+              <button
+                className="btn btn-ghost"
+                style={{ color: 'var(--color-danger)' }}
+                disabled={deleteMutation.isPending}
+                onClick={() => {
+                  if (confirm('Delete this draft payroll run? This cannot be undone.')) {
+                    deleteMutation.mutate(viewRunId);
+                  }
+                }}
+              >
+                {deleteMutation.isPending ? 'Deleting…' : '🗑 Delete Draft'}
+              </button>
+              <button className="btn btn-success" disabled={postMutation.isPending} onClick={() => postMutation.mutate(viewRunId)}>
+                {postMutation.isPending ? 'Posting…' : '✓ Post Payroll'}
+              </button>
+            </>
           )}
           {viewRunId && (
             <button className="btn btn-ghost" onClick={() => setViewRunId(null)}>← Back to History</button>
@@ -92,6 +221,9 @@ export default function Payroll() {
                   {' → '}
                   {new Date(currentRun.periodEnd).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
+                {currentRun.description && (
+                  <div style={{ fontSize: 12.5, color: 'var(--color-text-muted)' }}>{currentRun.description}</div>
+                )}
               </div>
               <span className={`badge ${STATUS_COLORS[currentRun.status]}`} style={{ fontSize: 13 }}>
                 {currentRun.status}
@@ -103,7 +235,7 @@ export default function Payroll() {
           <div className="grid-4" style={{ marginBottom: 20 }}>
             {[
               { label: 'Gross Pay', value: formatPHP(totalGross), icon: '💵', color: '#F0FDF4' },
-              { label: 'Total Deductions', value: formatPHP(totalDeductions), icon: '📉', color: '#FEF2F2' },
+              { label: 'Total Deductions', value: formatPHP(totalDeductions + totalOtherDeductions), icon: '📉', color: '#FEF2F2' },
               { label: 'Net Pay', value: formatPHP(totalNet), icon: '✅', color: '#EFF6FF' },
               { label: 'OT Pay', value: formatPHP(totalOT), icon: '⏱️', color: '#FFFBEB' },
             ].map(s => (
@@ -118,70 +250,14 @@ export default function Payroll() {
             ))}
           </div>
 
-          {/* Records table */}
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Dept</th>
-                  <th>Days</th>
-                  <th>Basic</th>
-                  <th>OT Pay</th>
-                  <th>Gross Pay</th>
-                  <th>SSS</th>
-                  <th>PhilHealth</th>
-                  <th>Pag-IBIG</th>
-                  <th>Tax</th>
-                  <th>Net Pay</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map(r => (
-                  <tr key={r.id}>
-                    <td>
-                      <div className="emp-info">
-                        <div className="emp-avatar" style={{ background: r.employee.avatarColor }}>
-                          {r.employee.firstName[0]}{r.employee.lastName[0]}
-                        </div>
-                        <div>
-                          <div className="emp-name">{r.employee.firstName} {r.employee.lastName}</div>
-                          <div className="emp-role">{r.employee.position}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="text-muted text-sm">{r.employee.department.name}</td>
-                    <td>{r.daysWorked}</td>
-                    <td className="td-mono">{formatPHP(r.basicSalary)}</td>
-                    <td className="td-mono">{r.overtimePay > 0 ? formatPHP(r.overtimePay) : '—'}</td>
-                    <td className="td-mono" style={{ fontWeight: 600 }}>{formatPHP(r.grossPay)}</td>
-                    <td className="td-mono text-muted">{formatPHP(r.sssContrib)}</td>
-                    <td className="td-mono text-muted">{formatPHP(r.philhealthContrib)}</td>
-                    <td className="td-mono text-muted">{formatPHP(r.pagibigContrib)}</td>
-                    <td className="td-mono text-muted">{formatPHP(r.withholdingTax)}</td>
-                    <td className="td-mono" style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
-                      {formatPHP(r.netPay)}
-                    </td>
-                    <td>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setShowSlip(r)}>Slip</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: 'var(--color-surface-2)', fontWeight: 700 }}>
-                  <td colSpan={5} style={{ padding: '13px 16px', fontSize: 13 }}>TOTAL ({records.length} employees)</td>
-                  <td className="td-mono" style={{ padding: '13px 16px', fontWeight: 800 }}>{formatPHP(totalGross)}</td>
-                  <td colSpan={3} style={{ padding: '13px 16px' }}></td>
-                  <td style={{ padding: '13px 16px' }}></td>
-                  <td className="td-mono" style={{ padding: '13px 16px', fontWeight: 800, color: 'var(--color-primary)', fontSize: 14 }}>
-                    {formatPHP(totalNet)}
-                  </td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
+          {/* Records table with DataTable */}
+          <div className="card">
+            <DataTable
+              data={records}
+              columns={columns}
+              globalFilterPlaceholder="Search employees or client…"
+              exportFilename={`Payroll_${currentRun.period?.replace(/\s/g, '_')}`}
+            />
           </div>
         </>
       ) : (
@@ -199,28 +275,43 @@ export default function Payroll() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {history.map(h => (
-                <button
+                <div
                   key={h.id}
-                  onClick={() => setViewRunId(h.id)}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '12px 4px', borderBottom: '1px solid var(--color-border)',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    textAlign: 'left', width: '100%', borderRadius: 6,
                   }}
                 >
-                  <div>
+                  <button
+                    onClick={() => setViewRunId(h.id)}
+                    style={{
+                      flex: 1, background: 'none', border: 'none', cursor: 'pointer',
+                      textAlign: 'left', padding: 0,
+                    }}
+                  >
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{h.period}</div>
                     <div className="text-muted text-sm" style={{ marginTop: 2 }}>
                       {h._count.records} employees
                       {h.periodStart && ` · ${new Date(h.periodStart).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} – ${new Date(h.periodEnd).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`}
                     </div>
-                  </div>
+                  </button>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span className={`badge ${STATUS_COLORS[h.status]}`}>{h.status}</span>
+                    {h.status === 'DRAFT' && isManager && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: 'var(--color-danger)' }}
+                        disabled={deleteMutation.isPending}
+                        onClick={() => {
+                          if (confirm('Delete this draft payroll run?')) deleteMutation.mutate(h.id);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
                     <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>›</span>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -242,6 +333,33 @@ export default function Payroll() {
 
       {showSlip && <PayslipModal record={showSlip} onClose={() => setShowSlip(null)} />}
     </div>
+  );
+}
+
+// ── Inline editable other deductions cell ─────────────────────────────────────
+function OtherDeductionsCell({ recordId, initialValue, onBlur, saving }: {
+  recordId: string;
+  initialValue: number;
+  onBlur: (recordId: string, value: number) => void;
+  saving: boolean;
+}) {
+  const [value, setValue] = useState(initialValue);
+  return (
+    <input
+      type="number"
+      min={0}
+      step={0.01}
+      value={value}
+      onChange={e => setValue(parseFloat(e.target.value) || 0)}
+      onBlur={() => onBlur(recordId, value)}
+      disabled={saving}
+      style={{
+        width: 80, padding: '3px 6px', fontSize: 12,
+        border: '1px solid var(--color-border)', borderRadius: 4,
+        background: 'var(--color-surface)', color: 'var(--color-text)',
+        fontFamily: 'monospace',
+      }}
+    />
   );
 }
 
@@ -372,6 +490,7 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
 }
 
 function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: () => void }) {
+  const otherDed = r.otherDeductions ?? 0;
   return (
     <div className="modal-overlay" onClick={ev => ev.target === ev.currentTarget && onClose()}>
       <div className="modal">
@@ -387,7 +506,10 @@ function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: 
             </div>
             <div>
               <div style={{ fontWeight: 700 }}>{r.employee.firstName} {r.employee.lastName}</div>
-              <div className="text-muted text-sm">{r.employee.position} · {r.employee.department.name}</div>
+              <div className="text-muted text-sm">
+                {r.employee.position} · {r.employee.department.name}
+                {r.employee.client?.name && ` · ${r.employee.client.name}`}
+              </div>
             </div>
           </div>
 
@@ -408,7 +530,13 @@ function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: 
           <div className="payslip-row"><span>Pag-IBIG Contribution</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.pagibigContrib)})</span></div>
           <div className="payslip-row"><span>Taxable Income</span><span>{formatPHP(r.taxableIncome)}</span></div>
           <div className="payslip-row"><span>Withholding Tax (TRAIN Law)</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.withholdingTax)})</span></div>
-          <div className="payslip-row" style={{ fontWeight: 700 }}><span>Total Deductions</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions)})</span></div>
+          {otherDed > 0 && (
+            <div className="payslip-row"><span>Other Deductions</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(otherDed)})</span></div>
+          )}
+          <div className="payslip-row" style={{ fontWeight: 700 }}>
+            <span>Total Deductions</span>
+            <span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions + otherDed)})</span>
+          </div>
 
           <div className="divider" />
 

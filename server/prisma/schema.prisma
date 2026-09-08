@@ -73,6 +73,7 @@ model Employee {
   philhealthNo String?
   pagibigNo    String?
   tinNo        String?
+  gender       Gender?
   avatarColor  String         @default("#2563EB")
   photoUrl     String?
   createdAt    DateTime       @default(now())
@@ -97,6 +98,12 @@ enum EmployeeStatus {
   ON_LEAVE
   INACTIVE
   TERMINATED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
 }
 
 // ── Clients ───────────────────────────────────────────────────────────────────
@@ -207,12 +214,21 @@ enum AttendanceStatus {
 // ── Leave ─────────────────────────────────────────────────────────────────────
 
 model LeaveType {
-  id          String  @id @default(cuid())
-  code        String  @unique
-  name        String
-  daysPerYear Int
-  isPaid      Boolean @default(true)
-  legalBasis  String?
+  id               String  @id @default(cuid())
+  code             String  @unique
+  name             String
+  daysPerYear      Int
+  isPaid           Boolean @default(true)
+  legalBasis       String?
+  // Gender restriction: ALL | MALE | FEMALE
+  applicableGender String  @default("ALL")
+  // Whether balance resets every Jan 1 (VL, SL, EL = true; SIL = false)
+  resetsAnnually   Boolean @default(true)
+  // Whether days accrue monthly (daysPerYear/12 per month) vs granted upfront
+  accruesMonthly   Boolean @default(false)
+  // Whether allocation is set manually per employee (SIL)
+  isManual         Boolean @default(false)
+  isActive         Boolean @default(true)
 
   leaveRequests LeaveRequest[]
   leaveBalances LeaveBalance[]
@@ -306,6 +322,7 @@ model PayrollRecord {
   daysWorked        Int        @default(0)
   overtimePay       Float      @default(0)
   allowances        Float      @default(0)
+  otherDeductions   Float      @default(0)
 
   @@unique([payrollRunId, employeeId])
   @@map("payroll_records")

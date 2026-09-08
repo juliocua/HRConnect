@@ -18,6 +18,7 @@ import ClientDetail from '@/pages/ClientDetail';
 import ClientBilling from '@/pages/ClientBilling';
 import Reports from '@/pages/Reports';
 import BulkImport from '@/pages/BulkImport';
+import LeaveSetup from '@/pages/LeaveSetup';
 
 // Handles /auth/callback?token=xxx from OAuth redirects
 function OAuthCallback() {
@@ -102,6 +103,7 @@ function AppRoutes() {
         <Route path="billing" element={<ClientBilling />} />
         <Route path="reports" element={<Reports />} />
         <Route path="import" element={<BulkImport />} />
+        <Route path="leave-setup" element={<LeaveSetup />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

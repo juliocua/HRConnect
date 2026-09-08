@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { DataTable } from '@/components/DataTable';
 import type { Client, BillingCycle } from '@/types';
 
 const CYCLE_LABELS: Record<BillingCycle, string> = {
@@ -20,7 +22,6 @@ const BLANK: Partial<Client> = {
 export default function Clients() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
 
@@ -29,13 +30,77 @@ export default function Clients() {
     queryFn: () => api.get('/clients').then(r => r.data),
   });
 
-  const filtered = clients.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.contactName ?? '').toLowerCase().includes(search.toLowerCase())
-  );
-
   const openNew = () => { setEditing(null); setShowModal(true); };
   const openEdit = (c: Client, e: React.MouseEvent) => { e.stopPropagation(); setEditing(c); setShowModal(true); };
+
+  const columns = useMemo<ColumnDef<Client>[]>(() => [
+    {
+      id: 'name',
+      accessorFn: row => row.name,
+      header: 'Client',
+      cell: ({ row: { original: c } }) => (
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name}</div>
+          {c.address && <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{c.address}</div>}
+        </div>
+      ),
+    },
+    {
+      id: 'contact',
+      accessorFn: row => `${row.contactName ?? ''} ${row.contactEmail ?? ''}`.trim(),
+      header: 'Contact',
+      cell: ({ row: { original: c } }) => (
+        <div>
+          {c.contactName && <div style={{ fontSize: 13, fontWeight: 600 }}>{c.contactName}</div>}
+          {c.contactEmail && <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{c.contactEmail}</div>}
+          {c.contactPhone && <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{c.contactPhone}</div>}
+        </div>
+      ),
+    },
+    {
+      id: 'billing',
+      accessorFn: row => CYCLE_LABELS[row.billingCycle],
+      header: 'Billing Cycle',
+      cell: ({ row: { original: c } }) => (
+        <div>
+          <span style={{ fontSize: 13 }}>{CYCLE_LABELS[c.billingCycle]}</span>
+          {c.billingDate && c.billingCycle === 'MONTHLY' && (
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Day {c.billingDate}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'resources',
+      accessorFn: row => row._count?.employees ?? 0,
+      header: 'Resources',
+      cell: ({ getValue }) => (
+        <span>
+          <strong>{getValue() as number}</strong>
+          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}> deployed</span>
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'activeContract',
+      header: 'Status',
+      cell: ({ getValue }) => {
+        const active = getValue() as boolean;
+        return <span className={`badge ${active ? 'badge-green' : 'badge-gray'}`}>{active ? 'Active' : 'Inactive'}</span>;
+      },
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: ({ row: { original: c } }) => (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-ghost btn-sm" onClick={e => openEdit(c, e)}>Edit</button>
+          <button className="btn btn-secondary btn-sm" onClick={e => { e.stopPropagation(); navigate(`/clients/${c.id}`); }}>View</button>
+        </div>
+      ),
+    },
+  ], [navigate]);
 
   return (
     <div>
@@ -50,80 +115,22 @@ export default function Clients() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="filter-bar">
-          <input
-            className="form-control"
-            placeholder="Search clients…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ maxWidth: 300 }}
-          />
-          <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-            {filtered.length} client{filtered.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-      </div>
-
       {isLoading ? (
         <div className="loading-center"><div className="spinner" /></div>
-      ) : filtered.length === 0 ? (
+      ) : clients.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">🏢</div>
-          <div className="empty-state-title">{search ? 'No clients found' : 'No clients yet'}</div>
-          {!search && <div>Add your first client record to get started</div>}
+          <div className="empty-state-title">No clients yet</div>
+          <div>Add your first client record to get started</div>
         </div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Client</th>
-                <th>Contact</th>
-                <th>Billing Cycle</th>
-                <th>Resources</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(c => (
-                <tr
-                  key={c.id}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/clients/${c.id}`)}
-                >
-                  <td>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name}</div>
-                    {c.address && <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{c.address}</div>}
-                  </td>
-                  <td>
-                    {c.contactName && <div style={{ fontSize: 13, fontWeight: 600 }}>{c.contactName}</div>}
-                    {c.contactEmail && <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{c.contactEmail}</div>}
-                    {c.contactPhone && <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{c.contactPhone}</div>}
-                  </td>
-                  <td>
-                    <span style={{ fontSize: 13 }}>{CYCLE_LABELS[c.billingCycle]}</span>
-                    {c.billingDate && c.billingCycle === 'MONTHLY' && (
-                      <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Day {c.billingDate}</div>
-                    )}
-                  </td>
-                  <td>
-                    <span style={{ fontWeight: 700 }}>{c._count?.employees ?? 0}</span>
-                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}> deployed</span>
-                  </td>
-                  <td>
-                    <span className={`badge ${c.activeContract ? 'badge-green' : 'badge-gray'}`}>
-                      {c.activeContract ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="btn btn-ghost btn-sm" onClick={e => openEdit(c, e)}>Edit</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="card">
+          <DataTable
+            data={clients}
+            columns={columns}
+            globalFilterPlaceholder="Search clients…"
+            exportFilename="Clients"
+          />
         </div>
       )}
 

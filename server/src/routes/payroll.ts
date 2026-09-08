@@ -7,6 +7,14 @@ import { authenticate, requireRole } from '../middleware/authenticate';
 const router = Router();
 router.use(authenticate);
 
+// Shared employee select — includes client name for the payroll table column
+const EMPLOYEE_SELECT = {
+  id: true, firstName: true, lastName: true, position: true,
+  avatarColor: true,
+  department: { select: { name: true } },
+  client: { select: { id: true, name: true } },
+};
+
 // GET /api/payroll/me  — employee views their own payslips
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -54,7 +62,7 @@ router.get('/employee/:employeeId', async (req: Request, res: Response, next: Ne
   }
 });
 
-// GET /api/payroll/:runId  — single run with records
+// GET /api/payroll/:runId  — single run with records (includes client column)
 router.get('/:runId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const run = await prisma.payrollRun.findUnique({
@@ -62,12 +70,7 @@ router.get('/:runId', async (req: Request, res: Response, next: NextFunction) =>
       include: {
         records: {
           include: {
-            employee: {
-              select: {
-                id: true, firstName: true, lastName: true, position: true,
-                avatarColor: true, department: { select: { name: true } },
-              },
-            },
+            employee: { select: EMPLOYEE_SELECT },
           },
           orderBy: { employee: { lastName: 'asc' } },
         },
@@ -86,25 +89,21 @@ function computePeriodDates(
   periodStart?: string, periodEnd?: string
 ): { periodStart: Date; periodEnd: Date } {
   if (payPeriodType === 1) {
-    // Semi-monthly 1st half: previous month 26th → current month 10th
-    const start = new Date(year, month - 2, 26); // prev month 26
-    const end = new Date(year, month - 1, 10);   // current month 10
+    const start = new Date(year, month - 2, 26);
+    const end = new Date(year, month - 1, 10);
     return { periodStart: start, periodEnd: end };
   }
   if (payPeriodType === 2) {
-    // Semi-monthly 2nd half: current month 11th → current month 25th
     const start = new Date(year, month - 1, 11);
     const end = new Date(year, month - 1, 25);
     return { periodStart: start, periodEnd: end };
   }
-  // Types 7 and 9: caller must supply dates
   if (!periodStart || !periodEnd) {
     throw new Error('periodStart and periodEnd are required for payPeriodType 7 and 9');
   }
   return { periodStart: new Date(periodStart), periodEnd: new Date(periodEnd) };
 }
 
-// ── Helper: period label ───────────────────────────────────────────────────────
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function buildPeriodLabel(year: number, month: number, payPeriodType: number, description?: string): string {
   const monthStr = MONTH_NAMES[month - 1];
@@ -122,8 +121,8 @@ const RunSchema = z.object({
   payPeriodType: z.number().int().refine(v => [1, 2, 7, 9].includes(v), {
     message: 'payPeriodType must be 1, 2, 7, or 9',
   }),
-  description: z.string().optional(), // required for types 7 and 9
-  periodStart: z.string().optional(), // ISO date string, required for types 7 and 9
+  description: z.string().optional(),
+  periodStart: z.string().optional(),
   periodEnd: z.string().optional(),
 });
 
@@ -132,12 +131,10 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
     const body = RunSchema.parse(req.body);
     const { year, month, payPeriodType, description } = body;
 
-    // Validate description for special types
     if ([7, 9].includes(payPeriodType) && !description) {
       return res.status(422).json({ error: 'description is required for payPeriodType 7 and 9' });
     }
 
-    // Compute period dates
     let dates: { periodStart: Date; periodEnd: Date };
     try {
       dates = computePeriodDates(year, month, payPeriodType, body.periodStart, body.periodEnd);
@@ -145,10 +142,8 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       return res.status(422).json({ error: e.message });
     }
     const { periodStart, periodEnd } = dates;
-
     const period = buildPeriodLabel(year, month, payPeriodType, description);
 
-    // Check if already run for this type + period
     const existing = await prisma.payrollRun.findFirst({
       where: { year, month, payPeriodType },
     });
@@ -156,9 +151,6 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       return res.status(422).json({ error: 'A payroll run for this period and type is already paid' });
     }
 
-    // Fetch employees filtered by payPeriodType
-    // Types 1 and 2: only employees whose client has an EMPLOYEE_PAY_PERIOD policy matching the type
-    // Types 7 and 9: all active employees (special / 13th month)
     const employeeWhere: any = { status: { in: ['ACTIVE', 'ON_LEAVE'] } };
     if (payPeriodType === 1 || payPeriodType === 2) {
       const clientPolicies = await prisma.clientPolicy.findMany({
@@ -166,17 +158,10 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         select: { clientId: true },
       });
       const clientIds = clientPolicies.map((p: any) => p.clientId);
-      if (clientIds.length > 0) {
-        employeeWhere.clientId = { in: clientIds };
-      } else {
-        // No clients have this pay period type configured — return empty run
-        employeeWhere.clientId = { in: [] };
-      }
+      employeeWhere.clientId = clientIds.length > 0 ? { in: clientIds } : { in: [] };
     }
 
-    const employees = await prisma.employee.findMany({
-      where: employeeWhere,
-    });
+    const employees = await prisma.employee.findMany({ where: employeeWhere });
 
     const payrollRun = existing
       ? await prisma.payrollRun.update({
@@ -187,11 +172,8 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           data: { period, year, month, payPeriodType, description, periodStart, periodEnd, status: 'DRAFT', runById: req.user!.userId },
         });
 
-    // Delete existing draft records and recompute
     await prisma.payrollRecord.deleteMany({ where: { payrollRunId: payrollRun.id } });
 
-    // Fetch attendance for each employee within the period
-    const attendanceMap = new Map<string, number>();
     const allAttendance = await prisma.attendance.findMany({
       where: {
         employeeId: { in: employees.map((e: any) => e.id) },
@@ -201,20 +183,19 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       select: { employeeId: true, status: true },
     });
 
+    const attendanceMap = new Map<string, number>();
     for (const att of allAttendance) {
       const current = attendanceMap.get(att.employeeId) ?? 0;
-      const increment = att.status === 'HALF_DAY' ? 0.5 : 1;
-      attendanceMap.set(att.employeeId, current + increment);
+      attendanceMap.set(att.employeeId, current + (att.status === 'HALF_DAY' ? 0.5 : 1));
     }
 
     const records = employees.map((emp: any) => {
       const computed = computePayroll(emp.basicSalary);
-      const daysWorked = attendanceMap.get(emp.id) ?? 0;
       return {
         payrollRunId: payrollRun.id,
         employeeId: emp.id,
         ...computed,
-        daysWorked,
+        daysWorked: attendanceMap.get(emp.id) ?? 0,
       };
     });
 
@@ -224,19 +205,11 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       where: { id: payrollRun.id },
       include: {
         records: {
-          include: {
-            employee: {
-              select: {
-                id: true, firstName: true, lastName: true, position: true,
-                avatarColor: true, department: { select: { name: true } },
-              },
-            },
-          },
+          include: { employee: { select: EMPLOYEE_SELECT } },
           orderBy: { employee: { lastName: 'asc' } },
         },
       },
     });
-
     res.status(201).json(result);
   } catch (err) {
     next(err);
@@ -251,6 +224,61 @@ router.put('/:runId/post', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req:
       data: { status: 'POSTED' },
     });
     res.json(run);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/payroll/run/:runId — delete a DRAFT payroll run
+router.delete('/run/:runId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const run = await prisma.payrollRun.findUnique({ where: { id: req.params.runId } });
+    if (!run) return res.status(404).json({ error: 'Payroll run not found' });
+    if (run.status !== 'DRAFT') return res.status(422).json({ error: 'Only DRAFT payroll runs can be deleted' });
+
+    await prisma.payrollRecord.deleteMany({ where: { payrollRunId: run.id } });
+    await prisma.payrollRun.delete({ where: { id: run.id } });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/payroll/run/:runId/record/:recordId — update otherDeductions on a single record
+router.put('/run/:runId/record/:recordId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const run = await prisma.payrollRun.findUnique({ where: { id: req.params.runId } });
+    if (!run) return res.status(404).json({ error: 'Payroll run not found' });
+    if (run.status === 'PAID') return res.status(422).json({ error: 'Cannot edit a PAID payroll run' });
+
+    const { otherDeductions } = z.object({
+      otherDeductions: z.number().min(0),
+    }).parse(req.body);
+
+    const record = await prisma.payrollRecord.update({
+      where: { id: req.params.recordId },
+      data: {
+        otherDeductions,
+        // Recompute netPay: netPay = grossPay - totalDeductions(statutory) - otherDeductions
+        netPay: { decrement: 0 }, // trigger override below
+      },
+    });
+
+    // Fetch full record to recompute netPay correctly
+    const fresh = await prisma.payrollRecord.findUnique({ where: { id: record.id } });
+    if (fresh) {
+      const newNetPay = fresh.grossPay - fresh.totalDeductions - fresh.otherDeductions;
+      await prisma.payrollRecord.update({
+        where: { id: record.id },
+        data: { netPay: newNetPay },
+      });
+    }
+
+    const updated = await prisma.payrollRecord.findUnique({
+      where: { id: req.params.recordId },
+      include: { employee: { select: EMPLOYEE_SELECT } },
+    });
+    res.json(updated);
   } catch (err) {
     next(err);
   }

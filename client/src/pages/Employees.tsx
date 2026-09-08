@@ -230,6 +230,7 @@ function EmployeeModal({
         pagibigNo: initial.pagibigNo ?? '',
         tinNo: initial.tinNo ?? '',
         avatarColor: initial.avatarColor,
+        gender: initial.gender ?? null,
       }
     : {
         firstName: '', lastName: '', email: '', phone: '', position: '',
@@ -238,6 +239,7 @@ function EmployeeModal({
         basicSalary: 25000, resourceCost: null, payrollCost: null, clientId: null,
         sssNo: '', philhealthNo: '', pagibigNo: '', tinNo: '',
         avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+        gender: null,
       });
 
   const [error, setError] = useState('');
@@ -347,7 +349,7 @@ function EmployeeModal({
               </div>
             </div>
 
-            <div className="form-grid form-grid-2">
+            <div className="form-grid form-grid-3">
               <div className="form-group">
                 <label>Email *</label>
                 <input type="email" className="form-control" required value={form.email} onChange={e => set('email', e.target.value)} />
@@ -355,6 +357,15 @@ function EmployeeModal({
               <div className="form-group">
                 <label>Phone</label>
                 <input className="form-control" placeholder="+63 9XX XXX XXXX" value={form.phone ?? ''} onChange={e => set('phone', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Gender</label>
+                <select className="form-control" value={form.gender ?? ''} onChange={e => set('gender', (e.target.value || null) as any)}>
+                  <option value="">— Prefer not to say —</option>
+                  <option value="MALE">Male</option>
+                  <option value="FEMALE">Female</option>
+                  <option value="OTHER">Other</option>
+                </select>
               </div>
             </div>
 

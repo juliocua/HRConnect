@@ -39,6 +39,7 @@ const NAV_ITEMS = [
     section: 'Tools',
     links: [
       { to: '/import', label: 'Bulk Import', icon: IconImport },
+      { to: '/leave-setup', label: 'Leave Setup', icon: IconLeaveSetup },
     ],
   },
 ];
@@ -195,6 +196,15 @@ function IconImport() {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <polyline points="17 8 12 3 7 8"/>
       <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+  );
+}
+
+function IconLeaveSetup() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.07 4.93l-1.41 1.41M4.93 19.07l-1.41 1.41M19.07 19.07l-1.41-1.41M4.93 4.93l-1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2"/>
     </svg>
   );
 }
