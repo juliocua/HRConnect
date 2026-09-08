@@ -17,6 +17,7 @@ interface DataTableProps<T> {
   globalFilterPlaceholder?: string;
   exportFilename?: string;
   pageSize?: number;
+  onRowClick?: (row: T) => void;
 }
 
 export function DataTable<T>({
@@ -25,6 +26,7 @@ export function DataTable<T>({
   globalFilterPlaceholder = 'Search…',
   exportFilename = 'export',
   pageSize = 20,
+  onRowClick,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -117,8 +119,8 @@ export function DataTable<T>({
   return (
     <div className="datatable-wrapper">
       {/* Toolbar: export buttons left, search right */}
-      <div className="datatable-toolbar" style={{ marginBottom: 12 }}>
-        <div className="datatable-actions">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 8 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
           <button className="btn btn-sm btn-secondary" onClick={exportCSV} title="Export CSV">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -157,8 +159,8 @@ export function DataTable<T>({
       </div>
 
       {/* Table */}
-      <div className="table-container">
-        <table className="data-table">
+      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 520, borderRadius: 8, border: '1px solid var(--color-border)' }}>
+        <table className="data-table" style={{ minWidth: '100%' }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
             {table.getHeaderGroups().map(hg => (
               <tr key={hg.id}>
@@ -189,7 +191,11 @@ export function DataTable<T>({
               </tr>
             ) : (
               table.getRowModel().rows.map(row => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  style={onRowClick ? { cursor: 'pointer' } : undefined}
+                >
                   {row.getVisibleCells().map(cell => (
                     <td key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

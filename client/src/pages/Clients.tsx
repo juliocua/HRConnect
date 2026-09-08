@@ -96,7 +96,6 @@ export default function Clients() {
       cell: ({ row: { original: c } }) => (
         <div style={{ display: 'flex', gap: 6 }}>
           <button className="btn btn-ghost btn-sm" onClick={e => openEdit(c, e)}>Edit</button>
-          <button className="btn btn-secondary btn-sm" onClick={e => { e.stopPropagation(); navigate(`/clients/${c.id}`); }}>View</button>
         </div>
       ),
     },
@@ -130,6 +129,7 @@ export default function Clients() {
             columns={columns}
             globalFilterPlaceholder="Search clients…"
             exportFilename="Clients"
+            onRowClick={c => navigate(`/clients/${c.id}`)}
           />
         </div>
       )}

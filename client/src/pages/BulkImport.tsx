@@ -175,22 +175,32 @@ export default function BulkImport() {
           <p style={{ marginBottom: 20, color: 'var(--color-text-muted)', fontSize: 14 }}>
             What would you like to import?
           </p>
-          <div className="grid-3" style={{ gap: 16 }}>
+          <div className="grid-3" style={{ gap: 12 }}>
             {(Object.entries(TYPE_META) as [ImportType, typeof TYPE_META[ImportType]][]).map(([key, m]) => (
               <button
                 key={key}
                 onClick={() => { setType(key); setStep(2); }}
                 style={{
                   background: 'var(--color-surface)', border: '2px solid var(--color-border)',
-                  borderRadius: 12, padding: '24px 20px', cursor: 'pointer', textAlign: 'left',
-                  transition: 'all 0.15s',
+                  borderRadius: 10, padding: '10px 14px', cursor: 'pointer', textAlign: 'left',
+                  transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 10,
                 }}
                 onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
                 onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
               >
-                <div style={{ fontSize: 32, marginBottom: 12 }}>{m.icon}</div>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{m.label}</div>
-                <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{m.desc}</div>
+                <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{m.icon}</span>
+                <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{m.label}</span>
+                <span
+                  title={m.desc}
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                    background: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)',
+                    cursor: 'help',
+                  }}
+                >i</span>
               </button>
             ))}
           </div>

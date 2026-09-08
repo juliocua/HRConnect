@@ -124,10 +124,9 @@ export default function Employees() {
       enableSorting: false,
       cell: ({ row: { original: e } }) => (
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setViewTarget(e)}>View</button>
-          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(e)}>Edit</button>
+          <button className="btn btn-secondary btn-sm" onClick={ev => { ev.stopPropagation(); openEdit(e); }}>Edit</button>
           {e.status !== 'TERMINATED' && (
-            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={() => handleDelete(e)}>
+            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }} onClick={ev => { ev.stopPropagation(); handleDelete(e); }}>
               Terminate
             </button>
           )}
@@ -184,6 +183,7 @@ export default function Employees() {
             columns={columns}
             globalFilterPlaceholder="Search employees…"
             exportFilename="Employees"
+            onRowClick={e => setViewTarget(e)}
           />
         </div>
       )}

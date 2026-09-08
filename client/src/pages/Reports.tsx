@@ -307,15 +307,26 @@ export default function Reports() {
             key={r.key}
             onClick={() => { setReportType(r.key); setHasRun(false); setGroupBy(''); }}
             style={{
-              padding: '14px', borderRadius: 12, cursor: 'pointer',
+              padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 10,
               background: reportType === r.key ? 'var(--color-primary-light)' : 'var(--color-surface)',
               border: `2px solid ${reportType === r.key ? 'var(--color-primary)' : 'var(--color-border)'}`,
               transition: 'all 0.15s',
             }}
           >
-            <div style={{ fontSize: 22, marginBottom: 6 }}>{r.icon}</div>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{r.label}</div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.4 }}>{r.desc}</div>
+            <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{r.icon}</span>
+            <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{r.label}</span>
+            <span
+              title={r.desc}
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                background: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)',
+                cursor: 'help',
+              }}
+            >i</span>
           </div>
         ))}
       </div>
