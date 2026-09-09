@@ -31,6 +31,7 @@
     "passport-microsoft": "^1.0.0",
     "pdfkit": "^0.20.2",
     "resend": "^6.26.0",
+    "typescript": "^5.4.5",
     "zod": "^3.23.8",
     "@prisma/client": "5"
   },
@@ -54,7 +55,6 @@
     "@types/pdfkit": "^0.17.6",
     "@types/node-cron": "^3.0.11",
     "i": "^0.3.7",
-    "tsx": "^4.15.1",
-    "typescript": "^5.4.5"
+    "tsx": "^4.15.1"
   }
 }
