@@ -209,7 +209,7 @@ export function DataTable<T>({
       </div>
 
       {/* Pagination: left = size + count, right = page controls */}
-      <div className="datatable-pagination">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <select
             className="datatable-page-size"
@@ -225,7 +225,7 @@ export function DataTable<T>({
           </span>
         </div>
 
-        <div className="datatable-page-btns">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <button
             className="btn btn-sm btn-secondary"
             onClick={() => table.setPageIndex(0)}
