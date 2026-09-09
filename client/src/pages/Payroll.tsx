@@ -23,6 +23,7 @@ export default function Payroll() {
   const [showRunModal, setShowRunModal] = useState(false);
   const [viewRunId, setViewRunId] = useState<string | null>(null);
   const [showSlip, setShowSlip] = useState<PayrollRecord | null>(null);
+  const [downloadingDisb, setDownloadingDisb] = useState(false);
 
   const isManager = user?.role === 'HR_MANAGER' || user?.role === 'SUPER_ADMIN';
 
@@ -220,6 +221,25 @@ export default function Payroll() {
     ];
   }, [is13th, isDraft, handleOtherDeductionsBlur, updateRecordMutation]);
 
+  const handleDownloadDisbursement = async () => {
+    if (!viewRunId || !currentRun) return;
+    setDownloadingDisb(true);
+    try {
+      const resp = await api.get(`/payroll/${viewRunId}/disbursement`, { responseType: 'blob' });
+      const url = URL.createObjectURL(resp.data);
+      const a = document.createElement('a');
+      a.href = url;
+      const safePeriod = (currentRun.period ?? viewRunId).replace(/[^a-zA-Z0-9_\-]/g, '_');
+      a.download = `Disbursement_${safePeriod}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to generate disbursement file.');
+    } finally {
+      setDownloadingDisb(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -246,6 +266,11 @@ export default function Payroll() {
                 {postMutation.isPending ? 'Posting…' : '✓ Post Payroll'}
               </button>
             </>
+          )}
+          {viewRunId && (currentRun?.status === 'POSTED' || currentRun?.status === 'PAID') && isManager && (
+            <button className="btn btn-secondary btn-sm" disabled={downloadingDisb} onClick={handleDownloadDisbursement}>
+              {downloadingDisb ? 'Generating…' : '⬇ Disbursement File'}
+            </button>
           )}
           {viewRunId && (
             <button className="btn btn-ghost" onClick={() => setViewRunId(null)}>← Back to History</button>

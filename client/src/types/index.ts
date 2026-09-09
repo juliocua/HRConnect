@@ -49,6 +49,9 @@ export interface Employee {
   gender?: EmployeeGender | null;
   avatarColor: string;
   photoUrl?: string | null;
+  bankName?: string | null;
+  bankAccountNo?: string | null;
+  bankAccountName?: string | null;
   createdAt: string;
   user?: { id: string; email: string; isActive: boolean } | null;
 }

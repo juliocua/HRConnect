@@ -84,6 +84,10 @@ model Employee {
   clientId       String?
   client         Client?        @relation(fields: [clientId], references: [id])
 
+  bankName        String?
+  bankAccountNo   String?
+  bankAccountName String?
+
   attendance       Attendance[]
   leaveRequests    LeaveRequest[]
   leaveBalances    LeaveBalance[]

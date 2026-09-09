@@ -232,6 +232,64 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
   }
 });
 
+// GET /api/payroll/:runId/disbursement  — download salary disbursement CSV for bank crediting
+router.get('/:runId/disbursement', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const run = await prisma.payrollRun.findUnique({
+      where: { id: req.params.runId },
+      select: { id: true, period: true, status: true, periodStart: true, periodEnd: true },
+    });
+    if (!run) return res.status(404).json({ error: 'Payroll run not found' });
+    if (run.status === 'DRAFT') return res.status(400).json({ error: 'Cannot generate disbursement file for a DRAFT payroll run' });
+
+    const records = await prisma.payrollRecord.findMany({
+      where: { payrollRunId: req.params.runId },
+      include: {
+        employee: {
+          select: {
+            firstName: true, lastName: true,
+            bankName: true, bankAccountNo: true, bankAccountName: true,
+          },
+        },
+      },
+      orderBy: { employee: { lastName: 'asc' } },
+    });
+
+    // Build CSV
+    const safeVal = (v: string | null | undefined) => {
+      if (!v) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const fmt2 = (n: number) => n.toFixed(2);
+
+    const header = ['Employee Name', 'Bank Name', 'Account Number', 'Account Name', 'Net Pay'].join(',');
+    const rows = records.map(r => {
+      const name = `${r.employee.lastName}, ${r.employee.firstName}`;
+      return [
+        safeVal(name),
+        safeVal(r.employee.bankName),
+        safeVal(r.employee.bankAccountNo),
+        safeVal(r.employee.bankAccountName),
+        fmt2(r.netPay),
+      ].join(',');
+    });
+
+    const totalNetPay = records.reduce((sum, r) => sum + r.netPay, 0);
+    const footerRow = ['TOTAL', '', '', '', fmt2(totalNetPay)].join(',');
+
+    const csv = [header, ...rows, footerRow].join('\r\n');
+    const safeRunPeriod = (run.period ?? req.params.runId).replace(/[^a-zA-Z0-9_\-·]/g, '_');
+    const filename = `Disbursement_${safeRunPeriod}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send('﻿' + csv); // BOM for Excel compatibility
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/payroll/:runId  — single run with records (includes client column)
 router.get('/:runId', async (req: Request, res: Response, next: NextFunction) => {
   try {

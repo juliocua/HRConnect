@@ -252,6 +252,9 @@ function EmployeeModal({
         philhealthNo: initial.philhealthNo ?? '',
         pagibigNo: initial.pagibigNo ?? '',
         tinNo: initial.tinNo ?? '',
+        bankName: initial.bankName ?? '',
+        bankAccountNo: initial.bankAccountNo ?? '',
+        bankAccountName: initial.bankAccountName ?? '',
         avatarColor: initial.avatarColor,
         gender: initial.gender ?? null,
       }
@@ -261,6 +264,7 @@ function EmployeeModal({
         managerId: '', status: 'ACTIVE', hireDate: new Date().toISOString().slice(0, 10),
         basicSalary: 25000, resourceCost: null, payrollCost: null, clientId: null,
         sssNo: '', philhealthNo: '', pagibigNo: '', tinNo: '',
+        bankName: '', bankAccountNo: '', bankAccountName: '',
         avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
         gender: null,
       });
@@ -506,6 +510,25 @@ function EmployeeModal({
               </div>
             </div>
 
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '8px 0 4px' }}>
+              Bank Details
+            </div>
+
+            <div className="form-grid form-grid-2">
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>Bank Name</label>
+                <input className="form-control" placeholder="e.g. BDO, BPI, UnionBank" value={form.bankName ?? ''} onChange={e => set('bankName', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Account Number</label>
+                <input className="form-control font-mono" placeholder="XXXXXXXXXXXX" value={form.bankAccountNo ?? ''} onChange={e => set('bankAccountNo', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Account Name</label>
+                <input className="form-control" placeholder="Name as registered in bank" value={form.bankAccountName ?? ''} onChange={e => set('bankAccountName', e.target.value)} />
+              </div>
+            </div>
+
             {/* Login Account — edit mode only */}
             {isEdit && (
               <>
@@ -707,6 +730,16 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
               {e.philhealthNo && <InfoRow label="PhilHealth" value={e.philhealthNo} mono />}
               {e.pagibigNo && <InfoRow label="Pag-IBIG" value={e.pagibigNo} mono />}
               {e.tinNo && <InfoRow label="TIN" value={e.tinNo} mono />}
+            </>
+          )}
+
+          {(e.bankName || e.bankAccountNo || e.bankAccountName) && (
+            <>
+              <div className="divider" />
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Bank Details</div>
+              {e.bankName && <InfoRow label="Bank" value={e.bankName} />}
+              {e.bankAccountNo && <InfoRow label="Account No." value={e.bankAccountNo} mono />}
+              {e.bankAccountName && <InfoRow label="Account Name" value={e.bankAccountName} />}
             </>
           )}
 
