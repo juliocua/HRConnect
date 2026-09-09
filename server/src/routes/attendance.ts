@@ -145,8 +145,8 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
 
     // Combine date + HH:mm into proper ISO-8601 DateTime for Prisma
     const dateStr = rawDate.slice(0, 10);
-    const timeInDt = body.timeIn ? new Date(`${dateStr}T${body.timeIn}:00`) : undefined;
-    const timeOutDt = body.timeOut ? new Date(`${dateStr}T${body.timeOut}:00`) : undefined;
+    const timeInDt = body.timeIn ? new Date(`${dateStr}T${body.timeIn}:00+08:00`) : undefined;
+    const timeOutDt = body.timeOut ? new Date(`${dateStr}T${body.timeOut}:00+08:00`) : undefined;
     const { timeIn: _ti, timeOut: _to, ...rest } = body;
     // Write to both timeIn/timeOut (HR attendance view) and clockInAt/clockOutAt (Hub clock view)
     const data = {
