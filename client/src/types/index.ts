@@ -170,6 +170,24 @@ export interface MyPayrollRecord extends Omit<PayrollRecord, 'employee'> {
   employee?: { client?: { id: string; name: string } | null };
 }
 
+// ── Overtime ──────────────────────────────────────────────────────────────────
+export type OTStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface OvertimeRequest {
+  id: string;
+  employeeId: string;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
+  attendanceId?: string | null;
+  date: string;
+  hours: number;
+  reason?: string;
+  status: OTStatus;
+  approvedAt?: string;
+  rejectedAt?: string;
+  rejectionNote?: string;
+  filedAt: string;
+}
+
 // ── Clients & Billing ─────────────────────────────────────────────────────────
 export type BillingCycle = 'WEEKLY' | 'EVERY_15TH' | 'EVERY_30TH' | 'MONTHLY';
 export type BillingStatus = 'PENDING' | 'PAID' | 'CANCELLED';

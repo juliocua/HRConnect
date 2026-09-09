@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 const NAV = [
   { to: '/hub', label: 'Time & Attendance', icon: '🕐', end: true },
   { to: '/hub/leave', label: 'My Leave', icon: '🏖️', end: false },
+  { to: '/hub/overtime', label: 'Overtime', icon: '⏱️', end: false },
   { to: '/hub/payslips', label: 'My Payslips', icon: '💰', end: false },
 ];
 

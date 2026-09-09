@@ -75,7 +75,6 @@ export default function ClientBilling() {
 
   const [sendingInvoice, setSendingInvoice] = useState<string | null>(null);
   const [sendMsg, setSendMsg] = useState<{ id: string; ok: boolean; text: string } | null>(null);
-
   const downloadPDF = async (billingId: string, clientName: string) => {
     try {
       const res = await api.get(`/billing/${billingId}/pdf`, { responseType: 'blob' });

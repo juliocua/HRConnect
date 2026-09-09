@@ -19,6 +19,8 @@ import ClientBilling from '@/pages/ClientBilling';
 import Reports from '@/pages/Reports';
 import BulkImport from '@/pages/BulkImport';
 import LeaveSetup from '@/pages/LeaveSetup';
+import Overtime from '@/pages/Overtime';
+import HubOvertime from '@/pages/hub/HubOvertime';
 
 // Handles /auth/callback?token=xxx from OAuth redirects
 function OAuthCallback() {
@@ -80,6 +82,7 @@ function AppRoutes() {
       >
         <Route index element={<HubClock />} />
         <Route path="leave" element={<HubLeave />} />
+        <Route path="overtime" element={<HubOvertime />} />
         <Route path="payslips" element={<HubPayslips />} />
         <Route path="profile" element={<HubProfile />} />
       </Route>
@@ -104,6 +107,7 @@ function AppRoutes() {
         <Route path="reports" element={<Reports />} />
         <Route path="import" element={<BulkImport />} />
         <Route path="leave-setup" element={<LeaveSetup />} />
+        <Route path="overtime" element={<Overtime />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -84,11 +84,12 @@ model Employee {
   clientId       String?
   client         Client?        @relation(fields: [clientId], references: [id])
 
-  attendance     Attendance[]
-  leaveRequests  LeaveRequest[]
-  leaveBalances  LeaveBalance[]
-  payrollRecords PayrollRecord[]
-  user           User?
+  attendance       Attendance[]
+  leaveRequests    LeaveRequest[]
+  leaveBalances    LeaveBalance[]
+  payrollRecords   PayrollRecord[]
+  overtimeRequests OvertimeRequest[]
+  user             User?
 
   @@map("employees")
 }
@@ -282,6 +283,33 @@ model LeaveBalance {
 
   @@unique([employeeId, leaveTypeId, year])
   @@map("leave_balances")
+}
+
+// ── Overtime ──────────────────────────────────────────────────────────────────
+
+model OvertimeRequest {
+  id             String    @id @default(cuid())
+  employeeId     String
+  employee       Employee  @relation(fields: [employeeId], references: [id])
+  attendanceId   String?
+  date           DateTime  @db.Date
+  hours          Float
+  reason         String?
+  status         OTStatus  @default(PENDING)
+  approvedById   String?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectionNote  String?
+  filedAt        DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("overtime_requests")
+}
+
+enum OTStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // ── Payroll ───────────────────────────────────────────────────────────────────
