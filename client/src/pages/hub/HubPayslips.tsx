@@ -160,8 +160,6 @@ function PayslipModal({ record: r, onClose }: { record: MyPayrollRecord; onClose
   const clientName = (r as any).employee?.client?.name;
   const [downloading, setDownloading] = useState(false);
 
-  const handlePrint = () => window.print();
-
   const handleDownloadPdf = async () => {
     setDownloading(true);
     try {
@@ -184,9 +182,8 @@ function PayslipModal({ record: r, onClose }: { record: MyPayrollRecord; onClose
           <h2 className="modal-title">Payslip — {periodLabel}</h2>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-ghost btn-sm" onClick={handleDownloadPdf} disabled={downloading}>
-              {downloading ? 'Generating…' : '⬇ Download PDF'}
+              {downloading ? 'Generating…' : '⬇ PDF'}
             </button>
-            <button className="btn btn-secondary btn-sm" onClick={handlePrint}>🖨️ Print</button>
             <button className="icon-btn" onClick={onClose}>✕</button>
           </div>
         </div>

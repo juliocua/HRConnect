@@ -634,7 +634,7 @@ function PayslipModal({ record: r, payPeriodType, runPeriod, onClose }: {
           <h2 className="modal-title">Payslip — {r.employee.firstName} {r.employee.lastName}</h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button className="btn btn-ghost btn-sm" onClick={handleDownloadPdf} disabled={downloading}>
-              {downloading ? 'Generating…' : '⬇ Download PDF'}
+              {downloading ? 'Generating…' : '⬇ PDF'}
             </button>
             <button className="icon-btn" onClick={onClose}>✕</button>
           </div>

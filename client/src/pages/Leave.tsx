@@ -350,14 +350,28 @@ function LeaveModal({ employees, onClose, onSaved }: {
     ? selectedBalance.totalDays - selectedBalance.usedDays - selectedBalance.pendingDays
     : null;
 
+  // Count working days (Mon–Fri only)
+  const totalDays = (() => {
+    if (!form.startDate || !form.endDate) return 0;
+    const start = new Date(form.startDate);
+    const end = new Date(form.endDate);
+    if (end < start) return 0;
+    let count = 0;
+    const cur = new Date(start);
+    while (cur <= end) {
+      const day = cur.getDay();
+      if (day !== 0 && day !== 6) count++;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+  })();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (totalDays <= 0) { setError('Please select a valid date range (weekdays only).'); return; }
     setSaving(true);
     setError('');
     try {
-      const start = new Date(form.startDate);
-      const end = new Date(form.endDate);
-      const totalDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
       await api.post('/leave', { ...form, totalDays });
       onSaved();
     } catch (err: unknown) {
@@ -412,6 +426,14 @@ function LeaveModal({ employees, onClose, onSaved }: {
                 <input type="date" className="form-control" required value={form.endDate} min={form.startDate} onChange={e => set('endDate', e.target.value)} />
               </div>
             </div>
+            {totalDays > 0 && (
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: -8, marginBottom: 8, padding: '6px 10px', background: 'var(--color-surface-2)', borderRadius: 6 }}>
+                <strong>{totalDays} working day{totalDays > 1 ? 's' : ''}</strong> selected
+                {availableDays !== null && totalDays > availableDays && (
+                  <span style={{ color: 'var(--color-danger)', marginLeft: 8 }}>⚠️ Exceeds balance</span>
+                )}
+              </div>
+            )}
             <div className="form-group">
               <label>Reason</label>
               <textarea className="form-control" rows={3} placeholder="Optional reason…" value={form.reason} onChange={e => set('reason', e.target.value)} style={{ resize: 'vertical' }} />
@@ -419,7 +441,7 @@ function LeaveModal({ employees, onClose, onSaved }: {
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            <button type="submit" className="btn btn-primary" disabled={saving || totalDays <= 0}>
               {saving ? 'Filing…' : 'File Leave Request'}
             </button>
           </div>
