@@ -153,7 +153,17 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
 
     const employeeWhere: any = { status: { in: ['ACTIVE', 'ON_LEAVE'] } };
     if (payPeriodType === 1 || payPeriodType === 2) {
-      employeeWhere.client = { payPeriodType };
+      // Type 1 (1st half): semi-monthly employees only
+      // Type 2 (2nd half): semi-monthly + monthly employees
+      const payFrequencies = payPeriodType === 1
+        ? ['SEMI_MONTHLY']
+        : ['SEMI_MONTHLY', 'MONTHLY'];
+      const matchingPolicies = await prisma.clientPolicy.findMany({
+        where: { type: 'EMPLOYEE_PAY_PERIOD', value: { in: payFrequencies } },
+        select: { clientId: true },
+      });
+      const clientIds = [...new Set(matchingPolicies.map((p: any) => p.clientId))];
+      employeeWhere.clientId = clientIds.length > 0 ? { in: clientIds } : { in: [] };
     }
 
     const employees = await prisma.employee.findMany({ where: employeeWhere });

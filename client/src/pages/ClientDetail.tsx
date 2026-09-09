@@ -3,15 +3,28 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatPHP } from '@/lib/payroll';
-import type { Client, ClientPolicy, Billing, BillingCycle, Employee } from '@/types';
+import type { Client, ClientPolicy, Billing, BillingCycle } from '@/types';
 
 const CYCLE_LABELS: Record<BillingCycle, string> = {
   WEEKLY: 'Weekly', EVERY_15TH: 'Every 15th',
   EVERY_30TH: 'Every 30th', MONTHLY: 'Monthly',
 };
 
+const PAY_PERIOD_TYPE_LABELS: Record<number, string> = {
+  1: 'Type 1 (1st Half)',
+  2: 'Type 2 (2nd Half)',
+  7: 'Type 7 (Special)',
+  9: 'Type 9 (13th Month)',
+};
+
+const PAY_PERIOD_LABELS: Record<number, string> = {
+  1: 'Type 1 — Semi-monthly 1st half (paid on 15th)',
+  2: 'Type 2 — Semi-monthly 2nd half (paid end of month)',
+  7: 'Type 7 — Special pay (ad-hoc)',
+  9: 'Type 9 — 13th month pay (ad-hoc)',
+};
+
 const POLICY_TYPES = [
-  { value: 'EMPLOYEE_PAY_PERIOD', label: 'Employee Pay Period' },
   { value: 'WORK_HOURS', label: 'Work Hours' },
   { value: 'ATTENDANCE', label: 'Attendance Policy' },
   { value: 'DRESS_CODE', label: 'Dress Code' },
@@ -20,13 +33,6 @@ const POLICY_TYPES = [
   { value: 'TOOLS', label: 'Allowed Tools / Devices' },
   { value: 'REPORTING', label: 'Reporting Requirements' },
   { value: 'OTHER', label: 'Other' },
-];
-
-const PAY_PERIOD_VALUES = [
-  { value: '1', label: 'Type 1 — Semi-monthly 1st half (paid on 15th)' },
-  { value: '2', label: 'Type 2 — Semi-monthly 2nd half (paid end of month)' },
-  { value: '7', label: 'Type 7 — Special pay (ad-hoc)' },
-  { value: '9', label: 'Type 9 — 13th month pay (ad-hoc)' },
 ];
 
 type Tab = 'overview' | 'policies' | 'billing';
@@ -39,13 +45,16 @@ export default function ClientDetail() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [editingPolicy, setEditingPolicy] = useState<ClientPolicy | null>(null);
-  const [quickEmpId, setQuickEmpId] = useState<string | null>(null);
-  const [markPaidBillingId, setMarkPaidBillingId] = useState<string | null>(null);
 
   const { data: client, isLoading } = useQuery<Client>({
     queryKey: ['client', id],
     queryFn: () => api.get(`/clients/${id}`).then(r => r.data),
     enabled: !!id,
+  });
+
+  const markPaid = useMutation({
+    mutationFn: (billingId: string) => api.put(`/billing/${billingId}/mark-paid`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['client', id] }),
   });
 
   const resendBill = useMutation({
@@ -85,6 +94,9 @@ export default function ClientDetail() {
           <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 13, color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
             {client.address && <span>📍 {client.address}</span>}
             <span>🔄 Billing: {CYCLE_LABELS[client.billingCycle]}{client.billingDate && client.billingCycle === 'MONTHLY' ? ` (day ${client.billingDate})` : ''}</span>
+            {client.payPeriodType && (
+              <span>📅 Pay Period: {PAY_PERIOD_TYPE_LABELS[client.payPeriodType] ?? `Type ${client.payPeriodType}`}</span>
+            )}
             <span>👥 {client.employees?.length ?? 0} deployed</span>
           </div>
         </div>
@@ -171,13 +183,7 @@ export default function ClientDetail() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {client.employees!.map(e => (
-                  <div
-                    key={e.id}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderRadius: 8, padding: '6px 8px', transition: 'background 0.12s' }}
-                    onClick={() => setQuickEmpId(e.id)}
-                    onMouseEnter={ev => (ev.currentTarget.style.background = 'var(--color-surface-2)')}
-                    onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
-                  >
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div className="emp-info">
                       <div className="emp-avatar" style={{ background: e.avatarColor }}>
                         {e.firstName[0]}{e.lastName[0]}
@@ -228,11 +234,6 @@ export default function ClientDetail() {
                           {POLICY_TYPES.find(t => t.value === p.type)?.label ?? p.type}
                         </span>
                         <span style={{ fontWeight: 700, fontSize: 14 }}>{p.title}</span>
-                        {p.type === 'EMPLOYEE_PAY_PERIOD' && p.value && (
-                          <span className="badge badge-green" style={{ fontSize: 11 }}>
-                            {PAY_PERIOD_VALUES.find(v => v.value === p.value)?.label?.split(' — ')[0] ?? `Type ${p.value}`}
-                          </span>
-                        )}
                       </div>
                       <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{p.description}</div>
                     </div>
@@ -313,7 +314,8 @@ export default function ClientDetail() {
                               </button>
                               <button
                                 className="btn btn-success btn-sm"
-                                onClick={() => setMarkPaidBillingId(b.id)}
+                                disabled={markPaid.isPending}
+                                onClick={() => { if (confirm('Mark this bill as paid?')) markPaid.mutate(b.id); }}
                               >
                                 Mark Paid
                               </button>
@@ -346,181 +348,9 @@ export default function ClientDetail() {
           onSaved={() => { setShowEditModal(false); invalidate(); }}
         />
       )}
-
-      {quickEmpId && (
-        <QuickEmployeeModal
-          employeeId={quickEmpId}
-          onClose={() => setQuickEmpId(null)}
-        />
-      )}
-
-      {markPaidBillingId && (
-        <MarkPaidModal
-          billingId={markPaidBillingId}
-          onClose={() => setMarkPaidBillingId(null)}
-          onSaved={() => { setMarkPaidBillingId(null); invalidate(); }}
-        />
-      )}
     </div>
   );
 }
-
-// ── Quick Employee Modal (read-only) ──────────────────────────────────────────
-
-function QuickEmployeeModal({ employeeId, onClose }: { employeeId: string; onClose: () => void }) {
-  const { data: emp, isLoading } = useQuery<Employee>({
-    queryKey: ['employee', employeeId],
-    queryFn: () => api.get(`/employees/${employeeId}`).then(r => r.data),
-  });
-
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 480 }}>
-        <div className="modal-header">
-          <h2 className="modal-title">Employee Details</h2>
-          <button className="icon-btn" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          {isLoading ? (
-            <div className="loading-center" style={{ padding: 32 }}><div className="spinner" /></div>
-          ) : !emp ? (
-            <div className="empty-state">Employee not found</div>
-          ) : (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-                {emp.photoUrl ? (
-                  <img src={emp.photoUrl} alt="" style={{ width: 64, height: 80, borderRadius: 8, objectFit: 'cover', objectPosition: 'top', flexShrink: 0 }} />
-                ) : (
-                  <div className="emp-avatar" style={{ background: emp.avatarColor, width: 64, height: 64, fontSize: 22, flexShrink: 0 }}>
-                    {emp.firstName[0]}{emp.lastName[0]}
-                  </div>
-                )}
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 18 }}>{emp.firstName} {emp.lastName}</div>
-                  <div style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>{emp.position}</div>
-                  <div style={{ marginTop: 6 }}>
-                    <span className={`badge ${emp.status === 'ACTIVE' ? 'badge-green' : emp.status === 'ON_LEAVE' ? 'badge-yellow' : 'badge-gray'}`}>
-                      {emp.status?.replace('_', ' ')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {[
-                  { label: 'Employee No', value: emp.employeeNo },
-                  { label: 'Department', value: (emp.department as any)?.name ?? '—' },
-                  { label: 'Email', value: emp.email },
-                  { label: 'Phone', value: emp.phone ?? '—' },
-                  { label: 'Hire Date', value: emp.hireDate ? new Date(emp.hireDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—' },
-                  { label: 'Basic Salary', value: formatPHP(emp.basicSalary) },
-                  { label: 'Resource Cost', value: emp.resourceCost != null ? formatPHP(emp.resourceCost) : '—' },
-                  { label: 'Payroll Cost', value: emp.payrollCost != null ? formatPHP(emp.payrollCost) : '—' },
-                ].map(item => (
-                  <div key={item.label}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{item.label}</div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{item.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Close</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Mark Paid Modal ────────────────────────────────────────────────────────────
-
-function MarkPaidModal({ billingId, onClose, onSaved }: {
-  billingId: string;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [paymentRef, setPaymentRef] = useState('');
-  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!paymentRef.trim()) { setError('Payment reference is required'); return; }
-    setSaving(true); setError('');
-    try {
-      let paymentScreenshotUrl: string | undefined;
-      if (screenshotFile) {
-        setUploading(true);
-        const form = new FormData();
-        form.append('screenshot', screenshotFile);
-        const res = await api.post(`/billing/${billingId}/payment-proof`, form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        paymentScreenshotUrl = res.data.url;
-        setUploading(false);
-      }
-      await api.put(`/billing/${billingId}/mark-paid`, { paymentRef: paymentRef.trim(), paymentScreenshotUrl });
-      onSaved();
-    } catch (err: any) {
-      setUploading(false);
-      setError(err?.response?.data?.error ?? 'Failed to mark as paid');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 460 }}>
-        <div className="modal-header">
-          <h2 className="modal-title">Mark as Paid</h2>
-          <button className="icon-btn" onClick={onClose}>✕</button>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
-            {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
-            <div className="form-group" style={{ marginBottom: 14 }}>
-              <label>Payment Reference *</label>
-              <input
-                className="form-control"
-                required
-                placeholder="e.g. GCash ref, bank transfer no."
-                value={paymentRef}
-                onChange={e => setPaymentRef(e.target.value)}
-              />
-              <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                Enter the transaction or reference number from the payment
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Payment Screenshot (optional)</label>
-              <input
-                type="file"
-                accept="image/*"
-                className="form-control"
-                onChange={e => setScreenshotFile(e.target.files?.[0] ?? null)}
-              />
-              <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                Upload proof of payment (JPEG, PNG — max 10 MB)
-              </div>
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-success" disabled={saving || uploading}>
-              {uploading ? 'Uploading…' : saving ? 'Saving…' : '✓ Confirm Payment'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ── Policy Modal ───────────────────────────────────────────────────────────────
 
 function PolicyModal({ clientId, policy, onClose, onSaved }: {
   clientId: string;
@@ -529,10 +359,9 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
   onSaved: () => void;
 }) {
   const [form, setForm] = useState({
-    type: policy?.type ?? 'EMPLOYEE_PAY_PERIOD',
+    type: policy?.type ?? 'WORK_HOURS',
     title: policy?.title ?? '',
     description: policy?.description ?? '',
-    value: policy?.value ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -541,12 +370,10 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
     e.preventDefault();
     setSaving(true); setError('');
     try {
-      const payload: any = { ...form };
-      if (form.type !== 'EMPLOYEE_PAY_PERIOD') delete payload.value;
       if (policy) {
-        await api.put(`/clients/${clientId}/policies/${policy.id}`, payload);
+        await api.put(`/clients/${clientId}/policies/${policy.id}`, form);
       } else {
-        await api.post(`/clients/${clientId}/policies`, payload);
+        await api.post(`/clients/${clientId}/policies`, form);
       }
       onSaved();
     } catch (err: any) {
@@ -568,27 +395,10 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
             {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
             <div className="form-group" style={{ marginBottom: 12 }}>
               <label>Policy Type</label>
-              <select className="form-control" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value, value: '' }))}>
+              <select className="form-control" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
                 {POLICY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
-            {form.type === 'EMPLOYEE_PAY_PERIOD' && (
-              <div className="form-group" style={{ marginBottom: 12 }}>
-                <label>Pay Period Type *</label>
-                <select
-                  className="form-control"
-                  required
-                  value={form.value}
-                  onChange={e => setForm(f => ({ ...f, value: e.target.value }))}
-                >
-                  <option value="">— Select pay period —</option>
-                  {PAY_PERIOD_VALUES.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
-                </select>
-                <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                  Determines which payroll run this client's employees are included in
-                </div>
-              </div>
-            )}
             <div className="form-group" style={{ marginBottom: 12 }}>
               <label>Title *</label>
               <input className="form-control" required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Standard Work Hours Policy" />
@@ -598,7 +408,7 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
               <textarea
                 className="form-control"
                 required
-                rows={4}
+                rows={5}
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 placeholder="Describe the policy in full…"
@@ -624,7 +434,7 @@ function fmtDate(iso: string) {
 const BLANK: Partial<Client> = {
   name: '', address: '', contactName: '', contactEmail: '', contactPhone: '',
   servicesOffered: '', specificRequest: '', billingCycle: 'MONTHLY',
-  billingDate: null, activeContract: true,
+  billingDate: null, payPeriodType: null, activeContract: true,
 };
 
 function ClientModal({ client, onClose, onSaved }: {
@@ -698,6 +508,26 @@ function ClientModal({ client, onClose, onSaved }: {
               <div className="form-group">
                 <label>Contact Number</label>
                 <input className="form-control" value={form.contactPhone ?? ''} onChange={e => set('contactPhone', e.target.value)} />
+              </div>
+            </div>
+
+            <SectionLabel>Payroll</SectionLabel>
+            <div className="form-grid form-grid-2" style={{ gap: 12 }}>
+              <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                <label>Employee Pay Period Type</label>
+                <select
+                  className="form-control"
+                  value={form.payPeriodType ?? ''}
+                  onChange={e => set('payPeriodType', e.target.value ? parseInt(e.target.value) : null)}
+                >
+                  <option value="">— Not set —</option>
+                  {Object.entries(PAY_PERIOD_LABELS).map(([v, label]) => (
+                    <option key={v} value={v}>{label}</option>
+                  ))}
+                </select>
+                <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  Determines which payroll run this client's employees are included in
+                </div>
               </div>
             </div>
 
