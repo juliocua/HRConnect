@@ -585,13 +585,34 @@ function PayslipModal({ record: r, payPeriodType, runPeriod, onClose }: {
 }) {
   const otherDed = r.otherDeductions ?? 0;
   const is13th = payPeriodType === 9;
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    try {
+      const resp = await api.get(`/payroll/record/${r.id}/pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(resp.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Payslip_${r.employee.lastName}_${runPeriod.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={ev => ev.target === ev.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <h2 className="modal-title">Payslip — {r.employee.firstName} {r.employee.lastName}</h2>
-          <button className="icon-btn" onClick={onClose}>✕</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn btn-ghost btn-sm" onClick={handleDownloadPdf} disabled={downloading}>
+              {downloading ? 'Generating…' : '⬇ Download PDF'}
+            </button>
+            <button className="icon-btn" onClick={onClose}>✕</button>
+          </div>
         </div>
         <div className="modal-body">
           {/* Employee info */}

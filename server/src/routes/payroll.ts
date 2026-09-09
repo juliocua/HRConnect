@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import PDFDocument from 'pdfkit';
 import { prisma } from '../lib/prisma';
 import { computePayroll } from '../lib/payroll';
 import { authenticate, requireRole } from '../middleware/authenticate';
@@ -58,6 +59,174 @@ router.get('/employee/:employeeId', async (req: Request, res: Response, next: Ne
       take: 12,
     });
     res.json(records);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/payroll/record/:recordId/pdf  — download a payslip as PDF
+router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const record = await prisma.payrollRecord.findUnique({
+      where: { id: req.params.recordId },
+      include: {
+        employee: {
+          select: {
+            firstName: true, lastName: true, position: true,
+            department: { select: { name: true } },
+            client: { select: { name: true } },
+          },
+        },
+        payrollRun: {
+          select: {
+            period: true, periodStart: true, periodEnd: true,
+            payPeriodType: true,
+          },
+        },
+      },
+    });
+
+    if (!record) return res.status(404).json({ error: 'Record not found' });
+
+    // Employees may only download their own payslip
+    if (req.user!.role === 'EMPLOYEE' && req.user!.employeeId !== record.employeeId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const emp = record.employee;
+    const run = record.payrollRun;
+    const is13th = run.payPeriodType === 9;
+    const otherDed = record.otherDeductions ?? 0;
+
+    const phpFmt = (n: number) =>
+      `PHP ${Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const fmtDate = (d: Date | string) =>
+      new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+    const safeFilename = (s: string) => s.replace(/[^a-zA-Z0-9_\-]/g, '_');
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="Payslip_${safeFilename(emp.lastName)}_${safeFilename(run.period ?? '')}.pdf"`
+    );
+    doc.pipe(res);
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    const lineRow = (label: string, value: string, bold = false, valueColor = '#111111') => {
+      const y = doc.y;
+      doc.fontSize(10)
+        .font(bold ? 'Helvetica-Bold' : 'Helvetica')
+        .fillColor('#111111')
+        .text(label, 50, y, { width: 340, lineBreak: false });
+      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica')
+        .fillColor(valueColor)
+        .text(value, 390, y, { width: 155, align: 'right', lineBreak: false });
+      doc.fillColor('#111111').moveDown(0.4);
+    };
+
+    const separator = (dash = false) => {
+      doc.moveDown(0.2);
+      const line = doc.moveTo(50, doc.y).lineTo(545, doc.y);
+      if (dash) line.dash(3, { space: 3 }).stroke().undash();
+      else line.stroke();
+      doc.moveDown(0.4);
+    };
+
+    const sectionLabel = (text: string) => {
+      doc.fontSize(9).font('Helvetica-Bold')
+        .fillColor('#666666')
+        .text(text.toUpperCase(), 50, doc.y, { characterSpacing: 0.8 });
+      doc.fillColor('#111111').moveDown(0.3);
+    };
+
+    // ── Header ─────────────────────────────────────────────────────────────────
+    doc.fontSize(16).font('Helvetica-Bold').fillColor('#111111')
+      .text('NUAGE CONSULTING GROUP', { align: 'center' });
+    doc.fontSize(11).font('Helvetica').fillColor('#444444')
+      .text('PAYSLIP', { align: 'center' });
+    doc.fillColor('#111111');
+    separator();
+
+    // ── Employee & period info ─────────────────────────────────────────────────
+    const infoY = doc.y;
+    // Left column
+    doc.fontSize(10).font('Helvetica-Bold').text('Employee', 50, infoY);
+    doc.font('Helvetica').text(`${emp.firstName} ${emp.lastName}`, 50, doc.y);
+    doc.font('Helvetica-Bold').text('Position', 50, doc.y);
+    doc.font('Helvetica').text(emp.position, 50, doc.y);
+    if (emp.department?.name) {
+      doc.font('Helvetica-Bold').text('Department', 50, doc.y);
+      doc.font('Helvetica').text(emp.department.name, 50, doc.y);
+    }
+    if (emp.client?.name) {
+      doc.font('Helvetica-Bold').text('Client', 50, doc.y);
+      doc.font('Helvetica').text(emp.client.name, 50, doc.y);
+    }
+    // Right column
+    doc.fontSize(10).font('Helvetica-Bold').text('Pay Period', 310, infoY, { width: 235 });
+    doc.font('Helvetica').text(run.period ?? '', 310, doc.y, { width: 235 });
+    if (run.periodStart && run.periodEnd) {
+      doc.font('Helvetica-Bold').text('Coverage', 310, doc.y, { width: 235 });
+      doc.font('Helvetica').text(`${fmtDate(run.periodStart)} — ${fmtDate(run.periodEnd)}`, 310, doc.y, { width: 235 });
+    }
+    doc.y = Math.max(doc.y, infoY + 80);
+    separator();
+
+    // ── Earnings / Computation ─────────────────────────────────────────────────
+    if (is13th) {
+      sectionLabel('13th Month Pay Computation');
+      lineRow('Basic Salary (Monthly)', phpFmt(record.basicSalary));
+      lineRow('Daily Rate (÷ 22 working days)', phpFmt(record.basicSalary / 22));
+      const pd = record.daysWorked;
+      lineRow('Paid Days (present + approved leaves)', `${Number.isInteger(pd) ? pd : (pd as number).toFixed(2)} days`);
+      lineRow('Gross Pay  (Daily Rate × Paid Days ÷ 12)', phpFmt(record.grossPay), true);
+      separator(true);
+      sectionLabel('Tax');
+      lineRow('Tax-Exempt (first PHP 90,000)', phpFmt(Math.min(record.grossPay, 90000)), false, '#16a34a');
+      if (record.taxableIncome > 0) {
+        lineRow('Taxable Excess (above PHP 90,000)', phpFmt(record.taxableIncome));
+        lineRow('Withholding Tax  (TRAIN Law — annual bracket)', `(${phpFmt(record.withholdingTax)})`, false, '#dc2626');
+      } else {
+        lineRow('Withholding Tax', '—');
+      }
+    } else {
+      sectionLabel('Earnings');
+      lineRow('Basic Salary (Monthly)', phpFmt(record.basicSalary));
+      lineRow(`Days Worked  (${record.daysWorked} of 22)`, phpFmt((record.basicSalary / 22) * record.daysWorked));
+      if (record.overtimePay > 0) lineRow('Overtime Pay', phpFmt(record.overtimePay));
+      if (record.allowances > 0) lineRow('Allowances', phpFmt(record.allowances));
+      lineRow('Gross Pay', phpFmt(record.grossPay), true);
+      separator(true);
+      sectionLabel('Deductions');
+      lineRow('SSS Contribution', `(${phpFmt(record.sssContrib)})`, false, '#dc2626');
+      lineRow('PhilHealth Contribution', `(${phpFmt(record.philhealthContrib)})`, false, '#dc2626');
+      lineRow('Pag-IBIG Contribution', `(${phpFmt(record.pagibigContrib)})`, false, '#dc2626');
+      lineRow('Taxable Income', phpFmt(record.taxableIncome));
+      lineRow('Withholding Tax  (TRAIN Law)', `(${phpFmt(record.withholdingTax)})`, false, '#dc2626');
+      if (otherDed > 0) lineRow('Other Deductions', `(${phpFmt(otherDed)})`, false, '#dc2626');
+      lineRow('Total Deductions', `(${phpFmt(record.totalDeductions + otherDed)})`, true, '#dc2626');
+    }
+
+    separator();
+
+    // ── Net Pay ────────────────────────────────────────────────────────────────
+    const netY = doc.y;
+    doc.fontSize(13).font('Helvetica-Bold').fillColor('#111111')
+      .text('NET PAY', 50, netY, { width: 340, lineBreak: false });
+    doc.fontSize(13).font('Helvetica-Bold').fillColor('#1d4ed8')
+      .text(phpFmt(record.netPay), 390, netY, { width: 155, align: 'right', lineBreak: false });
+    doc.fillColor('#111111').moveDown(2);
+    separator();
+
+    // ── Footer ─────────────────────────────────────────────────────────────────
+    doc.fontSize(8.5).font('Helvetica').fillColor('#888888')
+      .text(
+        `Generated on ${fmtDate(new Date())}  ·  This is a system-generated payslip. No signature required.`,
+        50, doc.y, { align: 'center', width: 495 }
+      );
+
+    doc.end();
   } catch (err) {
     next(err);
   }
