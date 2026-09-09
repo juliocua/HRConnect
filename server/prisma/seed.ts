@@ -44,6 +44,7 @@ async function main() {
   await prisma.leaveRequest.deleteMany();
   await prisma.clientPolicy.deleteMany();
   await prisma.user.deleteMany();
+  await (prisma as any).overtimeRequest?.deleteMany().catch(() => null); // guard: table may not exist
   await prisma.employee.deleteMany();
   await prisma.client.deleteMany();
   await prisma.department.deleteMany();
