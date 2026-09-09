@@ -148,7 +148,12 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
     const timeInDt = body.timeIn ? new Date(`${dateStr}T${body.timeIn}:00`) : undefined;
     const timeOutDt = body.timeOut ? new Date(`${dateStr}T${body.timeOut}:00`) : undefined;
     const { timeIn: _ti, timeOut: _to, ...rest } = body;
-    const data = { ...rest, ...(timeInDt ? { timeIn: timeInDt } : {}), ...(timeOutDt ? { timeOut: timeOutDt } : {}) };
+    // Write to both timeIn/timeOut (HR attendance view) and clockInAt/clockOutAt (Hub clock view)
+    const data = {
+      ...rest,
+      ...(timeInDt ? { timeIn: timeInDt, clockInAt: timeInDt } : {}),
+      ...(timeOutDt ? { timeOut: timeOutDt, clockOutAt: timeOutDt } : {}),
+    };
 
     const record = await prisma.attendance.upsert({
       where: { employeeId_date: { employeeId, date: body.date } },
