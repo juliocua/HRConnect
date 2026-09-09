@@ -153,32 +153,34 @@ async function main() {
     clientId: string | null; color: string;
     sss: string; ph: string; pag: string; tin: string;
     hireDate: string; status?: 'ACTIVE' | 'ON_LEAVE';
+    gender: 'MALE' | 'FEMALE' | 'OTHER';
+    bankName: string; bankAccountNo: string; bankAccountName: string;
   };
 
   const empSeed: EmpSeed[] = [
     // ── Engineering → Meridian (senior stack)
-    { no: 'EMP-0000000001', fn: 'Miguel',    ln: 'Reyes',      pos: 'Senior Software Engineer', deptId: engDept.id,  salary: 75_000, rc: 95_000, clientId: meridian.id,   color: '#2563EB', hireDate: '2021-03-15', sss: '34-5678901-2', ph: '12-345678901-2', pag: '1234-5678-9012', tin: '123-456-789-000' },
-    { no: 'EMP-0000000002', fn: 'Ana',       ln: 'Cruz',       pos: 'Frontend Developer',       deptId: engDept.id,  salary: 55_000, rc: 70_000, clientId: meridian.id,   color: '#7C3AED', hireDate: '2022-06-01', sss: '34-5678902-3', ph: '12-345678902-3', pag: '1234-5678-9013', tin: '123-456-789-001' },
-    { no: 'EMP-0000000003', fn: 'Carlo',     ln: 'Santos',     pos: 'Backend Developer',        deptId: engDept.id,  salary: 60_000, rc: 78_000, clientId: meridian.id,   color: '#059669', hireDate: '2022-09-12', sss: '34-5678903-4', ph: '12-345678903-4', pag: '1234-5678-9014', tin: '123-456-789-002' },
+    { no: 'EMP-0000000001', fn: 'Miguel',    ln: 'Reyes',      pos: 'Senior Software Engineer', deptId: engDept.id,   salary: 75_000, rc: 95_000, clientId: meridian.id,   color: '#2563EB', hireDate: '2021-03-15', sss: '34-5678901-2', ph: '12-345678901-2', pag: '1234-5678-9012', tin: '123-456-789-000', gender: 'MALE',   bankName: 'BDO Unibank',    bankAccountNo: '1234567890',   bankAccountName: 'Miguel P. Reyes' },
+    { no: 'EMP-0000000002', fn: 'Ana',       ln: 'Cruz',       pos: 'Frontend Developer',       deptId: engDept.id,   salary: 55_000, rc: 70_000, clientId: meridian.id,   color: '#7C3AED', hireDate: '2022-06-01', sss: '34-5678902-3', ph: '12-345678902-3', pag: '1234-5678-9013', tin: '123-456-789-001', gender: 'FEMALE', bankName: 'Bank of the Philippine Islands', bankAccountNo: '9876543210', bankAccountName: 'Ana L. Cruz' },
+    { no: 'EMP-0000000003', fn: 'Carlo',     ln: 'Santos',     pos: 'Backend Developer',        deptId: engDept.id,   salary: 60_000, rc: 78_000, clientId: meridian.id,   color: '#059669', hireDate: '2022-09-12', sss: '34-5678903-4', ph: '12-345678903-4', pag: '1234-5678-9014', tin: '123-456-789-002', gender: 'MALE',   bankName: 'UnionBank',      bankAccountNo: '1122334455',   bankAccountName: 'Carlo R. Santos' },
     // ── Engineering → TechBridge (infra stack)
-    { no: 'EMP-0000000004', fn: 'Sophia',    ln: 'Lim',        pos: 'QA Engineer',              deptId: engDept.id,  salary: 45_000, rc: 58_000, clientId: techbridge.id, color: '#DC2626', hireDate: '2023-01-09', sss: '34-5678904-5', ph: '12-345678904-5', pag: '1234-5678-9015', tin: '123-456-789-003' },
-    { no: 'EMP-0000000005', fn: 'Marco',     ln: 'Dela Cruz',  pos: 'DevOps Engineer',          deptId: engDept.id,  salary: 65_000, rc: 85_000, clientId: techbridge.id, color: '#D97706', hireDate: '2022-04-20', sss: '34-5678905-6', ph: '12-345678905-6', pag: '1234-5678-9016', tin: '123-456-789-004' },
+    { no: 'EMP-0000000004', fn: 'Sophia',    ln: 'Lim',        pos: 'QA Engineer',              deptId: engDept.id,   salary: 45_000, rc: 58_000, clientId: techbridge.id, color: '#DC2626', hireDate: '2023-01-09', sss: '34-5678904-5', ph: '12-345678904-5', pag: '1234-5678-9015', tin: '123-456-789-003', gender: 'FEMALE', bankName: 'Metrobank',      bankAccountNo: '5544332211',   bankAccountName: 'Sophia A. Lim' },
+    { no: 'EMP-0000000005', fn: 'Marco',     ln: 'Dela Cruz',  pos: 'DevOps Engineer',          deptId: engDept.id,   salary: 65_000, rc: 85_000, clientId: techbridge.id, color: '#D97706', hireDate: '2022-04-20', sss: '34-5678905-6', ph: '12-345678905-6', pag: '1234-5678-9016', tin: '123-456-789-004', gender: 'MALE',   bankName: 'BDO Unibank',    bankAccountNo: '6677889900',   bankAccountName: 'Marco G. Dela Cruz' },
     // ── Operations → Coastline
-    { no: 'EMP-0000000006', fn: 'Patricia',  ln: 'Garcia',     pos: 'Operations Manager',       deptId: opsDept.id,  salary: 55_000, rc: 70_000, clientId: coastline.id,  color: '#0891B2', hireDate: '2020-11-03', sss: '34-5678906-7', ph: '12-345678906-7', pag: '1234-5678-9017', tin: '123-456-789-005' },
-    { no: 'EMP-0000000007', fn: 'Jose',      ln: 'Hernandez',  pos: 'Team Lead',                deptId: opsDept.id,  salary: 38_000, rc: 49_000, clientId: coastline.id,  color: '#4F46E5', hireDate: '2021-07-14', sss: '34-5678907-8', ph: '12-345678907-8', pag: '1234-5678-9018', tin: '123-456-789-006' },
+    { no: 'EMP-0000000006', fn: 'Patricia',  ln: 'Garcia',     pos: 'Operations Manager',       deptId: opsDept.id,   salary: 55_000, rc: 70_000, clientId: coastline.id,  color: '#0891B2', hireDate: '2020-11-03', sss: '34-5678906-7', ph: '12-345678906-7', pag: '1234-5678-9017', tin: '123-456-789-005', gender: 'FEMALE', bankName: 'Security Bank',  bankAccountNo: '2233445566',   bankAccountName: 'Patricia M. Garcia' },
+    { no: 'EMP-0000000007', fn: 'Jose',      ln: 'Hernandez',  pos: 'Team Lead',                deptId: opsDept.id,   salary: 38_000, rc: 49_000, clientId: coastline.id,  color: '#4F46E5', hireDate: '2021-07-14', sss: '34-5678907-8', ph: '12-345678907-8', pag: '1234-5678-9018', tin: '123-456-789-006', gender: 'MALE',   bankName: 'Bank of the Philippine Islands', bankAccountNo: '3344556677', bankAccountName: 'Jose T. Hernandez' },
     // ── Customer Support → Coastline
-    { no: 'EMP-0000000008', fn: 'Marilou',   ln: 'Bautista',   pos: 'Customer Service Rep',     deptId: csDept.id,   salary: 25_000, rc: 33_000, clientId: coastline.id,  color: '#BE185D', hireDate: '2023-03-20', sss: '34-5678908-9', ph: '12-345678908-9', pag: '1234-5678-9019', tin: '123-456-789-007' },
-    { no: 'EMP-0000000009', fn: 'Kevin',     ln: 'Mendoza',    pos: 'Customer Service Rep',     deptId: csDept.id,   salary: 25_000, rc: 33_000, clientId: coastline.id,  color: '#16A34A', hireDate: '2023-05-08', sss: '34-5678909-0', ph: '12-345678909-0', pag: '1234-5678-9020', tin: '123-456-789-008' },
+    { no: 'EMP-0000000008', fn: 'Marilou',   ln: 'Bautista',   pos: 'Customer Service Rep',     deptId: csDept.id,    salary: 25_000, rc: 33_000, clientId: coastline.id,  color: '#BE185D', hireDate: '2023-03-20', sss: '34-5678908-9', ph: '12-345678908-9', pag: '1234-5678-9019', tin: '123-456-789-007', gender: 'FEMALE', bankName: 'Landbank',       bankAccountNo: '4455667788',   bankAccountName: 'Marilou S. Bautista' },
+    { no: 'EMP-0000000009', fn: 'Kevin',     ln: 'Mendoza',    pos: 'Customer Service Rep',     deptId: csDept.id,    salary: 25_000, rc: 33_000, clientId: coastline.id,  color: '#16A34A', hireDate: '2023-05-08', sss: '34-5678909-0', ph: '12-345678909-0', pag: '1234-5678-9020', tin: '123-456-789-008', gender: 'MALE',   bankName: 'UnionBank',      bankAccountNo: '5566778899',   bankAccountName: 'Kevin D. Mendoza' },
     // ── Finance → Pacific
-    { no: 'EMP-0000000010', fn: 'Isabel',    ln: 'Torres',     pos: 'Senior Accountant',        deptId: finDept.id,  salary: 48_000, rc: 62_000, clientId: pacific.id,    color: '#CA8A04', hireDate: '2021-02-01', sss: '34-5678910-1', ph: '12-345678910-1', pag: '1234-5678-9021', tin: '123-456-789-009' },
-    { no: 'EMP-0000000011', fn: 'Rafael',    ln: 'Aquino',     pos: 'Payroll Specialist',       deptId: finDept.id,  salary: 35_000, rc: 45_000, clientId: pacific.id,    color: '#2563EB', hireDate: '2022-08-15', sss: '34-5678911-2', ph: '12-345678911-2', pag: '1234-5678-9022', tin: '123-456-789-010' },
+    { no: 'EMP-0000000010', fn: 'Isabel',    ln: 'Torres',     pos: 'Senior Accountant',        deptId: finDept.id,   salary: 48_000, rc: 62_000, clientId: pacific.id,    color: '#CA8A04', hireDate: '2021-02-01', sss: '34-5678910-1', ph: '12-345678910-1', pag: '1234-5678-9021', tin: '123-456-789-009', gender: 'FEMALE', bankName: 'BDO Unibank',    bankAccountNo: '6677889912',   bankAccountName: 'Isabel C. Torres' },
+    { no: 'EMP-0000000011', fn: 'Rafael',    ln: 'Aquino',     pos: 'Payroll Specialist',       deptId: finDept.id,   salary: 35_000, rc: 45_000, clientId: pacific.id,    color: '#2563EB', hireDate: '2022-08-15', sss: '34-5678911-2', ph: '12-345678911-2', pag: '1234-5678-9022', tin: '123-456-789-010', gender: 'MALE',   bankName: 'Bank of the Philippine Islands', bankAccountNo: '7788990012', bankAccountName: 'Rafael B. Aquino' },
     // ── Internal: HR
-    { no: 'EMP-0000000012', fn: 'Camille',   ln: 'Ramos',      pos: 'HR Manager',               deptId: hrDept.id,   salary: 52_000, rc: null,   clientId: null,          color: '#7C3AED', hireDate: '2020-06-01', sss: '34-5678912-3', ph: '12-345678912-3', pag: '1234-5678-9023', tin: '123-456-789-011' },
-    { no: 'EMP-0000000013', fn: 'Diana',     ln: 'Flores',     pos: 'HR Coordinator',           deptId: hrDept.id,   salary: 28_000, rc: null,   clientId: null,          color: '#059669', hireDate: '2023-09-04', sss: '34-5678913-4', ph: '12-345678913-4', pag: '1234-5678-9024', tin: '123-456-789-012' },
+    { no: 'EMP-0000000012', fn: 'Camille',   ln: 'Ramos',      pos: 'HR Manager',               deptId: hrDept.id,    salary: 52_000, rc: null,   clientId: null,          color: '#7C3AED', hireDate: '2020-06-01', sss: '34-5678912-3', ph: '12-345678912-3', pag: '1234-5678-9023', tin: '123-456-789-011', gender: 'FEMALE', bankName: 'Metrobank',      bankAccountNo: '8899001123',   bankAccountName: 'Camille A. Ramos' },
+    { no: 'EMP-0000000013', fn: 'Diana',     ln: 'Flores',     pos: 'HR Coordinator',           deptId: hrDept.id,    salary: 28_000, rc: null,   clientId: null,          color: '#059669', hireDate: '2023-09-04', sss: '34-5678913-4', ph: '12-345678913-4', pag: '1234-5678-9024', tin: '123-456-789-012', gender: 'FEMALE', bankName: 'UnionBank',      bankAccountNo: '9900112234',   bankAccountName: 'Diana R. Flores' },
     // ── Internal: Sales
-    { no: 'EMP-0000000014', fn: 'Antonio',   ln: 'Pascual',    pos: 'Sales Manager',            deptId: salesDept.id, salary: 58_000, rc: null,  clientId: null,          color: '#DC2626', hireDate: '2021-10-18', sss: '34-5678914-5', ph: '12-345678914-5', pag: '1234-5678-9025', tin: '123-456-789-013' },
+    { no: 'EMP-0000000014', fn: 'Antonio',   ln: 'Pascual',    pos: 'Sales Manager',            deptId: salesDept.id, salary: 58_000, rc: null,   clientId: null,          color: '#DC2626', hireDate: '2021-10-18', sss: '34-5678914-5', ph: '12-345678914-5', pag: '1234-5678-9025', tin: '123-456-789-013', gender: 'MALE',   bankName: 'Security Bank',  bankAccountNo: '1234987654',   bankAccountName: 'Antonio J. Pascual' },
     // ── On bench (available, not deployed)
-    { no: 'EMP-0000000015', fn: 'Liza',      ln: 'Navarro',    pos: 'Business Analyst',         deptId: opsDept.id,  salary: 40_000, rc: null,   clientId: null,          color: '#D97706', hireDate: '2024-01-15', sss: '34-5678915-6', ph: '12-345678915-6', pag: '1234-5678-9026', tin: '123-456-789-014' },
+    { no: 'EMP-0000000015', fn: 'Liza',      ln: 'Navarro',    pos: 'Business Analyst',         deptId: opsDept.id,   salary: 40_000, rc: null,   clientId: null,          color: '#D97706', hireDate: '2024-01-15', sss: '34-5678915-6', ph: '12-345678915-6', pag: '1234-5678-9026', tin: '123-456-789-014', gender: 'FEMALE', bankName: 'BDO Unibank',    bankAccountNo: '2345678901',   bankAccountName: 'Liza P. Navarro' },
   ];
 
   const employees: { id: string; employeeNo: string; basicSalary: number; resourceCost: number | null; clientId: string | null }[] = [];
@@ -198,10 +200,14 @@ async function main() {
         payrollCost:  e.salary,
         clientId:     e.clientId,
         avatarColor:  e.color,
-        sssNo:        e.sss,
-        philhealthNo: e.ph,
-        pagibigNo:    e.pag,
-        tinNo:        e.tin,
+        sssNo:          e.sss,
+        philhealthNo:   e.ph,
+        pagibigNo:      e.pag,
+        tinNo:          e.tin,
+        gender:         e.gender,
+        bankName:       e.bankName,
+        bankAccountNo:  e.bankAccountNo,
+        bankAccountName: e.bankAccountName,
       },
     });
     employees.push({ id: emp.id, employeeNo: emp.employeeNo, basicSalary: emp.basicSalary, resourceCost: emp.resourceCost, clientId: emp.clientId });

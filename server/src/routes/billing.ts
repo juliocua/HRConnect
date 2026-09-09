@@ -1,4 +1,5 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Request, Response, NextFunction, raw } from 'express';
+import crypto from 'crypto';
 import { z } from 'zod';
 import multer from 'multer';
 import path from 'path';
@@ -9,6 +10,56 @@ import { generateInvoicePDF } from '../lib/invoice-pdf';
 import { sendInvoiceEmail } from '../lib/email';
 
 const router = Router();
+
+// ── PayMongo webhook — registered BEFORE authenticate so PayMongo can call it ──
+// Uses express.raw() to capture the raw body for HMAC-SHA256 signature verification.
+router.post('/webhook/paymongo', raw({ type: 'application/json' }), async (req: Request, res: Response) => {
+  try {
+    const secret = process.env.PAYMONGO_WEBHOOK_SECRET;
+    if (secret) {
+      const sigHeader = req.headers['paymongo-signature'] as string | undefined;
+      if (!sigHeader) {
+        console.warn('[PayMongo webhook] Missing paymongo-signature header — rejected');
+        return res.status(401).json({ error: 'Missing signature' });
+      }
+      // Header format: t=<timestamp>,te=<test_sig>,li=<live_sig>
+      const parts: Record<string, string> = {};
+      sigHeader.split(',').forEach(p => {
+        const idx = p.indexOf('=');
+        if (idx !== -1) parts[p.slice(0, idx)] = p.slice(idx + 1);
+      });
+      const timestamp = parts['t'];
+      const receivedSig = parts['li'] ?? parts['te']; // prefer live, fall back to test
+      if (!timestamp || !receivedSig) {
+        return res.status(401).json({ error: 'Invalid signature header' });
+      }
+      const rawBody = req.body as Buffer; // express.raw() gives a Buffer
+      const expectedSig = crypto
+        .createHmac('sha256', secret)
+        .update(`${timestamp}.${rawBody.toString()}`)
+        .digest('hex');
+      if (expectedSig !== receivedSig) {
+        console.warn('[PayMongo webhook] Signature mismatch — rejected');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    const event = JSON.parse((req.body as Buffer).toString());
+    if (event?.data?.attributes?.type === 'link.payment.paid') {
+      const linkId = event.data.attributes.data?.id;
+      if (linkId) {
+        await prisma.billing.updateMany({
+          where: { paymentLinkId: linkId, status: 'PENDING' },
+          data: { status: 'PAID', paidAt: new Date() },
+        });
+      }
+    }
+    res.json({ received: true });
+  } catch {
+    res.json({ received: true });
+  }
+});
+
 router.use(authenticate);
 
 const PAYMONGO_SECRET = process.env.PAYMONGO_SECRET_KEY ?? '';
@@ -41,7 +92,6 @@ const uploadScreenshot = multer({
 async function createPayMongoLink(amount: number, description: string, billingId: string) {
   if (!PAYMONGO_SECRET) return null;
 
-  const appUrl = process.env.CLIENT_URL || 'http://localhost:5173';
   const response = await fetch(`${PAYMONGO_BASE}/links`, {
     method: 'POST',
     headers: {
@@ -346,25 +396,6 @@ router.post(
   }
 );
 
-// POST /api/billing/webhook/paymongo  — PayMongo webhook (no auth middleware)
-router.post('/webhook/paymongo', async (req: Request, res: Response) => {
-  try {
-    const event = req.body;
-    // PayMongo sends events like "link.payment.paid"
-    if (event?.data?.attributes?.type === 'link.payment.paid') {
-      const linkId = event.data.attributes.data?.id;
-      if (linkId) {
-        await prisma.billing.updateMany({
-          where: { paymentLinkId: linkId, status: 'PENDING' },
-          data: { status: 'PAID', paidAt: new Date() },
-        });
-      }
-    }
-    res.json({ received: true });
-  } catch {
-    res.json({ received: true });
-  }
-});
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 

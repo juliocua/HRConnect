@@ -15,7 +15,8 @@ export async function sendInvoiceEmail(to: string, billing: any, pdfBuffer: Buff
 
   const resend = new Resend(process.env.RESEND_API_KEY);
   const invoiceNo = billing.id.slice(-8).toUpperCase();
-  const from = process.env.SMTP_FROM ?? 'HRConnect <noreply@hrconnect.app>';
+  const from = process.env.SMTP_FROM;
+  if (!from) throw new Error('SMTP_FROM not configured. Set it in Railway environment variables.');
 
   await resend.emails.send({
     from,
