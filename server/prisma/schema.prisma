@@ -119,6 +119,11 @@ model Client {
   specificRequest String?      @db.Text
   billingCycle    BillingCycle @default(MONTHLY)
   billingDate     Int?
+  payPeriodType   Int?
+  adminFeeRate    Float?
+  isVatable       Boolean      @default(false)
+  hasEwt          Boolean      @default(false)
+  billingTerms    String?
   activeContract  Boolean      @default(true)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -319,7 +324,7 @@ model PayrollRecord {
   withholdingTax    Float
   totalDeductions   Float
   netPay            Float
-  daysWorked        Int        @default(0)
+  daysWorked        Float      @default(0)
   overtimePay       Float      @default(0)
   allowances        Float      @default(0)
   otherDeductions   Float      @default(0)

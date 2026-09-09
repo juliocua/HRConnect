@@ -57,11 +57,12 @@ const EmployeeSchema = z.object({
 // GET /api/employees
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { dept, departmentId, status, search } = req.query as Record<string, string>;
+    const { dept, departmentId, status, search, clientId } = req.query as Record<string, string>;
     const employees = await prisma.employee.findMany({
       where: {
         ...(departmentId ? { departmentId } : dept ? { department: { name: dept } } : {}),
         ...(status ? { status: status as any } : {}),
+        ...(clientId ? { clientId } : {}),
         ...(search
           ? {
               OR: [

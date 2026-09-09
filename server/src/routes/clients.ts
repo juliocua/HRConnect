@@ -16,6 +16,11 @@ const ClientSchema = z.object({
   specificRequest: z.string().optional(),
   billingCycle: z.enum(['WEEKLY', 'EVERY_15TH', 'EVERY_30TH', 'MONTHLY']).optional(),
   billingDate: z.number().int().min(1).max(31).optional().nullable(),
+  payPeriodType: z.number().int().optional().nullable(),
+  adminFeeRate: z.number().min(0).max(100).optional().nullable(),
+  isVatable: z.boolean().optional(),
+  hasEwt: z.boolean().optional(),
+  billingTerms: z.string().optional().nullable(),
   activeContract: z.boolean().optional(),
 });
 

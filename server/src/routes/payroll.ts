@@ -24,7 +24,8 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
     const records = await prisma.payrollRecord.findMany({
       where: { employeeId },
       include: {
-        payrollRun: { select: { period: true, year: true, month: true, payPeriodType: true, status: true } },
+        payrollRun: { select: { period: true, year: true, month: true, payPeriodType: true, description: true, periodStart: true, periodEnd: true, runAt: true, status: true } },
+        employee: { select: { client: { select: { id: true, name: true } } } },
       },
       orderBy: [{ payrollRun: { year: 'desc' } }, { payrollRun: { month: 'desc' } }],
     });

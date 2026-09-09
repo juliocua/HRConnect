@@ -162,7 +162,12 @@ export interface PayrollRun {
 }
 
 export interface MyPayrollRecord extends Omit<PayrollRecord, 'employee'> {
-  payrollRun: { period: string; year: number; month: number; payPeriodType: number; status: PayrollStatus };
+  payrollRun: {
+    period: string; year: number; month: number; payPeriodType: number;
+    description?: string; periodStart?: string; periodEnd?: string;
+    runAt?: string; status: PayrollStatus;
+  };
+  employee?: { client?: { id: string; name: string } | null };
 }
 
 // ── Clients & Billing ─────────────────────────────────────────────────────────
@@ -192,6 +197,10 @@ export interface Client {
   billingCycle: BillingCycle;
   billingDate?: number | null;
   payPeriodType?: number | null;
+  adminFeeRate?: number | null;
+  isVatable?: boolean;
+  hasEwt?: boolean;
+  billingTerms?: string | null;
   activeContract: boolean;
   createdAt: string;
   policies?: ClientPolicy[];

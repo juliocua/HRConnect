@@ -3,11 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type { AttendanceRecord } from '@/types';
 
-const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
-];
-
 const STATUS_COLORS: Record<string, string> = {
   PRESENT: 'badge-green', LATE: 'badge-yellow', ABSENT: 'badge-red',
   HALF_DAY: 'badge-yellow', ON_LEAVE: 'badge-blue',
@@ -48,11 +43,20 @@ function LiveClock() {
   );
 }
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function firstOfMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
 export default function HubClock() {
   const qc = useQueryClient();
   const [showManual, setShowManual] = useState(false);
-  const now = new Date();
-  const [histMonth, setHistMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  const [startDate, setStartDate] = useState(firstOfMonth);
+  const [endDate, setEndDate] = useState(todayStr);
 
   // Today's attendance
   const { data: todayRecord, isLoading: todayLoading } = useQuery<AttendanceRecord | null>({
@@ -61,10 +65,11 @@ export default function HubClock() {
     refetchInterval: 30_000,
   });
 
-  // Monthly history
+  // Filtered history
   const { data: history = [] } = useQuery<AttendanceRecord[]>({
-    queryKey: ['hub-attendance', histMonth],
-    queryFn: () => api.get(`/attendance/me?month=${histMonth}`).then(r => r.data),
+    queryKey: ['hub-attendance', startDate, endDate],
+    queryFn: () => api.get(`/attendance/me?startDate=${startDate}&endDate=${endDate}`).then(r => r.data),
+    enabled: !!startDate && !!endDate,
   });
 
   const clockInMutation = useMutation({
@@ -80,6 +85,11 @@ export default function HubClock() {
   const hasClockedIn = !!todayRecord?.clockInAt;
   const hasClockedOut = !!todayRecord?.clockOutAt;
   const isClockedIn = hasClockedIn && !hasClockedOut;
+
+  // Quick stats for filtered range
+  const presentDays = history.filter(r => r.status === 'PRESENT' || r.status === 'LATE').length;
+  const absentDays = history.filter(r => r.status === 'ABSENT').length;
+  const totalOT = history.reduce((s, r) => s + (r.overtimeHrs || 0), 0);
 
   return (
     <div>
@@ -150,26 +160,50 @@ export default function HubClock() {
         )}
       </div>
 
-      {/* Monthly history */}
+      {/* Attendance History */}
       <div className="card">
-        <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div className="card-title">Attendance History</div>
-          <select
-            className="form-control"
-            style={{ width: 160, fontSize: 13 }}
-            value={histMonth}
-            onChange={e => setHistMonth(e.target.value)}
-          >
-            {[-2, -1, 0].map(offset => {
-              const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-              const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-              return <option key={val} value={val}>{MONTHS[d.getMonth()]} {d.getFullYear()}</option>;
-            })}
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 13, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>From:</label>
+            <input
+              type="date"
+              className="form-control"
+              style={{ width: 150, fontSize: 13 }}
+              value={startDate}
+              max={endDate}
+              onChange={e => setStartDate(e.target.value)}
+            />
+            <label style={{ fontSize: 13, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>To:</label>
+            <input
+              type="date"
+              className="form-control"
+              style={{ width: 150, fontSize: 13 }}
+              value={endDate}
+              min={startDate}
+              max={todayStr()}
+              onChange={e => setEndDate(e.target.value)}
+            />
+          </div>
         </div>
 
+        {/* Mini stats for date range */}
+        {history.length > 0 && (
+          <div style={{ display: 'flex', gap: 16, padding: '8px 0 16px', flexWrap: 'wrap' }}>
+            {[
+              { label: 'Days Present', value: presentDays },
+              { label: 'Days Absent', value: absentDays },
+              { label: 'OT Hours', value: `${totalOT.toFixed(1)}h` },
+            ].map(s => (
+              <div key={s.label} style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                <strong style={{ color: 'var(--color-text-primary)' }}>{s.value}</strong> {s.label}
+              </div>
+            ))}
+          </div>
+        )}
+
         {history.length === 0 ? (
-          <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 14 }}>No records for this month</div>
+          <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 14 }}>No records for this period</div>
         ) : (
           <div className="table-wrap">
             <table>

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { DataTable } from '@/components/DataTable';
-import type { AttendanceRecord, AttendanceStatus, Employee } from '@/types';
+import type { AttendanceRecord, AttendanceStatus, Employee, Client } from '@/types';
 
 const STATUS_COLORS: Record<AttendanceStatus, string> = {
   PRESENT: 'badge-green', LATE: 'badge-yellow', ABSENT: 'badge-red',
@@ -19,6 +19,11 @@ const STATUS_LABELS: Record<AttendanceStatus, string> = {
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function firstOfMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
 function toDateInput(t: string | null | undefined, fallback: string): string {
@@ -40,16 +45,21 @@ function toTimeInput(t: string | null | undefined, fallback: string): string {
 
 export default function Attendance() {
   const qc = useQueryClient();
-  const [date, setDate] = useState(todayStr());
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
   const [empFilter, setEmpFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editTarget, setEditTarget] = useState<AttendanceRecord | null>(null);
 
   const { data: records = [], isLoading } = useQuery<AttendanceRecord[]>({
-    queryKey: ['attendance', date, empFilter],
+    queryKey: ['attendance', startDate, endDate, empFilter, clientFilter],
     queryFn: () => {
-      const p = new URLSearchParams({ date });
+      const p = new URLSearchParams();
+      if (startDate) p.set('startDate', startDate);
+      if (endDate) p.set('endDate', endDate);
       if (empFilter) p.set('employeeId', empFilter);
+      if (clientFilter) p.set('clientId', clientFilter);
       return api.get(`/attendance?${p}`).then(r => r.data);
     },
   });
@@ -57,6 +67,11 @@ export default function Attendance() {
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['employees'],
     queryFn: () => api.get('/employees?status=ACTIVE').then(r => r.data),
+  });
+
+  const { data: clients = [] } = useQuery<Client[]>({
+    queryKey: ['clients'],
+    queryFn: () => api.get('/clients').then(r => r.data),
   });
 
   const present = records.filter(r => r.status === 'PRESENT' || r.status === 'LATE').length;
@@ -68,6 +83,8 @@ export default function Attendance() {
     mutationFn: (id: string) => api.delete(`/attendance/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }),
   });
+
+  const handlePrint = () => window.print();
 
   const columns = useMemo<ColumnDef<AttendanceRecord>[]>(() => [
     {
@@ -132,6 +149,9 @@ export default function Attendance() {
     },
   ], [deleteMutation]);
 
+  const isRangeFilter = startDate !== endDate;
+  const exportFilename = isRangeFilter ? `Attendance_${startDate}_to_${endDate}` : `Attendance_${startDate}`;
+
   return (
     <div>
       <div className="page-header">
@@ -140,6 +160,7 @@ export default function Attendance() {
           <p className="page-desc">Track daily time & attendance records</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost" onClick={handlePrint}>🖨️ Print / PDF</button>
           <a href="/import?type=time" className="btn btn-ghost">⬆ Import CSV</a>
           <button className="btn btn-primary" onClick={() => { setEditTarget(null); setShowModal(true); }}>
             ＋ Log Attendance
@@ -163,20 +184,29 @@ export default function Attendance() {
         ))}
       </div>
 
-      {/* Date / Employee filters (server-side) */}
+      {/* Filters */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="filter-bar">
-          <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <label style={{ whiteSpace: 'nowrap' }}>Date:</label>
-            <input type="date" className="form-control" value={date} onChange={e => setDate(e.target.value)} style={{ width: 160 }} />
+        <div className="filter-bar" style={{ flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <label style={{ whiteSpace: 'nowrap', fontSize: 13 }}>From:</label>
+            <input type="date" className="form-control" value={startDate} max={endDate} onChange={e => setStartDate(e.target.value)} style={{ width: 155 }} />
           </div>
-          <select className="form-control" style={{ width: 220 }} value={empFilter} onChange={e => setEmpFilter(e.target.value)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <label style={{ whiteSpace: 'nowrap', fontSize: 13 }}>To:</label>
+            <input type="date" className="form-control" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} style={{ width: 155 }} />
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={() => { setStartDate(todayStr()); setEndDate(todayStr()); }}>Today</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => { setStartDate(firstOfMonth()); setEndDate(todayStr()); }}>This Month</button>
+          <select className="form-control" style={{ width: 200 }} value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
+            <option value="">All Clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <select className="form-control" style={{ width: 200 }} value={empFilter} onChange={e => setEmpFilter(e.target.value)}>
             <option value="">All Employees</option>
             {employees.map(e => (
               <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>
             ))}
           </select>
-          <button className="btn btn-secondary btn-sm" onClick={() => setDate(todayStr())}>Today</button>
         </div>
       </div>
 
@@ -186,7 +216,7 @@ export default function Attendance() {
         <div className="empty-state">
           <div className="empty-state-icon">📋</div>
           <div className="empty-state-title">No records found</div>
-          <div>Log attendance for {formatDate(date)}</div>
+          <div>Try adjusting the date range or filters</div>
           <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => { setEditTarget(null); setShowModal(true); }}>
             ＋ Log Attendance
           </button>
@@ -197,7 +227,7 @@ export default function Attendance() {
             data={records}
             columns={columns}
             globalFilterPlaceholder="Search employees…"
-            exportFilename={`Attendance_${date}`}
+            exportFilename={exportFilename}
           />
         </div>
       )}
@@ -205,7 +235,7 @@ export default function Attendance() {
       {showModal && (
         <AttendanceModal
           employees={employees}
-          defaultDate={date}
+          defaultDate={startDate}
           initial={editTarget}
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); qc.invalidateQueries({ queryKey: ['attendance'] }); }}

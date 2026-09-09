@@ -25,20 +25,25 @@ const AVATAR_COLORS = [
 
 export default function Employees() {
   const qc = useQueryClient();
-  const [deptFilter, setDeptFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editTarget, setEditTarget] = useState<Employee | null>(null);
   const [viewTarget, setViewTarget] = useState<Employee | null>(null);
 
   const { data: employees = [], isLoading } = useQuery<Employee[]>({
-    queryKey: ['employees', deptFilter, statusFilter],
+    queryKey: ['employees', clientFilter, statusFilter],
     queryFn: () => {
       const params = new URLSearchParams();
-      if (deptFilter) params.set('departmentId', deptFilter);
+      if (clientFilter) params.set('clientId', clientFilter);
       if (statusFilter) params.set('status', statusFilter);
       return api.get(`/employees?${params}`).then(r => r.data);
     },
+  });
+
+  const { data: clients = [] } = useQuery<Client[]>({
+    queryKey: ['clients'],
+    queryFn: () => api.get('/clients').then(r => r.data),
   });
 
   const { data: departments = [] } = useQuery<Department[]>({
@@ -154,9 +159,9 @@ export default function Employees() {
       {/* Filters */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="filter-bar">
-          <select className="form-control" style={{ width: 180 }} value={deptFilter} onChange={e => setDeptFilter(e.target.value)}>
-            <option value="">All Departments</option>
-            {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+          <select className="form-control" style={{ width: 200 }} value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
+            <option value="">All Clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <select className="form-control" style={{ width: 150 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="">All Statuses</option>

@@ -13,10 +13,18 @@ const CYCLE_LABELS: Record<BillingCycle, string> = {
   MONTHLY: 'Monthly',
 };
 
+const PAY_PERIOD_LABELS: Record<number, string> = {
+  1: 'Semi-monthly (1st/2nd)',
+  2: 'Semi-monthly (2nd)',
+  7: 'Special Pay',
+  9: '13th Month Only',
+};
+
 const BLANK: Partial<Client> = {
   name: '', address: '', contactName: '', contactEmail: '', contactPhone: '',
   servicesOffered: '', specificRequest: '', billingCycle: 'MONTHLY',
   billingDate: null, activeContract: true,
+  adminFeeRate: null, isVatable: false, hasEwt: false, billingTerms: '',
 };
 
 export default function Clients() {
@@ -60,13 +68,20 @@ export default function Clients() {
     {
       id: 'billing',
       accessorFn: row => CYCLE_LABELS[row.billingCycle],
-      header: 'Billing Cycle',
+      header: 'Billing',
       cell: ({ row: { original: c } }) => (
         <div>
           <span style={{ fontSize: 13 }}>{CYCLE_LABELS[c.billingCycle]}</span>
           {c.billingDate && c.billingCycle === 'MONTHLY' && (
             <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Day {c.billingDate}</div>
           )}
+          {c.adminFeeRate != null && (
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{c.adminFeeRate}% admin fee</div>
+          )}
+          <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+            {c.isVatable && <span className="badge badge-blue" style={{ fontSize: 10 }}>VAT</span>}
+            {c.hasEwt && <span className="badge badge-yellow" style={{ fontSize: 10 }}>EWT</span>}
+          </div>
         </div>
       ),
     },
@@ -174,7 +189,7 @@ function ClientModal({ client, onClose, onSaved }: {
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 600 }}>
+      <div className="modal" style={{ maxWidth: 620 }}>
         <div className="modal-header">
           <h2 className="modal-title">{client ? 'Edit Client' : 'New Client'}</h2>
           <button className="icon-btn" onClick={onClose}>✕</button>
@@ -219,7 +234,7 @@ function ClientModal({ client, onClose, onSaved }: {
               </div>
             </div>
 
-            <SectionLabel>Billing</SectionLabel>
+            <SectionLabel>Billing & Rates</SectionLabel>
             <div className="form-grid form-grid-2" style={{ gap: 12 }}>
               <div className="form-group">
                 <label>Billing Cycle</label>
@@ -241,6 +256,47 @@ function ClientModal({ client, onClose, onSaved }: {
                   />
                 </div>
               )}
+              <div className="form-group">
+                <label>Admin Fee Rate (%)</label>
+                <input
+                  type="number" min={0} max={100} step={0.01} className="form-control"
+                  placeholder="e.g. 15.00"
+                  value={form.adminFeeRate ?? ''}
+                  onChange={e => set('adminFeeRate', e.target.value ? parseFloat(e.target.value) : null)}
+                />
+              </div>
+              <div className="form-group">
+                <label>Billing Terms</label>
+                <input
+                  className="form-control"
+                  placeholder="e.g. Net 30, Due on receipt"
+                  value={form.billingTerms ?? ''}
+                  onChange={e => set('billingTerms', e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>Tax Flags</label>
+                <div style={{ display: 'flex', gap: 16, paddingTop: 6 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 14 }}>
+                    <input type="checkbox" checked={form.isVatable ?? false} onChange={e => set('isVatable', e.target.checked)} />
+                    VATable (12% VAT)
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 14 }}>
+                    <input type="checkbox" checked={form.hasEwt ?? false} onChange={e => set('hasEwt', e.target.checked)} />
+                    Subject to EWT
+                  </label>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Pay Period Type</label>
+                <select className="form-control" value={form.payPeriodType ?? ''} onChange={e => set('payPeriodType', e.target.value ? parseInt(e.target.value) : null)}>
+                  <option value="">Not set</option>
+                  <option value="1">Semi-monthly – 1st half (Type 1)</option>
+                  <option value="2">Semi-monthly – 2nd half (Type 2)</option>
+                  <option value="7">Special Pay (Type 7)</option>
+                  <option value="9">13th Month (Type 9)</option>
+                </select>
+              </div>
               <div className="form-group">
                 <label>Contract Status</label>
                 <select className="form-control" value={form.activeContract ? 'true' : 'false'} onChange={e => set('activeContract', e.target.value === 'true')}>

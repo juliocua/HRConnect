@@ -8,15 +8,19 @@ router.use(authenticate);
 
 // ── Employee self-service routes ───────────────────────────────────────────
 
-// GET /api/attendance/me?month=2026-09  — employee sees only their records
+// GET /api/attendance/me?startDate=2026-09-01&endDate=2026-09-30  — employee sees only their records
 router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { employeeId } = req.user!;
     if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
 
-    const { month } = req.query as Record<string, string>;
+    const { month, startDate, endDate } = req.query as Record<string, string>;
     let dateFilter = {};
-    if (month) {
+    if (startDate || endDate) {
+      const start = startDate ? new Date(startDate) : undefined;
+      const end = endDate ? (() => { const d = new Date(endDate); d.setHours(23, 59, 59, 999); return d; })() : undefined;
+      dateFilter = { date: { ...(start ? { gte: start } : {}), ...(end ? { lte: end } : {}) } };
+    } else if (month) {
       const [year, m] = month.split('-').map(Number);
       const start = new Date(year, m - 1, 1);
       const end = new Date(year, m, 0, 23, 59, 59);
@@ -143,7 +147,6 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
       update: {
         ...body as any,
         isManualEntry: true,
-        // HR needs to verify — set status to PRESENT but flag it
       },
       create: {
         ...body as any,
@@ -159,14 +162,17 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
 
 // ── HR / Admin routes ──────────────────────────────────────────────────────
 
-// GET /api/attendance?date=2026-09-07&employeeId=xxx
+// GET /api/attendance?startDate=2026-09-01&endDate=2026-09-30&employeeId=xxx&clientId=yyy
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { employeeId, date, month } = req.query as Record<string, string>;
+    const { employeeId, date, month, startDate, endDate, clientId } = req.query as Record<string, string>;
 
     let dateFilter = {};
-    if (date) {
-      // Single date filter (YYYY-MM-DD)
+    if (startDate || endDate) {
+      const start = startDate ? new Date(startDate) : undefined;
+      const end = endDate ? (() => { const d = new Date(endDate); d.setHours(23, 59, 59, 999); return d; })() : undefined;
+      dateFilter = { date: { ...(start ? { gte: start } : {}), ...(end ? { lte: end } : {}) } };
+    } else if (date) {
       const d = new Date(date);
       d.setHours(0, 0, 0, 0);
       const end = new Date(date);
@@ -182,11 +188,15 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const records = await prisma.attendance.findMany({
       where: {
         ...(employeeId ? { employeeId } : {}),
+        ...(clientId ? { employee: { clientId } } : {}),
         ...dateFilter,
       },
       include: {
         employee: {
-          select: { id: true, firstName: true, lastName: true, position: true, avatarColor: true },
+          select: {
+            id: true, firstName: true, lastName: true, position: true, avatarColor: true,
+            client: { select: { id: true, name: true } },
+          },
         },
       },
       orderBy: [{ date: 'desc' }, { employee: { lastName: 'asc' } }],
