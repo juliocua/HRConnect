@@ -282,7 +282,7 @@ export default function Payroll() {
 
           {/* Summary cards */}
           <div className="grid-4" style={{ marginBottom: 20 }}>
-            {is13th ? [
+            {(is13th ? [
               { label: 'Gross Pay', value: formatPHP(totalGross), icon: '💵', color: '#F0FDF4' },
               { label: 'Withholding Tax', value: formatPHP(totalTax), icon: '📉', color: '#FEF2F2' },
               { label: 'Net Pay', value: formatPHP(totalNet), icon: '✅', color: '#EFF6FF' },
@@ -292,7 +292,7 @@ export default function Payroll() {
               { label: 'Total Deductions', value: formatPHP(totalDeductions + totalOtherDeductions), icon: '📉', color: '#FEF2F2' },
               { label: 'Net Pay', value: formatPHP(totalNet), icon: '✅', color: '#EFF6FF' },
               { label: 'OT Pay', value: formatPHP(totalOT), icon: '⏱️', color: '#FFFBEB' },
-            ].map(s => (
+            ]).map(s => (
               <div key={s.label} className="stat-card">
                 <div className="stat-icon" style={{ background: s.color, fontSize: 20 }}>{s.icon}</div>
                 <div>
