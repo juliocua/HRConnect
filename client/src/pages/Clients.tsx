@@ -288,16 +288,6 @@ function ClientModal({ client, onClose, onSaved }: {
                 </div>
               </div>
               <div className="form-group">
-                <label>Pay Period Type</label>
-                <select className="form-control" value={form.payPeriodType ?? ''} onChange={e => set('payPeriodType', e.target.value ? parseInt(e.target.value) : null)}>
-                  <option value="">Not set</option>
-                  <option value="1">Semi-monthly – 1st half (Type 1)</option>
-                  <option value="2">Semi-monthly – 2nd half (Type 2)</option>
-                  <option value="7">Special Pay (Type 7)</option>
-                  <option value="9">13th Month (Type 9)</option>
-                </select>
-              </div>
-              <div className="form-group">
                 <label>Contract Status</label>
                 <select className="form-control" value={form.activeContract ? 'true' : 'false'} onChange={e => set('activeContract', e.target.value === 'true')}>
                   <option value="true">Active Contract</option>

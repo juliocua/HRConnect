@@ -22,7 +22,7 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
     if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
 
     const records = await prisma.payrollRecord.findMany({
-      where: { employeeId },
+      where: { employeeId, payrollRun: { status: 'PAID' } },
       include: {
         payrollRun: { select: { period: true, year: true, month: true, payPeriodType: true, description: true, periodStart: true, periodEnd: true, runAt: true, status: true } },
         employee: { select: { client: { select: { id: true, name: true } } } },

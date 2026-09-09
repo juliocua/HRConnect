@@ -132,6 +132,7 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
     const { employeeId } = req.user!;
     if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
 
+    const rawDate = (req.body as any).date as string; // keep for datetime construction
     const body = z.object({
       date: z.string().transform(d => new Date(d)),
       timeIn: z.string().optional(),
@@ -142,17 +143,17 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
       notes: z.string().optional(),
     }).parse(req.body);
 
+    // Combine date + HH:mm into proper ISO-8601 DateTime for Prisma
+    const dateStr = rawDate.slice(0, 10);
+    const timeInDt = body.timeIn ? new Date(`${dateStr}T${body.timeIn}:00`) : undefined;
+    const timeOutDt = body.timeOut ? new Date(`${dateStr}T${body.timeOut}:00`) : undefined;
+    const { timeIn: _ti, timeOut: _to, ...rest } = body;
+    const data = { ...rest, ...(timeInDt ? { timeIn: timeInDt } : {}), ...(timeOutDt ? { timeOut: timeOutDt } : {}) };
+
     const record = await prisma.attendance.upsert({
       where: { employeeId_date: { employeeId, date: body.date } },
-      update: {
-        ...body as any,
-        isManualEntry: true,
-      },
-      create: {
-        ...body as any,
-        employeeId,
-        isManualEntry: true,
-      },
+      update: { ...data as any, isManualEntry: true },
+      create: { ...data as any, employeeId, isManualEntry: true },
     });
     res.status(201).json(record);
   } catch (err) {
