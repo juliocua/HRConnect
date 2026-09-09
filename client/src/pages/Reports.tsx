@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatPHP } from '@/lib/payroll';
 import type { Client, Employee } from '@/types';
+import { SearchableMultiSelect } from '@/components/SearchableMultiSelect';
 
 type ReportType = 'billing-summary' | 'margin' | 'deployment' | 'attendance-summary';
 
@@ -29,59 +30,6 @@ const GROUP_BY_OPTIONS: Record<ReportType, { value: string; label: string }[]> =
     { value: 'department', label: 'Department' },
   ],
 };
-
-function MultiSelect({ label, options, selected, onChange }: {
-  label: string;
-  options: { id: string; name: string }[];
-  selected: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const toggle = (id: string) => {
-    if (selected.includes(id)) onChange(selected.filter(x => x !== id));
-    else onChange([...selected, id]);
-  };
-  const [open, setOpen] = useState(false);
-  const displayText = selected.length === 0
-    ? `All ${label}`
-    : selected.length === 1
-      ? options.find(o => o.id === selected[0])?.name ?? '1 selected'
-      : `${selected.length} selected`;
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <button
-        type="button"
-        className="form-control"
-        style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-        onClick={() => setOpen(v => !v)}
-      >
-        <span style={{ color: selected.length === 0 ? 'var(--color-text-muted)' : undefined }}>{displayText}</span>
-        <span style={{ fontSize: 10 }}>▼</span>
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-          borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto',
-        }}>
-          {options.length === 0 && (
-            <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--color-text-muted)' }}>No options</div>
-          )}
-          {options.map(o => (
-            <label key={o.id} style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
-              cursor: 'pointer', fontSize: 13,
-              background: selected.includes(o.id) ? 'var(--color-primary-light)' : undefined,
-            }}>
-              <input type="checkbox" checked={selected.includes(o.id)} onChange={() => toggle(o.id)} />
-              {o.name}
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Report result types ────────────────────────────────────────────────────────
 interface BillingSummaryRow {
@@ -353,7 +301,7 @@ export default function Reports() {
 
           {needsClients && (
             <div style={{ minWidth: 160 }}>
-              <MultiSelect
+              <SearchableMultiSelect
                 label="Clients"
                 options={clients.map(c => ({ id: c.id, name: c.name }))}
                 selected={clientIds}
@@ -364,9 +312,14 @@ export default function Reports() {
 
           {needsEmployees && (
             <div style={{ minWidth: 160 }}>
-              <MultiSelect
+              <SearchableMultiSelect
                 label="Employees"
-                options={employees.map(e => ({ id: e.id, name: `${e.firstName} ${e.lastName}` }))}
+                options={employees.map(e => ({
+                  id: e.id,
+                  name: `${e.firstName} ${e.lastName}`,
+                  subtitle: e.position,
+                  avatarColor: e.avatarColor,
+                }))}
                 selected={employeeIds}
                 onChange={setEmployeeIds}
               />
