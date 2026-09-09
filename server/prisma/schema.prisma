@@ -120,7 +120,6 @@ model Client {
   billingCycle    BillingCycle @default(MONTHLY)
   billingDate     Int?
   activeContract  Boolean      @default(true)
-  payPeriodType   Int?         // 1=semi-monthly 1st, 2=semi-monthly 2nd, 7=special, 9=13th month
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
