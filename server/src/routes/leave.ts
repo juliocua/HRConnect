@@ -214,6 +214,59 @@ router.get('/balances/:employeeId', async (req: Request, res: Response, next: Ne
   }
 });
 
+// POST /api/leave/balances/:employeeId/initialize — create leave balances for the current year
+// Pro-rates accruing leave types based on the employee's hire date
+router.post('/balances/:employeeId/initialize', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { employeeId } = req.params;
+    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+
+    const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
+    const leaveTypes = await prisma.leaveType.findMany({ where: { isActive: true } });
+
+    const hireDate = new Date(employee.hireDate);
+    const hireYear = hireDate.getFullYear();
+    const hireMonth = hireDate.getMonth(); // 0-indexed
+
+    const results = [];
+    for (const lt of leaveTypes) {
+      // Skip gender-restricted types that don't apply
+      if (lt.applicableGender !== 'ALL') {
+        if (employee.gender && lt.applicableGender !== employee.gender) continue;
+      }
+      // Skip manual types (SIL) — those are set individually
+      if (lt.isManual) continue;
+
+      let totalDays: number;
+      if (lt.accruesMonthly && hireYear === year) {
+        // Pro-rate: count months from hire month to Dec (0-indexed: hireMonth to 11)
+        const monthsWorked = 12 - hireMonth;
+        const monthlyRate = lt.daysPerYear / 12;
+        totalDays = Math.floor(monthlyRate * monthsWorked * 10) / 10; // round to 1 decimal
+      } else {
+        totalDays = lt.daysPerYear;
+      }
+
+      const balance = await prisma.leaveBalance.upsert({
+        where: { employeeId_leaveTypeId_year: { employeeId, leaveTypeId: lt.id, year } },
+        update: {}, // don't overwrite if already exists
+        create: { employeeId, leaveTypeId: lt.id, year, totalDays, usedDays: 0, pendingDays: 0 },
+      });
+      results.push(balance);
+    }
+
+    const balances = await prisma.leaveBalance.findMany({
+      where: { employeeId, year },
+      include: { leaveType: true },
+    });
+    res.json(balances);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PUT /api/leave/balances/:employeeId/:leaveTypeId — manually set SIL balance
 router.put('/balances/:employeeId/:leaveTypeId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {

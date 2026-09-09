@@ -33,13 +33,18 @@ export default function Leave() {
     queryFn: () => api.get('/employees?status=ACTIVE').then(r => r.data),
   });
 
-  const { data: balances = [] } = useQuery<LeaveBalance[]>({
+  const { data: balances = [], isLoading: balancesLoading, refetch: refetchBalances } = useQuery<LeaveBalance[]>({
     queryKey: ['leave-balances', empFilter],
     queryFn: () =>
       empFilter
         ? api.get(`/leave/balances/${empFilter}`).then(r => r.data)
         : Promise.resolve([]),
     enabled: !!empFilter && activeTab === 'balances',
+  });
+
+  const initBalances = useMutation({
+    mutationFn: (employeeId: string) => api.post(`/leave/balances/${employeeId}/initialize`),
+    onSuccess: () => refetchBalances(),
   });
 
   const approveMutation = useMutation({
@@ -226,8 +231,21 @@ export default function Leave() {
               <div className="empty-state-title">Select an employee</div>
               <div>Choose an employee above to view their leave balances</div>
             </div>
-          ) : balances.length === 0 ? (
+          ) : balancesLoading ? (
             <div className="loading-center"><div className="spinner" /></div>
+          ) : balances.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">🗂️</div>
+              <div className="empty-state-title">No leave balances yet</div>
+              <div style={{ marginBottom: 16 }}>Leave balances haven't been initialized for this employee.</div>
+              <button
+                className="btn btn-primary"
+                disabled={initBalances.isPending}
+                onClick={() => initBalances.mutate(empFilter)}
+              >
+                {initBalances.isPending ? 'Initializing…' : 'Initialize Leave Balances'}
+              </button>
+            </div>
           ) : (
             <div className="grid-3">
               {balances.map(b => {
