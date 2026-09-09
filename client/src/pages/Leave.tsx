@@ -355,7 +355,10 @@ function LeaveModal({ employees, onClose, onSaved }: {
     setSaving(true);
     setError('');
     try {
-      await api.post('/leave', form);
+      const start = new Date(form.startDate);
+      const end = new Date(form.endDate);
+      const totalDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      await api.post('/leave', { ...form, totalDays });
       onSaved();
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

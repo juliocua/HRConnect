@@ -656,7 +656,7 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
       // Step 1: Upload screenshot if provided
       if (screenshotFile) {
         const fd = new FormData();
-        fd.append('file', screenshotFile);
+        fd.append('screenshot', screenshotFile);
         const uploadRes = await api.post(`/billing/${billingId}/payment-proof`, fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });

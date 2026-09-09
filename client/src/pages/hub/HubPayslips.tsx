@@ -158,8 +158,24 @@ export default function HubPayslips() {
 function PayslipModal({ record: r, onClose }: { record: MyPayrollRecord; onClose: () => void }) {
   const periodLabel = r.payrollRun.description || `${MONTHS[(r.payrollRun.month || 1) - 1]} ${r.payrollRun.year}`;
   const clientName = (r as any).employee?.client?.name;
+  const [downloading, setDownloading] = useState(false);
 
   const handlePrint = () => window.print();
+
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    try {
+      const resp = await api.get(`/payroll/record/${r.id}/pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(resp.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Payslip_${periodLabel.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={ev => ev.target === ev.currentTarget && onClose()}>
@@ -167,6 +183,9 @@ function PayslipModal({ record: r, onClose }: { record: MyPayrollRecord; onClose
         <div className="modal-header">
           <h2 className="modal-title">Payslip — {periodLabel}</h2>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={handleDownloadPdf} disabled={downloading}>
+              {downloading ? 'Generating…' : '⬇ Download PDF'}
+            </button>
             <button className="btn btn-secondary btn-sm" onClick={handlePrint}>🖨️ Print</button>
             <button className="icon-btn" onClick={onClose}>✕</button>
           </div>
