@@ -4,6 +4,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { DataTable } from '@/components/DataTable';
 import type { LeaveRequest, LeaveBalance, LeaveType, Employee, LeaveStatus } from '@/types';
+import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 
 const STATUS_COLORS: Record<LeaveStatus, string> = {
   PENDING: 'badge-yellow', APPROVED: 'badge-green',
@@ -179,10 +180,13 @@ export default function Leave() {
           {/* Server-side filters */}
           <div className="card" style={{ marginBottom: 20 }}>
             <div className="filter-bar">
-              <select className="form-control" style={{ width: 220 }} value={empFilter} onChange={e => setEmpFilter(e.target.value)}>
-                <option value="">All Employees</option>
-                {employees.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
-              </select>
+              <EmployeeCombobox
+                employees={employees}
+                value={empFilter}
+                onChange={setEmpFilter}
+                placeholder="All Employees"
+                style={{ width: 220 }}
+              />
               <select className="form-control" style={{ width: 160 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
                 <option value="">All Statuses</option>
                 <option value="PENDING">Pending</option>
@@ -218,10 +222,13 @@ export default function Leave() {
         <div>
           <div className="card" style={{ marginBottom: 20 }}>
             <div className="filter-bar">
-              <select className="form-control" style={{ width: 260 }} value={empFilter} onChange={e => setEmpFilter(e.target.value)}>
-                <option value="">Select an employee to view balances…</option>
-                {employees.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
-              </select>
+              <EmployeeCombobox
+                employees={employees}
+                value={empFilter}
+                onChange={setEmpFilter}
+                placeholder="Select an employee to view balances…"
+                style={{ width: 260 }}
+              />
             </div>
           </div>
 
@@ -370,10 +377,13 @@ function LeaveModal({ employees, onClose, onSaved }: {
             {error && <div className="error-msg">{error}</div>}
             <div className="form-group">
               <label>Employee *</label>
-              <select className="form-control" required value={form.employeeId} onChange={e => { set('employeeId', e.target.value); set('leaveTypeId', ''); }}>
-                <option value="">Select employee…</option>
-                {employees.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
-              </select>
+              <EmployeeCombobox
+                employees={employees}
+                value={form.employeeId}
+                onChange={v => { set('employeeId', v); set('leaveTypeId', ''); }}
+                placeholder="Select employee…"
+                required
+              />
             </div>
             <div className="form-group">
               <label>Leave Type *</label>

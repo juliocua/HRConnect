@@ -1,9 +1,11 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { DataTable } from '@/components/DataTable';
 import type { AttendanceRecord, AttendanceStatus, Employee, Client } from '@/types';
+import { EmployeeCombobox } from '@/components/EmployeeCombobox';
+import { ClientCombobox } from '@/components/ClientCombobox';
 
 const STATUS_COLORS: Record<AttendanceStatus, string> = {
   PRESENT: 'badge-green', LATE: 'badge-yellow', ABSENT: 'badge-red',
@@ -197,22 +199,20 @@ export default function Attendance() {
           </div>
           <button className="btn btn-secondary btn-sm" onClick={() => { setStartDate(todayStr()); setEndDate(todayStr()); }}>Today</button>
           <button className="btn btn-secondary btn-sm" onClick={() => { setStartDate(firstOfMonth()); setEndDate(todayStr()); }}>This Month</button>
-          <div style={{ width: 200 }}>
-            <Combobox
-              value={clientFilter}
-              onChange={setClientFilter}
-              options={[{ value: '', label: 'All Clients' }, ...clients.map(c => ({ value: c.id, label: c.name }))]}
-              placeholder="All Clients"
-            />
-          </div>
-          <div style={{ width: 200 }}>
-            <Combobox
-              value={empFilter}
-              onChange={setEmpFilter}
-              options={[{ value: '', label: 'All Employees' }, ...employees.map(e => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))]}
-              placeholder="All Employees"
-            />
-          </div>
+          <ClientCombobox
+            clients={clients}
+            value={clientFilter}
+            onChange={setClientFilter}
+            placeholder="All Clients"
+            style={{ width: 200 }}
+          />
+          <EmployeeCombobox
+            employees={employees}
+            value={empFilter}
+            onChange={setEmpFilter}
+            placeholder="All Employees"
+            style={{ width: 200 }}
+          />
         </div>
       </div>
 
@@ -306,10 +306,10 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
               <label>Employee *</label>
               {isEdit
                 ? <input className="form-control" disabled value={employees.find(e => e.id === form.employeeId) ? `${employees.find(e => e.id === form.employeeId)!.firstName} ${employees.find(e => e.id === form.employeeId)!.lastName}` : form.employeeId} />
-                : <Combobox
+                : <EmployeeCombobox
+                    employees={employees}
                     value={form.employeeId}
                     onChange={v => set('employeeId', v)}
-                    options={employees.map(e => ({ value: e.id, label: `${e.firstName} ${e.lastName}` }))}
                     placeholder="Select employee…"
                     required
                   />
@@ -358,54 +358,6 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
           </div>
         </form>
       </div>
-    </div>
-  );
-}
-
-function Combobox({ options, value, onChange, placeholder, required }: {
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  required?: boolean;
-}) {
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const selected = options.find(o => o.value === value);
-  const filtered = query === '' ? options : options.filter(o => o.label.toLowerCase().includes(query.toLowerCase()));
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <input
-        className="form-control"
-        required={required && !value}
-        value={open ? query : (selected?.label ?? '')}
-        placeholder={placeholder}
-        onFocus={() => { setOpen(true); setQuery(''); }}
-        onChange={e => { setQuery(e.target.value); setOpen(true); }}
-        onKeyDown={e => { if (e.key === 'Escape') setOpen(false); }}
-        autoComplete="off"
-      />
-      {open && filtered.length > 0 && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.12)', maxHeight: 220, overflowY: 'auto' }}>
-          {filtered.map(o => (
-            <div
-              key={o.value}
-              onMouseDown={() => { onChange(o.value); setQuery(''); setOpen(false); }}
-              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, background: o.value === value ? 'var(--color-primary-light, #EFF6FF)' : undefined, fontWeight: o.value === value ? 600 : undefined }}
-            >
-              {o.label}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
