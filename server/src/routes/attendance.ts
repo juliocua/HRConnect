@@ -143,8 +143,7 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
       notes: z.string().optional(),
     }).parse(req.body);
 
-    // Combine date + HH:mm into proper ISO-8601 DateTime for Prisma.
-    // Append +08:00 (PST) so Railway (UTC) stores the correct instant.
+    // Combine date + HH:mm into proper ISO-8601 DateTime for Prisma
     const dateStr = rawDate.slice(0, 10);
     const timeInDt = body.timeIn ? new Date(`${dateStr}T${body.timeIn}:00+08:00`) : undefined;
     const timeOutDt = body.timeOut ? new Date(`${dateStr}T${body.timeOut}:00+08:00`) : undefined;
@@ -217,21 +216,45 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 // POST /api/attendance  (HR logs a single record)
 const AttendanceSchema = z.object({
   employeeId: z.string(),
-  date: z.string().transform(d => new Date(d)),
-  timeIn: z.string().optional().transform(t => (t ? new Date(t) : undefined)),
-  timeOut: z.string().optional().transform(t => (t ? new Date(t) : undefined)),
+  date: z.string(),
+  // timeIn / timeOut come in as "HH:MM" (from <input type="time">); kept as strings here,
+  // combined with the date into a proper UTC datetime in the route handler.
+  timeIn: z.string().optional(),
+  timeOut: z.string().optional(),
   status: z.enum(['PRESENT', 'LATE', 'ABSENT', 'HALF_DAY', 'ON_LEAVE', 'HOLIDAY', 'WEEKEND']),
   overtimeHrs: z.number().optional(),
   notes: z.string().optional(),
 });
 
+/** Convert a "YYYY-MM-DD" date string + "HH:MM" time string to a Date (PST = UTC+8). */
+function toDateTime(dateStr: string, timeStr: string): Date {
+  return new Date(`${dateStr.slice(0, 10)}T${timeStr}:00+08:00`);
+}
+
+function buildAttendanceData(body: z.infer<typeof AttendanceSchema>) {
+  const dateStr = body.date.slice(0, 10);
+  const date = new Date(body.date);
+  const timeIn = body.timeIn ? toDateTime(dateStr, body.timeIn) : undefined;
+  const timeOut = body.timeOut ? toDateTime(dateStr, body.timeOut) : undefined;
+  return {
+    employeeId: body.employeeId,
+    date,
+    status: body.status,
+    overtimeHrs: body.overtimeHrs,
+    notes: body.notes ?? '',
+    ...(timeIn ? { timeIn, clockInAt: timeIn } : {}),
+    ...(timeOut ? { timeOut, clockOutAt: timeOut } : {}),
+  };
+}
+
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = AttendanceSchema.parse(req.body);
+    const data = buildAttendanceData(body);
     const record = await prisma.attendance.upsert({
-      where: { employeeId_date: { employeeId: body.employeeId, date: body.date } },
-      update: body as any,
-      create: body as any,
+      where: { employeeId_date: { employeeId: data.employeeId, date: data.date } },
+      update: data as any,
+      create: { ...data as any, isManualEntry: true },
     });
     res.status(201).json(record);
   } catch (err) {
@@ -243,9 +266,19 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = AttendanceSchema.partial().parse(req.body);
+    const dateStr = (body.date ?? '').slice(0, 10);
+    const timeIn = body.timeIn && dateStr ? toDateTime(dateStr, body.timeIn) : undefined;
+    const timeOut = body.timeOut && dateStr ? toDateTime(dateStr, body.timeOut) : undefined;
+    const data = {
+      ...(body.status !== undefined ? { status: body.status } : {}),
+      ...(body.overtimeHrs !== undefined ? { overtimeHrs: body.overtimeHrs } : {}),
+      ...(body.notes !== undefined ? { notes: body.notes } : {}),
+      ...(timeIn ? { timeIn, clockInAt: timeIn } : {}),
+      ...(timeOut ? { timeOut, clockOutAt: timeOut } : {}),
+    };
     const record = await prisma.attendance.update({
       where: { id: req.params.id },
-      data: body as any,
+      data: data as any,
     });
     res.json(record);
   } catch (err) {
