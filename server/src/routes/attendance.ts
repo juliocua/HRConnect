@@ -143,7 +143,8 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
       notes: z.string().optional(),
     }).parse(req.body);
 
-    // Combine date + HH:mm into proper ISO-8601 DateTime for Prisma
+    // Combine date + HH:mm into proper ISO-8601 DateTime for Prisma.
+    // Append +08:00 (PST) so Railway (UTC) stores the correct instant.
     const dateStr = rawDate.slice(0, 10);
     const timeInDt = body.timeIn ? new Date(`${dateStr}T${body.timeIn}:00+08:00`) : undefined;
     const timeOutDt = body.timeOut ? new Date(`${dateStr}T${body.timeOut}:00+08:00`) : undefined;
