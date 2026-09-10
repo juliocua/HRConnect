@@ -1046,34 +1046,6 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                   : <>{e.firstName[0]}{e.lastName[0]}</>
                 }
               </div>
-              {/* Photo controls */}
-              <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={ev => ev.target.files?.[0] && handlePhotoUpload(ev.target.files[0])}
-                />
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  style={{ fontSize: 11, padding: '3px 8px', flex: 1 }}
-                  disabled={photoUploading}
-                  onClick={() => photoInputRef.current?.click()}
-                >
-                  {photoUploading ? '…' : e.photoUrl ? '📷 Change Photo' : '📷 Add Photo'}
-                </button>
-                {e.photoUrl && !photoUploading && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    style={{ fontSize: 11, padding: '3px 8px', color: 'var(--color-danger)' }}
-                    onClick={handleRemovePhoto}
-                  >✕</button>
-                )}
-              </div>
-              {photoError && <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 4 }}>{photoError}</div>}
             </div>
 
             {/* Name / meta column */}
