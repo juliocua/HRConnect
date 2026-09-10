@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatPHP } from '@/lib/payroll';
@@ -27,29 +27,43 @@ function fmtDate(iso?: string) {
 
 export default function HubPayslips() {
   const [showSlip, setShowSlip] = useState<MyPayrollRecord | null>(null);
-  const [yearFilter, setYearFilter] = useState<string>('');
+  const [periodFilter, setPeriodFilter] = useState<string>('');
 
   const { data: records = [], isLoading } = useQuery<MyPayrollRecord[]>({
     queryKey: ['hub-payslips'],
     queryFn: () => api.get('/payroll/me').then(r => r.data),
   });
 
-  const years = [...new Set(records.map(r => r.payrollRun.year))].sort((a, b) => b - a);
-  const filtered = yearFilter ? records.filter(r => String(r.payrollRun.year) === yearFilter) : records;
+  // Build unique period options from records (newest first)
+  const periodOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return records
+      .filter(r => { const key = r.payrollRunId; if (seen.has(key)) return false; seen.add(key); return true; })
+      .map(r => ({
+        value: r.payrollRunId,
+        label: r.payrollRun.description
+          ? `${r.payrollRun.description} (${r.payrollRun.year})`
+          : `${MONTHS[(r.payrollRun.month || 1) - 1]} ${r.payrollRun.year} — ${PAY_PERIOD_LABELS[r.payrollRun.payPeriodType] ?? ''}`,
+      }));
+  }, [records]);
+
+  const filtered = periodFilter
+    ? records.filter(r => r.payrollRunId === periodFilter)
+    : records;
 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800 }}>My Payslips</h1>
-        {years.length > 1 && (
+        {periodOptions.length > 1 && (
           <select
             className="form-control"
-            style={{ width: 120, fontSize: 13 }}
-            value={yearFilter}
-            onChange={e => setYearFilter(e.target.value)}
+            style={{ width: 260, fontSize: 13 }}
+            value={periodFilter}
+            onChange={e => setPeriodFilter(e.target.value)}
           >
-            <option value="">All Years</option>
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
+            <option value="">All Cut-off Periods</option>
+            {periodOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         )}
       </div>
@@ -160,6 +174,11 @@ function PayslipModal({ record: r, onClose }: { record: MyPayrollRecord; onClose
   const clientName = (r as any).employee?.client?.name;
   const [downloading, setDownloading] = useState(false);
 
+  const otherDed = r.otherDeductions ?? 0;
+  const lateDed = r.lateDeduction ?? 0;
+  const holidayPay = r.holidayPay ?? 0;
+  const nightDiff = r.nightDifferential ?? 0;
+
   const handleDownloadPdf = async () => {
     setDownloading(true);
     try {
@@ -233,6 +252,8 @@ function PayslipModal({ record: r, onClose }: { record: MyPayrollRecord; onClose
           <div className="payslip-row"><span>Basic Salary</span><span>{formatPHP(r.basicSalary)}</span></div>
           <div className="payslip-row"><span>Days Worked ({r.daysWorked} days)</span><span>{formatPHP(r.basicSalary / 22 * r.daysWorked)}</span></div>
           {r.overtimePay > 0 && <div className="payslip-row"><span>Overtime Pay</span><span>{formatPHP(r.overtimePay)}</span></div>}
+          {holidayPay > 0 && <div className="payslip-row"><span>Holiday Pay</span><span>{formatPHP(holidayPay)}</span></div>}
+          {nightDiff > 0 && <div className="payslip-row"><span>Night Differential</span><span>{formatPHP(nightDiff)}</span></div>}
           {r.allowances > 0 && <div className="payslip-row"><span>Allowances</span><span>{formatPHP(r.allowances)}</span></div>}
           <div className="payslip-row" style={{ fontWeight: 700 }}><span>Gross Pay</span><span>{formatPHP(r.grossPay)}</span></div>
 
@@ -245,10 +266,16 @@ function PayslipModal({ record: r, onClose }: { record: MyPayrollRecord; onClose
           <div className="payslip-row"><span>Pag-IBIG Contribution</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.pagibigContrib)})</span></div>
           <div className="payslip-row"><span>Taxable Income</span><span>{formatPHP(r.taxableIncome)}</span></div>
           <div className="payslip-row"><span>Withholding Tax (TRAIN Law)</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.withholdingTax)})</span></div>
-          {r.otherDeductions > 0 && (
-            <div className="payslip-row"><span>Other Deductions</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.otherDeductions)})</span></div>
+          {lateDed > 0 && (
+            <div className="payslip-row"><span>Late Deduction</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(lateDed)})</span></div>
           )}
-          <div className="payslip-row" style={{ fontWeight: 700 }}><span>Total Deductions</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions)})</span></div>
+          {otherDed > 0 && (
+            <div className="payslip-row"><span>Other Deductions</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(otherDed)})</span></div>
+          )}
+          <div className="payslip-row" style={{ fontWeight: 700 }}>
+            <span>Total Deductions</span>
+            <span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions + otherDed + lateDed)})</span>
+          </div>
 
           <div className="divider" />
 

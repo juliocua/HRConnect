@@ -71,8 +71,8 @@ export default function Payroll() {
   });
 
   const updateRecordMutation = useMutation({
-    mutationFn: ({ recordId, otherDeductions }: { recordId: string; otherDeductions: number }) =>
-      api.put(`/payroll/run/${viewRunId}/record/${recordId}`, { otherDeductions }).then(r => r.data),
+    mutationFn: ({ recordId, updates }: { recordId: string; updates: Record<string, number> }) =>
+      api.put(`/payroll/run/${viewRunId}/record/${recordId}`, updates).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] }),
   });
 
@@ -88,13 +88,11 @@ export default function Payroll() {
   const totalOT = records.reduce((s, r) => s + r.overtimePay, 0);
 
   // Stable ref so columns useMemo never recomputes when mutation state changes.
-  // Without this, isPending toggling re-creates column defs → TanStack tears down
-  // OtherDeductionsCell → useState reinitialises to initialValue (server 0).
   const updateRecordMutationRef = useRef(updateRecordMutation);
   updateRecordMutationRef.current = updateRecordMutation;
 
-  const handleOtherDeductionsBlur = useCallback((recordId: string, value: number) => {
-    updateRecordMutationRef.current.mutate({ recordId, otherDeductions: value });
+  const handleEditableBlur = useCallback((recordId: string, field: string, value: number) => {
+    updateRecordMutationRef.current.mutate({ recordId, updates: { [field]: value } });
   }, []); // intentionally empty — reads through ref
 
   // ── Table columns — different layout for 13th month vs regular ───────────────
@@ -191,6 +189,36 @@ export default function Payroll() {
         },
       },
       {
+        id: 'holidayPay',
+        accessorKey: 'holidayPay',
+        header: 'Holiday',
+        cell: ({ row: { original: r } }) => isDraft ? (
+          <EditableNumericCell
+            recordId={r.id}
+            field="holidayPay"
+            initialValue={r.holidayPay ?? 0}
+            onBlur={handleEditableBlur}
+          />
+        ) : (
+          <span className="td-mono">{(r.holidayPay ?? 0) > 0 ? formatPHP(r.holidayPay ?? 0) : '—'}</span>
+        ),
+      },
+      {
+        id: 'nightDifferential',
+        accessorKey: 'nightDifferential',
+        header: 'Night Diff',
+        cell: ({ row: { original: r } }) => isDraft ? (
+          <EditableNumericCell
+            recordId={r.id}
+            field="nightDifferential"
+            initialValue={r.nightDifferential ?? 0}
+            onBlur={handleEditableBlur}
+          />
+        ) : (
+          <span className="td-mono">{(r.nightDifferential ?? 0) > 0 ? formatPHP(r.nightDifferential ?? 0) : '—'}</span>
+        ),
+      },
+      {
         accessorKey: 'grossPay',
         header: 'Gross Pay',
         cell: ({ getValue }) => <span className="td-mono" style={{ fontWeight: 600 }}>{formatPHP(getValue() as number)}</span>,
@@ -216,14 +244,30 @@ export default function Payroll() {
         cell: ({ getValue }) => <span className="td-mono text-muted">{formatPHP(getValue() as number)}</span>,
       },
       {
+        id: 'lateDeduction',
+        accessorKey: 'lateDeduction',
+        header: 'Late Ded.',
+        cell: ({ row: { original: r } }) => isDraft ? (
+          <EditableNumericCell
+            recordId={r.id}
+            field="lateDeduction"
+            initialValue={r.lateDeduction ?? 0}
+            onBlur={handleEditableBlur}
+          />
+        ) : (
+          <span className="td-mono text-muted">{(r.lateDeduction ?? 0) > 0 ? formatPHP(r.lateDeduction ?? 0) : '—'}</span>
+        ),
+      },
+      {
         id: 'otherDeductions',
         accessorKey: 'otherDeductions',
         header: 'Other Ded.',
         cell: ({ row: { original: r } }) => isDraft ? (
-          <OtherDeductionsCell
+          <EditableNumericCell
             recordId={r.id}
+            field="otherDeductions"
             initialValue={r.otherDeductions ?? 0}
-            onBlur={handleOtherDeductionsBlur}
+            onBlur={handleEditableBlur}
           />
         ) : (
           <span className="td-mono text-muted">{(r.otherDeductions ?? 0) > 0 ? formatPHP(r.otherDeductions ?? 0) : '—'}</span>
@@ -240,7 +284,7 @@ export default function Payroll() {
       },
       slipCol,
     ];
-  }, [is13th, isDraft, handleOtherDeductionsBlur]);
+  }, [is13th, isDraft, handleEditableBlur]);
 
   const handleDownloadDisbursement = async () => {
     if (!viewRunId || !currentRun) return;
@@ -485,11 +529,12 @@ export default function Payroll() {
   );
 }
 
-// ── Inline editable other deductions cell ─────────────────────────────────────
-function OtherDeductionsCell({ recordId, initialValue, onBlur }: {
+// ── Generic inline editable numeric cell ──────────────────────────────────────
+function EditableNumericCell({ recordId, field, initialValue, onBlur }: {
   recordId: string;
+  field: string;
   initialValue: number;
-  onBlur: (recordId: string, value: number) => void;
+  onBlur: (recordId: string, field: string, value: number) => void;
 }) {
   const [raw, setRaw] = useState(initialValue > 0 ? initialValue.toFixed(2) : '');
   return (
@@ -502,7 +547,7 @@ function OtherDeductionsCell({ recordId, initialValue, onBlur }: {
       onBlur={() => {
         const parsed = parseFloat(raw.replace(/,/g, '')) || 0;
         setRaw(parsed > 0 ? parsed.toFixed(2) : '');
-        onBlur(recordId, parsed);
+        onBlur(recordId, field, parsed);
       }}
       style={{
         width: 80, padding: '3px 6px', fontSize: 12,
@@ -671,6 +716,9 @@ function PayslipModal({ record: r, payPeriodType, runPeriod, onClose }: {
   onClose: () => void;
 }) {
   const otherDed = r.otherDeductions ?? 0;
+  const lateDed = r.lateDeduction ?? 0;
+  const holidayPay = r.holidayPay ?? 0;
+  const nightDiff = r.nightDifferential ?? 0;
   const is13th = payPeriodType === 9;
   const [downloading, setDownloading] = useState(false);
 
@@ -786,6 +834,8 @@ function PayslipModal({ record: r, payPeriodType, runPeriod, onClose }: {
               <div className="payslip-row"><span>Basic Salary</span><span>{formatPHP(r.basicSalary)}</span></div>
               <div className="payslip-row"><span>Days Worked ({r.daysWorked} days)</span><span>{formatPHP(r.basicSalary / 22 * r.daysWorked)}</span></div>
               {r.overtimePay > 0 && <div className="payslip-row"><span>Overtime Pay</span><span>{formatPHP(r.overtimePay)}</span></div>}
+              {holidayPay > 0 && <div className="payslip-row"><span>Holiday Pay</span><span>{formatPHP(holidayPay)}</span></div>}
+              {nightDiff > 0 && <div className="payslip-row"><span>Night Differential</span><span>{formatPHP(nightDiff)}</span></div>}
               {r.allowances > 0 && <div className="payslip-row"><span>Allowances</span><span>{formatPHP(r.allowances)}</span></div>}
               <div className="payslip-row" style={{ fontWeight: 700 }}><span>Gross Pay</span><span>{formatPHP(r.grossPay)}</span></div>
 
@@ -797,12 +847,15 @@ function PayslipModal({ record: r, payPeriodType, runPeriod, onClose }: {
               <div className="payslip-row"><span>Pag-IBIG Contribution</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.pagibigContrib)})</span></div>
               <div className="payslip-row"><span>Taxable Income</span><span>{formatPHP(r.taxableIncome)}</span></div>
               <div className="payslip-row"><span>Withholding Tax (TRAIN Law)</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.withholdingTax)})</span></div>
+              {lateDed > 0 && (
+                <div className="payslip-row"><span>Late Deduction</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(lateDed)})</span></div>
+              )}
               {otherDed > 0 && (
                 <div className="payslip-row"><span>Other Deductions</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(otherDed)})</span></div>
               )}
               <div className="payslip-row" style={{ fontWeight: 700 }}>
                 <span>Total Deductions</span>
-                <span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions + otherDed)})</span>
+                <span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions + otherDed + lateDed)})</span>
               </div>
 
               <div className="divider" />

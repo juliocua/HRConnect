@@ -216,6 +216,9 @@ export interface PayrollRecord {
   daysWorked: number;
   overtimePay: number;
   allowances: number;
+  lateDeduction: number;
+  holidayPay: number;
+  nightDifferential: number;
 }
 
 export interface PayrollRun {

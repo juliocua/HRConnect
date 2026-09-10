@@ -437,6 +437,9 @@ model PayrollRecord {
   overtimePay       Float      @default(0)
   allowances        Float      @default(0)
   otherDeductions   Float      @default(0)
+  lateDeduction     Float      @default(0)
+  holidayPay        Float      @default(0)
+  nightDifferential Float      @default(0)
 
   @@unique([payrollRunId, employeeId])
   @@map("payroll_records")

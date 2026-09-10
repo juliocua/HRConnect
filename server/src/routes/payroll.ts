@@ -115,6 +115,9 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
     const run = record.payrollRun;
     const is13th = run.payPeriodType === 9;
     const otherDed = record.otherDeductions ?? 0;
+    const lateDed = (record as any).lateDeduction ?? 0;
+    const holidayPay = (record as any).holidayPay ?? 0;
+    const nightDiff = (record as any).nightDifferential ?? 0;
 
     const phpFmt = (n: number) =>
       `PHP ${Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -213,6 +216,8 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
       lineRow('Basic Salary (Monthly)', phpFmt(record.basicSalary));
       lineRow(`Days Worked  (${record.daysWorked} of 22)`, phpFmt((record.basicSalary / 22) * record.daysWorked));
       if (record.overtimePay > 0) lineRow('Overtime Pay', phpFmt(record.overtimePay));
+      if (holidayPay > 0) lineRow('Holiday Pay', phpFmt(holidayPay));
+      if (nightDiff > 0) lineRow('Night Differential', phpFmt(nightDiff));
       if (record.allowances > 0) lineRow('Allowances', phpFmt(record.allowances));
       lineRow('Gross Pay', phpFmt(record.grossPay), true);
       separator(true);
@@ -222,8 +227,9 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
       lineRow('Pag-IBIG Contribution', `(${phpFmt(record.pagibigContrib)})`, false, '#dc2626');
       lineRow('Taxable Income', phpFmt(record.taxableIncome));
       lineRow('Withholding Tax  (TRAIN Law)', `(${phpFmt(record.withholdingTax)})`, false, '#dc2626');
+      if (lateDed > 0) lineRow('Late Deduction', `(${phpFmt(lateDed)})`, false, '#dc2626');
       if (otherDed > 0) lineRow('Other Deductions', `(${phpFmt(otherDed)})`, false, '#dc2626');
-      lineRow('Total Deductions', `(${phpFmt(record.totalDeductions + otherDed)})`, true, '#dc2626');
+      lineRow('Total Deductions', `(${phpFmt(record.totalDeductions + otherDed + lateDed)})`, true, '#dc2626');
     }
 
     separator();
@@ -653,7 +659,7 @@ router.delete('/run/:runId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (re
   }
 });
 
-// PUT /api/payroll/run/:runId/record/:recordId — update otherDeductions (DRAFT only)
+// PUT /api/payroll/run/:runId/record/:recordId — update HR-editable fields (DRAFT only)
 router.put('/run/:runId/record/:recordId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const run = await prisma.payrollRun.findUnique({ where: { id: req.params.runId } });
@@ -662,24 +668,32 @@ router.put('/run/:runId/record/:recordId', requireRole('HR_MANAGER', 'SUPER_ADMI
       return res.status(422).json({ error: `Cannot edit a ${run.status} payroll run. Only DRAFT runs are editable.` });
     }
 
-    const { otherDeductions } = z.object({
-      otherDeductions: z.number().min(0),
+    const body = z.object({
+      otherDeductions:   z.number().min(0).optional(),
+      lateDeduction:     z.number().min(0).optional(),
+      holidayPay:        z.number().min(0).optional(),
+      nightDifferential: z.number().min(0).optional(),
     }).parse(req.body);
 
-    const record = await prisma.payrollRecord.update({
-      where: { id: req.params.recordId },
-      data: {
-        otherDeductions,
-        netPay: { decrement: 0 }, // trigger override below
-      },
-    });
+    const updateData: Record<string, number> = {};
+    if (body.otherDeductions   !== undefined) updateData.otherDeductions   = body.otherDeductions;
+    if (body.lateDeduction     !== undefined) updateData.lateDeduction     = body.lateDeduction;
+    if (body.holidayPay        !== undefined) updateData.holidayPay        = body.holidayPay;
+    if (body.nightDifferential !== undefined) updateData.nightDifferential = body.nightDifferential;
 
-    const fresh = await prisma.payrollRecord.findUnique({ where: { id: record.id } });
+    await prisma.payrollRecord.update({ where: { id: req.params.recordId }, data: updateData });
+
+    // Re-fetch and recompute grossPay / netPay from all current values
+    const fresh = await prisma.payrollRecord.findUnique({ where: { id: req.params.recordId } });
     if (fresh) {
-      const newNetPay = fresh.grossPay - fresh.totalDeductions - fresh.otherDeductions;
+      const basePay       = (fresh.basicSalary / 22) * fresh.daysWorked;
+      const newGrossPay   = basePay + (fresh.overtimePay ?? 0) + (fresh.allowances ?? 0)
+                          + (fresh.holidayPay ?? 0) + (fresh.nightDifferential ?? 0);
+      const newNetPay     = newGrossPay - fresh.totalDeductions
+                          - (fresh.otherDeductions ?? 0) - (fresh.lateDeduction ?? 0);
       await prisma.payrollRecord.update({
-        where: { id: record.id },
-        data: { netPay: newNetPay },
+        where: { id: req.params.recordId },
+        data:  { grossPay: newGrossPay, netPay: newNetPay },
       });
     }
 
