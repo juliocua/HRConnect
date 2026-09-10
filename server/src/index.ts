@@ -49,7 +49,8 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // ── Static: uploaded files ────────────────────────────────────────────────────
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+const uploadsBase = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadsBase));
 
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);

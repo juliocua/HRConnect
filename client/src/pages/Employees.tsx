@@ -873,10 +873,20 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
           <InfoRow label="Employee No." value={e.employeeNo} mono />
           <InfoRow label="Email" value={e.email} />
           {e.phone && <InfoRow label="Phone" value={e.phone} />}
+          {e.address && <InfoRow label="Address" value={e.address} />}
           <InfoRow label="Hire Date" value={formatDate(e.hireDate)} />
           <InfoRow label="Basic Salary" value={`₱${e.basicSalary.toLocaleString('en-PH')}`} />
           {e.manager && (
             <InfoRow label="Reports To" value={`${e.manager.firstName} ${e.manager.lastName} · ${e.manager.position}`} />
+          )}
+
+          {(e.emergencyContactName || e.emergencyContactPhone) && (
+            <>
+              <div className="divider" />
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Emergency Contact</div>
+              {e.emergencyContactName && <InfoRow label="Name" value={e.emergencyContactName} />}
+              {e.emergencyContactPhone && <InfoRow label="Phone" value={e.emergencyContactPhone} />}
+            </>
           )}
 
           {(e.sssNo || e.philhealthNo || e.pagibigNo || e.tinNo) && (

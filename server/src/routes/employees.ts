@@ -8,7 +8,9 @@ import { prisma } from '../lib/prisma';
 import { authenticate, requireRole } from '../middleware/authenticate';
 
 // ── Photo upload config ───────────────────────────────────────────────────────
-const uploadsDir = path.join(process.cwd(), 'uploads', 'photos');
+const uploadsDir = process.env.UPLOADS_DIR
+  ? path.join(process.env.UPLOADS_DIR, 'photos')
+  : path.join(process.cwd(), 'uploads', 'photos');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const photoStorage = multer.diskStorage({
