@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { OTStatus } from '@/types';
+import type { OTStatus, AttendanceRecord } from '@/types';
 
 interface MyOTRequest {
   id: string;
@@ -23,6 +23,10 @@ const STATUS_COLORS: Record<OTStatus, string> = {
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 export default function HubOvertime() {
@@ -138,6 +142,21 @@ function FileOTModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
   const [saving, setSaving] = useState(false);
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+  // Auto-calculate OT hours from clock records when date is selected
+  const { data: dayRecords = [] } = useQuery<AttendanceRecord[]>({
+    queryKey: ['hub-ot-day', form.date],
+    queryFn: () => api.get(`/attendance/me?startDate=${form.date}&endDate=${form.date}`).then(r => r.data),
+    enabled: !!form.date,
+  });
+  const dayRecord = dayRecords.find(r => r.date.slice(0, 10) === form.date) ?? null;
+
+  useEffect(() => {
+    if (!dayRecord?.clockInAt || !dayRecord?.clockOutAt) return;
+    const workedHrs = (new Date(dayRecord.clockOutAt).getTime() - new Date(dayRecord.clockInAt).getTime()) / 3600000;
+    const ot = Math.max(0, Math.round((workedHrs - 8) * 2) / 2);
+    if (ot > 0) set('hours', String(ot));
+  }, [dayRecord]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -185,6 +204,11 @@ function FileOTModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
                   value={form.hours}
                   onChange={e => set('hours', e.target.value)}
                 />
+                {dayRecord?.clockInAt && dayRecord?.clockOutAt && (
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                    ✨ Auto-calculated from clock records ({formatTime(dayRecord.clockInAt)} – {formatTime(dayRecord.clockOutAt)})
+                  </div>
+                )}
               </div>
             </div>
             <div className="form-group">

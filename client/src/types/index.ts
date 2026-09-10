@@ -127,6 +127,26 @@ export interface AttendanceRecord {
   clockOutAt?: string;
 }
 
+export type AttendanceEditRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface AttendanceEditRequest {
+  id: string;
+  employeeId: string;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
+  attendanceDate: string;
+  requestedTimeIn?: string | null;
+  requestedTimeOut?: string | null;
+  requestedStatus?: string | null;
+  reason: string;
+  attachmentUrl?: string | null;
+  status: AttendanceEditRequestStatus;
+  reviewedById?: string | null;
+  reviewedAt?: string | null;
+  rejectionNote?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Leave ─────────────────────────────────────────────────────────────────────
 export interface LeaveType {
   id: string;

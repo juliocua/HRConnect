@@ -1,7 +1,33 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { prisma } from '../lib/prisma';
 import { authenticate, requireRole } from '../middleware/authenticate';
+
+// ── Attachment upload config ──────────────────────────────────────────────────
+const attachmentsDir = process.env.UPLOADS_DIR
+  ? path.join(process.env.UPLOADS_DIR, 'attachments')
+  : path.join(process.cwd(), 'uploads', 'attachments');
+if (!fs.existsSync(attachmentsDir)) fs.mkdirSync(attachmentsDir, { recursive: true });
+
+const attachmentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, attachmentsDir),
+  filename: (req, _file, cb) => {
+    const ext = path.extname(_file.originalname) || '.jpg';
+    cb(null, `att-edit-${req.user?.userId ?? 'anon'}-${Date.now()}${ext}`);
+  },
+});
+const attachmentUpload = multer({
+  storage: attachmentStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/', 'application/pdf'];
+    if (allowed.some(t => file.mimetype.startsWith(t))) cb(null, true);
+    else cb(new Error('Only images and PDFs are allowed'));
+  },
+});
 
 const router = Router();
 router.use(authenticate);
@@ -164,6 +190,123 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
   } catch (err) {
     next(err);
   }
+});
+
+// POST /api/attendance/edit-request  — employee submits a time-edit request (with optional attachment)
+router.post('/edit-request', attachmentUpload.single('attachment'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { employeeId } = req.user!;
+    if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
+
+    const body = z.object({
+      attendanceDate: z.string(),
+      requestedTimeIn: z.string().optional(),
+      requestedTimeOut: z.string().optional(),
+      requestedStatus: z.string().optional(),
+      reason: z.string().min(10, 'Reason must be at least 10 characters'),
+    }).parse(typeof req.body === 'string' ? JSON.parse(req.body) : req.body);
+
+    const dateStr = body.attendanceDate.slice(0, 10);
+    const timeInDt = body.requestedTimeIn ? new Date(`${dateStr}T${body.requestedTimeIn}:00+08:00`) : undefined;
+    const timeOutDt = body.requestedTimeOut ? new Date(`${dateStr}T${body.requestedTimeOut}:00+08:00`) : undefined;
+
+    let attachmentUrl: string | undefined;
+    if (req.file) {
+      const baseUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3001}`;
+      attachmentUrl = `${baseUrl}/uploads/attachments/${req.file.filename}`;
+    }
+
+    const request = await (prisma as any).attendanceEditRequest.create({
+      data: {
+        employeeId,
+        attendanceDate: new Date(body.attendanceDate),
+        requestedTimeIn: timeInDt ?? null,
+        requestedTimeOut: timeOutDt ?? null,
+        requestedStatus: body.requestedStatus ?? null,
+        reason: body.reason,
+        attachmentUrl: attachmentUrl ?? null,
+      },
+      include: {
+        employee: { select: { firstName: true, lastName: true } },
+      },
+    });
+    res.status(201).json(request);
+  } catch (err) { next(err); }
+});
+
+// GET /api/attendance/edit-requests  — HR: list PENDING edit requests
+router.get('/edit-requests', requireRole('HR_MANAGER', 'HR_STAFF', 'SUPER_ADMIN'), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requests = await (prisma as any).attendanceEditRequest.findMany({
+      where: { status: 'PENDING' },
+      include: {
+        employee: {
+          select: { id: true, firstName: true, lastName: true, position: true, avatarColor: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json(requests);
+  } catch (err) { next(err); }
+});
+
+// GET /api/attendance/edit-requests/me  — employee: view their own edit request history
+router.get('/edit-requests/me', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { employeeId } = req.user!;
+    if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
+    const requests = await (prisma as any).attendanceEditRequest.findMany({
+      where: { employeeId },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+    res.json(requests);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/attendance/edit-requests/:id/approve  — HR: apply and approve
+router.put('/edit-requests/:id/approve', requireRole('HR_MANAGER', 'HR_STAFF', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const editReq = await (prisma as any).attendanceEditRequest.findUnique({ where: { id: req.params.id } });
+    if (!editReq) return res.status(404).json({ error: 'Edit request not found' });
+    if (editReq.status !== 'PENDING') return res.status(422).json({ error: 'Request is not pending' });
+
+    const dateStr = editReq.attendanceDate.toISOString().slice(0, 10);
+    const updateData: Record<string, unknown> = {};
+    if (editReq.requestedTimeIn) { updateData.timeIn = editReq.requestedTimeIn; updateData.clockInAt = editReq.requestedTimeIn; }
+    if (editReq.requestedTimeOut) { updateData.timeOut = editReq.requestedTimeOut; updateData.clockOutAt = editReq.requestedTimeOut; }
+    if (editReq.requestedStatus) updateData.status = editReq.requestedStatus;
+    updateData.isManualEntry = true;
+    updateData.manualReason = editReq.reason;
+
+    await prisma.attendance.upsert({
+      where: { employeeId_date: { employeeId: editReq.employeeId, date: editReq.attendanceDate } },
+      update: updateData as any,
+      create: { employeeId: editReq.employeeId, date: editReq.attendanceDate, status: (editReq.requestedStatus ?? 'PRESENT') as any, ...updateData as any },
+    });
+
+    const updated = await (prisma as any).attendanceEditRequest.update({
+      where: { id: req.params.id },
+      data: { status: 'APPROVED', reviewedById: req.user!.userId, reviewedAt: new Date() },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/attendance/edit-requests/:id/reject  — HR: reject with note
+router.put('/edit-requests/:id/reject', requireRole('HR_MANAGER', 'HR_STAFF', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { rejectionNote } = z.object({ rejectionNote: z.string().optional() }).parse(req.body);
+    const editReq = await (prisma as any).attendanceEditRequest.findUnique({ where: { id: req.params.id } });
+    if (!editReq) return res.status(404).json({ error: 'Edit request not found' });
+    if (editReq.status !== 'PENDING') return res.status(422).json({ error: 'Request is not pending' });
+
+    const updated = await (prisma as any).attendanceEditRequest.update({
+      where: { id: req.params.id },
+      data: { status: 'REJECTED', reviewedById: req.user!.userId, reviewedAt: new Date(), rejectionNote: rejectionNote ?? null },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
 });
 
 // ── HR / Admin routes ──────────────────────────────────────────────────────

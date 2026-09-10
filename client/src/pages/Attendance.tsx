@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { DataTable } from '@/components/DataTable';
-import type { AttendanceRecord, AttendanceStatus, Employee, Client } from '@/types';
+import type { AttendanceRecord, AttendanceStatus, AttendanceEditRequest, Employee, Client } from '@/types';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import { ClientCombobox } from '@/components/ClientCombobox';
 
@@ -216,6 +216,8 @@ export default function Attendance() {
         </div>
       </div>
 
+      <AttendanceEditRequestsPanel />
+
       {isLoading ? (
         <div className="loading-center"><div className="spinner" /></div>
       ) : records.length === 0 ? (
@@ -377,4 +379,150 @@ function formatTime(t: string) {
   const [h, m] = t.split(':');
   const hour = parseInt(h);
   return `${hour % 12 || 12}:${m} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+function resolveAttachmentUrl(url: string) {
+  if (!url) return url;
+  if (url.startsWith('http')) {
+    try {
+      const u = new URL(url);
+      const base = ((import.meta.env.VITE_API_URL as string) ?? '').replace(/\/$/, '');
+      return `${base}${u.pathname}`;
+    } catch { return url; }
+  }
+  const base = ((import.meta.env.VITE_API_URL as string) ?? '').replace(/\/$/, '');
+  return `${base}${url}`;
+}
+
+function AttendanceEditRequestsPanel() {
+  const qc = useQueryClient();
+  const [rejectId, setRejectId] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState('');
+
+  const { data: requests = [], isLoading } = useQuery<AttendanceEditRequest[]>({
+    queryKey: ['attendance-edit-requests'],
+    queryFn: () => api.get('/attendance/edit-requests').then(r => r.data),
+    refetchInterval: 60_000,
+  });
+
+  const pending = requests.filter(r => r.status === 'PENDING');
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => api.put(`/attendance/edit-requests/${id}/approve`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['attendance-edit-requests'] });
+      qc.invalidateQueries({ queryKey: ['attendance'] });
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) =>
+      api.put(`/attendance/edit-requests/${id}/reject`, { rejectionNote: note }),
+    onSuccess: () => {
+      setRejectId(null);
+      setRejectNote('');
+      qc.invalidateQueries({ queryKey: ['attendance-edit-requests'] });
+    },
+  });
+
+  if (!isLoading && pending.length === 0) return null;
+
+  return (
+    <div className="card" style={{ marginBottom: 20, borderColor: '#FCD34D' }}>
+      <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="card-title">Attendance Edit Requests</div>
+        {pending.length > 0 && <span className="badge badge-yellow">{pending.length} pending</span>}
+      </div>
+      {isLoading ? (
+        <div className="loading-center"><div className="spinner" /></div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Date</th>
+                <th>Requested Changes</th>
+                <th>Reason</th>
+                <th>Attachment</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pending.map(req => (
+                <tr key={req.id}>
+                  <td>
+                    <div className="emp-info">
+                      <div className="emp-avatar" style={{ background: req.employee.avatarColor }}>
+                        {req.employee.firstName[0]}{req.employee.lastName[0]}
+                      </div>
+                      <div>
+                        <div className="emp-name">{req.employee.firstName} {req.employee.lastName}</div>
+                        <div className="emp-role">{req.employee.position}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="text-sm">
+                    {new Date(req.attendanceDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </td>
+                  <td className="text-sm" style={{ minWidth: 140 }}>
+                    {req.requestedStatus && <div><strong>Status:</strong> {req.requestedStatus.replace('_', ' ')}</div>}
+                    {req.requestedTimeIn && <div><strong>In:</strong> {formatTime(req.requestedTimeIn)}</div>}
+                    {req.requestedTimeOut && <div><strong>Out:</strong> {formatTime(req.requestedTimeOut)}</div>}
+                  </td>
+                  <td className="text-sm text-muted" style={{ maxWidth: 200 }}>{req.reason}</td>
+                  <td>
+                    {req.attachmentUrl
+                      ? <a href={resolveAttachmentUrl(req.attachmentUrl)} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">View</a>
+                      : <span className="text-muted text-sm">—</span>
+                    }
+                  </td>
+                  <td>
+                    {rejectId === req.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 200 }}>
+                        <input
+                          className="form-control"
+                          placeholder="Rejection note…"
+                          value={rejectNote}
+                          onChange={e => setRejectNote(e.target.value)}
+                          style={{ fontSize: 12 }}
+                        />
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            disabled={rejectMutation.isPending}
+                            onClick={() => rejectMutation.mutate({ id: req.id, note: rejectNote })}
+                          >
+                            {rejectMutation.isPending ? '…' : 'Confirm'}
+                          </button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => { setRejectId(null); setRejectNote(''); }}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          disabled={approveMutation.isPending}
+                          onClick={() => approveMutation.mutate(req.id)}
+                        >
+                          {approveMutation.isPending ? '…' : 'Approve'}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: 'var(--color-danger)' }}
+                          onClick={() => setRejectId(req.id)}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }

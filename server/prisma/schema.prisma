@@ -106,13 +106,14 @@ model Employee {
   bankAccountNo   String?
   bankAccountName String?
 
-  attendance            Attendance[]
-  leaveRequests         LeaveRequest[]
-  leaveBalances         LeaveBalance[]
-  payrollRecords        PayrollRecord[]
-  overtimeRequests      OvertimeRequest[]
-  profileChangeRequests ProfileChangeRequest[]
-  user                  User?
+  attendance              Attendance[]
+  leaveRequests           LeaveRequest[]
+  leaveBalances           LeaveBalance[]
+  payrollRecords          PayrollRecord[]
+  overtimeRequests        OvertimeRequest[]
+  profileChangeRequests   ProfileChangeRequest[]
+  attendanceEditRequests  AttendanceEditRequest[]
+  user                    User?
 
   @@map("employees")
 }
@@ -277,6 +278,28 @@ enum AttendanceStatus {
   ON_LEAVE
   HOLIDAY
   WEEKEND
+}
+
+// ── Attendance Edit Requests ──────────────────────────────────────────────────
+
+model AttendanceEditRequest {
+  id               String    @id @default(cuid())
+  employeeId       String
+  employee         Employee  @relation(fields: [employeeId], references: [id])
+  attendanceDate   DateTime  @db.Date
+  requestedTimeIn  DateTime?
+  requestedTimeOut DateTime?
+  requestedStatus  String?
+  reason           String
+  attachmentUrl    String?
+  status           String    @default("PENDING")
+  reviewedById     String?
+  reviewedAt       DateTime?
+  rejectionNote    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("attendance_edit_requests")
 }
 
 // ── Leave ─────────────────────────────────────────────────────────────────────
