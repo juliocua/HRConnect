@@ -394,14 +394,14 @@ function EmployeeModal({
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal modal-lg">
-        <div className="modal-header">
+      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh, 860px)' }}>
+        <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2 className="modal-title">{isEdit ? 'Edit Employee' : 'Add Employee'}</h2>
           <button className="icon-btn" onClick={onClose}>✕</button>
         </div>
         {tempPassword ? (
           <>
-            <div className="modal-body" style={{ gap: 16 }}>
+            <div className="modal-body" style={{ flex: 1, overflowY: 'auto', gap: 16 }}>
               <div style={{ textAlign: 'center', padding: '8px 0' }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
                 <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Employee Added!</div>
@@ -422,11 +422,51 @@ function EmployeeModal({
             </div>
           </>
         ) : (
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
-            {error && <div className="error-msg">{error}</div>}
-
+        <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Pinned profile header — same layout as view modal, never scrolls */}
+          <div style={{ padding: '20px 24px 16px', flexShrink: 0, borderBottom: '1px solid var(--color-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
+              <div style={{ flexShrink: 0 }}>
+                <div style={{
+                  width: 240, height: 300, borderRadius: 12,
+                  background: isEdit ? initial!.avatarColor : form.avatarColor,
+                  overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 64, fontWeight: 800, color: '#fff',
+                }}>
+                  {isEdit && initial!.photoUrl
+                    ? <img src={resolvePhotoUrl(initial!.photoUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                    : <>
+                        {(isEdit ? initial!.firstName : form.firstName)[0] ?? '?'}
+                        {(isEdit ? initial!.lastName : form.lastName)[0] ?? '?'}
+                      </>
+                  }
+                </div>
+              </div>
+              <div style={{ flex: 1, paddingTop: 4 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>
+                  {isEdit
+                    ? `${initial!.firstName} ${initial!.lastName}`
+                    : (form.firstName || form.lastName ? `${form.firstName} ${form.lastName}`.trim() : 'New Employee')}
+                </div>
+                <div style={{ color: 'var(--color-text-secondary)', marginTop: 4, fontSize: 14 }}>
+                  {isEdit ? initial!.position : (form.position || 'New Position')}
+                </div>
+                {isEdit && (
+                  <>
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{initial!.department.name}</div>
+                    <span className={`badge ${STATUS_COLORS[form.status]}`} style={{ marginTop: 10, display: 'inline-block' }}>{STATUS_LABELS[form.status]}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          {/* Pinned tab bar — never scrolls */}
+          <div style={{ padding: '0 24px', flexShrink: 0 }}>
             <TabBar tabs={EDIT_TABS} active={activeTab} onChange={setActiveTab} />
+          </div>
+          {/* Scrollable tab content */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 16px' }}>
+            {error && <div className="error-msg" style={{ marginTop: 16 }}>{error}</div>}
 
             {/* ── Tab: Basic Info ── */}
             {activeTab === 'Basic Info' && (
@@ -704,7 +744,7 @@ function EmployeeModal({
               </>
             )}
           </div>
-          <div className="modal-footer">
+          <div className="modal-footer" style={{ flexShrink: 0 }}>
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Employee'}
@@ -906,17 +946,18 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
 
   return (
     <div className="modal-overlay" onClick={ev => ev.target === ev.currentTarget && onClose()}>
-      <div className="modal modal-lg">
-        <div className="modal-header">
+      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh, 860px)' }}>
+        <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2 className="modal-title">Employee Profile</h2>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-secondary btn-sm" onClick={onEdit}>Edit</button>
             <button className="icon-btn" onClick={onClose}>✕</button>
           </div>
         </div>
-        <div className="modal-body">
+        {/* Pinned profile header — never scrolls */}
+        <div style={{ padding: '20px 24px 16px', flexShrink: 0, borderBottom: '1px solid var(--color-border)' }}>
           {/* Profile header — large photo + name, always visible across all tabs */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
             {/* Large portrait photo */}
             <div style={{ flexShrink: 0 }}>
               <div style={{
@@ -978,10 +1019,13 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
               </div>
             </div>
           </div>
-
-          {/* Tab navigation */}
+        </div>
+        {/* Pinned tab bar — never scrolls */}
+        <div style={{ padding: '0 24px', flexShrink: 0 }}>
           <TabBar tabs={VIEW_TABS} active={activeTab} onChange={setActiveTab} />
-
+        </div>
+        {/* Scrollable tab content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px 24px' }}>
           {/* ── Profile tab ── */}
           {activeTab === 'Profile' && (
             <>
