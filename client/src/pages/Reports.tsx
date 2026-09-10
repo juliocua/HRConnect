@@ -421,7 +421,7 @@ function BillingSummaryTable({ data }: { data: BillingSummaryRow[] }) {
         <SummaryBox label="Invoices" value={String(data.reduce((s, r) => s + r.invoiceCount, 0))} color="#FFFBEB" />
       </div>
       <div className="table-wrap">
-        <table>
+        <table className="data-table" style={{ minWidth: '100%' }}>
           <thead>
             <tr>
               <th>Client</th>
@@ -497,7 +497,7 @@ function MarginTable({ data, groupBy }: { data: MarginRow[]; groupBy: string }) 
           <SummaryBox label="Groups" value={String(groups.length)} color="#FFFBEB" />
         </div>
         <div className="table-wrap">
-          <table>
+          <table className="data-table" style={{ minWidth: '100%' }}>
             <thead>
               <tr>
                 <th>{groupBy === 'client' ? 'Client' : 'Department'}</th>
@@ -558,7 +558,7 @@ function MarginTable({ data, groupBy }: { data: MarginRow[]; groupBy: string }) 
         <SummaryBox label="Avg Margin %" value={totalRC > 0 ? `${Math.round((totalMargin / totalRC) * 100)}%` : '—'} color="#FFFBEB" />
       </div>
       <div className="table-wrap">
-        <table>
+        <table className="data-table" style={{ minWidth: '100%' }}>
           <thead>
             <tr>
               <th>Employee</th>
@@ -639,7 +639,7 @@ function DeploymentTable({ data, groupBy }: { data: DeploymentRow[]; groupBy: st
           <SummaryBox label="Groups" value={String(groups.length)} color="#F5F3FF" />
         </div>
         <div className="table-wrap">
-          <table>
+          <table className="data-table" style={{ minWidth: '100%' }}>
             <thead>
               <tr>
                 <th>{groupBy === 'client' ? 'Client' : groupBy === 'department' ? 'Department' : 'Status'}</th>
@@ -712,7 +712,7 @@ function DeploymentTable({ data, groupBy }: { data: DeploymentRow[]; groupBy: st
         <SummaryBox label="Deployment Rate" value={data.length > 0 ? `${Math.round((deployed / data.length) * 100)}%` : '—'} color="#F5F3FF" />
       </div>
       <div className="table-wrap">
-        <table>
+        <table className="data-table" style={{ minWidth: '100%' }}>
           <thead>
             <tr>
               <th>Employee</th>
@@ -810,7 +810,7 @@ function AttendanceTable({ data, groupBy }: { data: AttendanceSummaryRow[]; grou
           <SummaryBox label={groupBy === 'client' ? 'Clients' : 'Departments'} value={String(groups.length)} color="#FFFBEB" />
         </div>
         <div className="table-wrap">
-          <table>
+          <table className="data-table" style={{ minWidth: '100%' }}>
             <thead>
               <tr>
                 <th>{groupBy === 'client' ? 'Client' : 'Department'}</th>
@@ -888,7 +888,7 @@ function AttendanceTable({ data, groupBy }: { data: AttendanceSummaryRow[]; grou
         <SummaryBox label="Total Leave Days" value={String(data.reduce((s, r) => s + r.onLeave, 0))} color="#FFFBEB" />
       </div>
       <div className="table-wrap">
-        <table>
+        <table className="data-table" style={{ minWidth: '100%' }}>
           <thead>
             <tr>
               <th>Employee</th>

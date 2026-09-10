@@ -260,7 +260,7 @@ export default function ClientDetail() {
             </div>
           ) : (
             <div className="table-wrap">
-              <table>
+              <table className="data-table" style={{ minWidth: '100%' }}>
                 <thead>
                   <tr>
                     <th>Billing Date</th>

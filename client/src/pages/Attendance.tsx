@@ -86,8 +86,6 @@ export default function Attendance() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }),
   });
 
-  const handlePrint = () => window.print();
-
   const columns = useMemo<ColumnDef<AttendanceRecord>[]>(() => [
     {
       id: 'employee',
@@ -162,7 +160,6 @@ export default function Attendance() {
           <p className="page-desc">Track daily time & attendance records</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost" onClick={handlePrint}>🖨️ Print / PDF</button>
           <a href="/import?type=time" className="btn btn-ghost">⬆ Import CSV</a>
           <button className="btn btn-primary" onClick={() => { setEditTarget(null); setShowModal(true); }}>
             ＋ Log Attendance
@@ -437,7 +434,7 @@ function AttendanceEditRequestsPanel() {
         <div className="loading-center"><div className="spinner" /></div>
       ) : (
         <div className="table-wrap">
-          <table>
+          <table className="data-table" style={{ minWidth: '100%' }}>
             <thead>
               <tr>
                 <th>Employee</th>

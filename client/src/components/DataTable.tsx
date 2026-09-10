@@ -10,6 +10,8 @@ import {
   type ColumnFiltersState,
 } from '@tanstack/react-table';
 import { useState, useCallback } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface DataTableProps<T> {
   data: T[];
@@ -77,38 +79,26 @@ export function DataTable<T>({
     const headers = table.getVisibleFlatColumns()
       .filter(c => c.id !== 'actions')
       .map(c => String(c.columnDef.header ?? c.id));
-
-    const escape = (s: string) =>
-      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    const thCells = headers.map(h => `<th>${escape(h)}</th>`).join('');
-    const trRows = rows.map(row =>
-      `<tr>${table.getVisibleFlatColumns()
+    const body = rows.map(row =>
+      table.getVisibleFlatColumns()
         .filter(c => c.id !== 'actions')
         .map(col => {
           const val = row.getValue(col.id);
-          return `<td>${escape(val == null ? '' : String(val))}</td>`;
-        }).join('')}</tr>`
-    ).join('');
-
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${exportFilename}</title>
-<style>
-  body { font-family: Arial, sans-serif; font-size: 11px; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
-  th { background: #f0f0f0; font-weight: bold; }
-  tr:nth-child(even) { background: #f9f9f9; }
-</style></head><body>
-<h2 style="margin-bottom:12px">${escape(exportFilename)}</h2>
-<table><thead><tr>${thCells}</tr></thead><tbody>${trRows}</tbody></table>
-</body></html>`;
-
-    const win = window.open('', '_blank');
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    win.print();
+          return val == null ? '' : String(val);
+        })
+    );
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(12);
+    doc.text(exportFilename, 14, 14);
+    autoTable(doc, {
+      head: [headers],
+      body,
+      startY: 22,
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+    });
+    doc.save(`${exportFilename}.pdf`);
   }, [table, exportFilename]);
 
   const { pageIndex, pageSize: currentPageSize } = table.getState().pagination;
@@ -129,7 +119,7 @@ export function DataTable<T>({
             </svg>
             CSV
           </button>
-          <button className="btn btn-sm btn-secondary" onClick={exportPDF} title="Print / PDF">
+          <button className="btn btn-sm btn-secondary" onClick={exportPDF} title="Export PDF">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
               <polyline points="6 9 6 2 18 2 18 9"/>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
