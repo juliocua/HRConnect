@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import type { AttendanceRecord, AttendanceStatus, AttendanceEditRequest, Employee, Client } from '@/types';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
@@ -47,6 +48,7 @@ function toTimeInput(t: string | null | undefined, fallback: string): string {
 
 export default function Attendance() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [startDate, setStartDate] = useState(todayStr);
   const [endDate, setEndDate] = useState(todayStr);
   const [empFilter, setEmpFilter] = useState('');
@@ -83,7 +85,8 @@ export default function Attendance() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/attendance/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }),
+    onSuccess: () => { toast('success', 'Record deleted'); qc.invalidateQueries({ queryKey: ['attendance'] }); },
+    onError: () => toast('error', 'Failed to delete record'),
   });
 
   const columns = useMemo<ColumnDef<AttendanceRecord>[]>(() => [
@@ -266,6 +269,7 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const isEdit = !!initial;
   const [form, setForm] = useState({
     employeeId: initial?.employeeId ?? '',
@@ -290,9 +294,12 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
       } else {
         await api.post('/attendance', form);
       }
+      toast('success', 'Attendance saved');
       onSaved();
     } catch (err: unknown) {
-      setError((err as any)?.response?.data?.error ?? 'Failed to save');
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to save';
+      setError(msg);
+      toast('error', msg);
     } finally {
       setSaving(false);
     }
@@ -415,6 +422,7 @@ function resolveAttachmentUrl(url: string) {
 
 function AttendanceEditRequestsPanel() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState('');
 
@@ -429,19 +437,23 @@ function AttendanceEditRequestsPanel() {
   const approveMutation = useMutation({
     mutationFn: (id: string) => api.put(`/attendance/edit-requests/${id}/approve`),
     onSuccess: () => {
+      toast('success', 'Edit request approved');
       qc.invalidateQueries({ queryKey: ['attendance-edit-requests'] });
       qc.invalidateQueries({ queryKey: ['attendance'] });
     },
+    onError: () => toast('error', 'Failed to approve request'),
   });
 
   const rejectMutation = useMutation({
     mutationFn: ({ id, note }: { id: string; note: string }) =>
       api.put(`/attendance/edit-requests/${id}/reject`, { rejectionNote: note }),
     onSuccess: () => {
+      toast('success', 'Edit request rejected');
       setRejectId(null);
       setRejectNote('');
       qc.invalidateQueries({ queryKey: ['attendance-edit-requests'] });
     },
+    onError: () => toast('error', 'Failed to reject request'),
   });
 
   if (!isLoading && pending.length === 0) return null;

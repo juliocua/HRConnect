@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { ToastProvider } from '@/lib/toast';
 import Layout from '@/components/Layout';
 import EmployeeHubLayout from '@/components/EmployeeHubLayout';
 import Login from '@/pages/Login';
@@ -118,7 +119,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <ToastProvider>
+        <AppRoutes />
+      </ToastProvider>
     </AuthProvider>
   );
 }

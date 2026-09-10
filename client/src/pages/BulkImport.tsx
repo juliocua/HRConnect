@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 
 type ImportType = 'client' | 'employee' | 'time';
 
@@ -64,6 +65,7 @@ const TYPE_META: Record<ImportType, { label: string; icon: string; desc: string;
 };
 
 export default function BulkImport() {
+  const toast = useToast();
   const [params] = useSearchParams();
   const preselect = params.get('type') as ImportType | null;
 
@@ -120,8 +122,11 @@ export default function BulkImport() {
       });
       setResult(res.data);
       setStep(3);
+      toast('success', 'Import complete');
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Import failed. Check the file and try again.');
+      const msg = err?.response?.data?.error ?? 'Import failed. Check the file and try again.';
+      setError(msg);
+      toast('error', msg);
     } finally {
       setLoading(false);
     }

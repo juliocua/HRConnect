@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { useAuth } from '@/context/AuthContext';
 import type { Employee, ProfileChangeRequest } from '@/types';
 
@@ -17,6 +18,7 @@ const AVATAR_COLORS = [
 export default function HubProfile() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const { data: employee, isLoading } = useQuery<Employee>({
     queryKey: ['hub-profile'],
@@ -49,8 +51,11 @@ export default function HubProfile() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       onSaved();
+      toast('success', 'Photo uploaded');
     } catch (err: any) {
-      setPhotoError(err?.response?.data?.error ?? 'Upload failed');
+      const msg = err?.response?.data?.error ?? 'Upload failed';
+      setPhotoError(msg);
+      toast('error', msg);
     } finally {
       setPhotoUploading(false);
     }
@@ -62,6 +67,9 @@ export default function HubProfile() {
     try {
       await api.delete(`/employees/${employee.id}/photo`);
       onSaved();
+      toast('success', 'Photo removed');
+    } catch {
+      toast('error', 'Failed to remove photo');
     } finally {
       setPhotoUploading(false);
     }
@@ -170,6 +178,7 @@ export default function HubProfile() {
 function AvatarColorPicker({ employeeId, current, initials, onSaved }: {
   employeeId: string; current: string; initials: string; onSaved: () => void;
 }) {
+  const toast = useToast();
   const [selected, setSelected] = useState(current);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -181,7 +190,10 @@ function AvatarColorPicker({ employeeId, current, initials, onSaved }: {
       await api.patch('/employees/me', { avatarColor: selected });
       onSaved();
       setSaved(true);
+      toast('success', 'Avatar color saved');
       setTimeout(() => setSaved(false), 2000);
+    } catch {
+      toast('error', 'Failed to save avatar color');
     } finally {
       setSaving(false);
     }
@@ -226,6 +238,7 @@ function AvatarColorPicker({ employeeId, current, initials, onSaved }: {
 
 // ── Change password form ───────────────────────────────────────────────────────
 function ChangePasswordForm() {
+  const toast = useToast();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -243,9 +256,12 @@ function ChangePasswordForm() {
         newPassword: form.newPassword,
       });
       setSuccess(true);
+      toast('success', 'Password changed');
       setForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err: unknown) {
-      setError((err as any)?.response?.data?.error ?? 'Failed to change password');
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to change password';
+      setError(msg);
+      toast('error', msg);
     } finally {
       setSaving(false);
     }
@@ -310,6 +326,7 @@ function ChangePasswordForm() {
 
 // ── Government IDs form ───────────────────────────────────────────────────────
 function GovtIdsForm({ employee, onSaved }: { employee: Employee; onSaved: () => void }) {
+  const toast = useToast();
   const [form, setForm] = useState({
     sssNo: employee.sssNo ?? '',
     philhealthNo: employee.philhealthNo ?? '',
@@ -328,8 +345,11 @@ function GovtIdsForm({ employee, onSaved }: { employee: Employee; onSaved: () =>
       await api.patch('/employees/me', form);
       onSaved();
       setSaved(true);
+      toast('success', 'Government IDs saved');
     } catch (err: unknown) {
-      setError((err as any)?.response?.data?.error ?? 'Failed to save');
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to save';
+      setError(msg);
+      toast('error', msg);
     } finally {
       setSaving(false);
     }
@@ -369,6 +389,7 @@ function GovtIdsForm({ employee, onSaved }: { employee: Employee; onSaved: () =>
 // ── Contact Details form ──────────────────────────────────────────────────────
 function ContactDetailsForm({ employee }: { employee: Employee }) {
   const qc = useQueryClient();
+  const toast = useToast();
 
   const { data: requests } = useQuery<ProfileChangeRequest[]>({
     queryKey: ['my-change-requests'],
@@ -393,9 +414,14 @@ function ContactDetailsForm({ employee }: { employee: Employee }) {
     mutationFn: (data: typeof form) => api.post('/employees/me/change-request', data),
     onSuccess: () => {
       setSuccess(true);
+      toast('success', 'Change request submitted');
       qc.invalidateQueries({ queryKey: ['my-change-requests'] });
     },
-    onError: (err: any) => setError(err?.response?.data?.error ?? 'Failed to submit request'),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error ?? 'Failed to submit request';
+      setError(msg);
+      toast('error', msg);
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {

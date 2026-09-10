@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import type { Client, BillingCycle } from '@/types';
 
@@ -165,6 +166,7 @@ function ClientModal({ client, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [form, setForm] = useState<any>(client ?? { ...BLANK });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -179,9 +181,12 @@ function ClientModal({ client, onClose, onSaved }: {
       } else {
         await api.post('/clients', form);
       }
+      toast('success', 'Client saved');
       onSaved();
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Failed to save');
+      const msg = err?.response?.data?.error ?? 'Failed to save';
+      setError(msg);
+      toast('error', 'Failed to save client');
     } finally {
       setSaving(false);
     }

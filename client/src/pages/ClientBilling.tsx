@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { formatPHP } from '@/lib/payroll';
 import { DataTable } from '@/components/DataTable';
 import type { Client, Billing, BillingSummary, BillingCycle } from '@/types';
@@ -13,6 +14,7 @@ const CYCLE_LABELS: Record<BillingCycle, string> = {
 
 export default function ClientBilling() {
   const qc = useQueryClient();
+  const toast = useToast();
   const today = new Date().toISOString().slice(0, 10);
   const [billingTab, setBillingTab] = useState<'generate' | 'invoices'>('generate');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -70,20 +72,25 @@ export default function ClientBilling() {
       qc.invalidateQueries({ queryKey: ['billing-clients-due'] });
       // Switch to invoices tab to show results
       if ((res.data.generated ?? []).length > 0) setBillingTab('invoices');
+      toast('success', 'Billing generated');
     },
+    onError: () => toast('error', 'Failed to generate billing'),
   });
 
   const resend = useMutation({
     mutationFn: (billingId: string) => api.post(`/billing/${billingId}/resend`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['billing-all'] }),
+    onSuccess: () => { toast('success', 'Invoice resent'); qc.invalidateQueries({ queryKey: ['billing-all'] }); },
+    onError: () => toast('error', 'Failed to resend invoice'),
   });
 
   const deleteBilling = useMutation({
     mutationFn: (billingId: string) => api.delete(`/billing/${billingId}`),
     onSuccess: () => {
+      toast('success', 'Invoice deleted');
       qc.invalidateQueries({ queryKey: ['billing-all'] });
       qc.invalidateQueries({ queryKey: ['billing-summary'] });
     },
+    onError: () => toast('error', 'Failed to delete invoice'),
   });
 
   const [sendingInvoice, setSendingInvoice] = useState<string | null>(null);
@@ -101,7 +108,7 @@ export default function ClientBilling() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
-      alert('Failed to download PDF.');
+      toast('error', 'Failed to download PDF');
     }
   };
 
@@ -111,9 +118,11 @@ export default function ClientBilling() {
     try {
       const res = await api.post(`/billing/${billingId}/send-invoice`);
       setSendMsg({ id: billingId, ok: true, text: `✓ Sent to ${res.data.email}` });
+      toast('success', 'Invoice sent');
     } catch (err: any) {
       const msg = err?.response?.data?.error ?? 'Failed to send invoice.';
       setSendMsg({ id: billingId, ok: false, text: msg });
+      toast('error', 'Failed to send invoice');
     } finally {
       setSendingInvoice(null);
     }
@@ -711,6 +720,7 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [paymentRef, setPaymentRef] = useState('');
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
@@ -748,9 +758,12 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
         paymentRef: paymentRef.trim(),
         paymentScreenshotUrl,
       });
+      toast('success', 'Payment recorded');
       onSaved();
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Failed to mark as paid.');
+      const msg = err?.response?.data?.error ?? 'Failed to mark as paid.';
+      setError(msg);
+      toast('error', 'Failed to mark as paid');
     } finally {
       setSaving(false);
     }

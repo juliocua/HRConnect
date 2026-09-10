@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { formatPHP } from '@/lib/payroll';
 import type { Client, ClientPolicy, Billing, BillingCycle, Employee } from '@/types';
 
@@ -42,6 +43,7 @@ export default function ClientDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>('overview');
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
@@ -58,12 +60,14 @@ export default function ClientDetail() {
 
   const resendBill = useMutation({
     mutationFn: (billingId: string) => api.post(`/billing/${billingId}/resend`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['client', id] }),
+    onSuccess: () => { toast('success', 'Invoice resent'); qc.invalidateQueries({ queryKey: ['client', id] }); },
+    onError: () => toast('error', 'Failed to resend invoice'),
   });
 
   const deletePolicy = useMutation({
     mutationFn: (policyId: string) => api.delete(`/clients/${id}/policies/${policyId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['client', id] }),
+    onSuccess: () => { toast('success', 'Policy deleted'); qc.invalidateQueries({ queryKey: ['client', id] }); },
+    onError: () => toast('error', 'Failed to delete policy'),
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['client', id] });
@@ -489,6 +493,7 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [paymentRef, setPaymentRef] = useState('');
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -512,10 +517,13 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
         setUploading(false);
       }
       await api.put(`/billing/${billingId}/mark-paid`, { paymentRef: paymentRef.trim(), paymentScreenshotUrl });
+      toast('success', 'Payment recorded');
       onSaved();
     } catch (err: any) {
       setUploading(false);
-      setError(err?.response?.data?.error ?? 'Failed to mark as paid');
+      const msg = err?.response?.data?.error ?? 'Failed to mark as paid';
+      setError(msg);
+      toast('error', 'Failed to mark as paid');
     } finally {
       setSaving(false);
     }
@@ -577,6 +585,7 @@ function ShiftPolicyModal({ clientId, policy, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const existing = parseShiftValue(policy?.value);
   const [shiftStart, setShiftStart] = useState(existing.shiftStart);
   const [shiftEnd, setShiftEnd] = useState(existing.shiftEnd);
@@ -599,9 +608,12 @@ function ShiftPolicyModal({ clientId, policy, onClose, onSaved }: {
       } else {
         await api.post(`/clients/${clientId}/policies`, payload);
       }
+      toast('success', 'Shift policy saved');
       onSaved();
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Failed to save');
+      const msg = err?.response?.data?.error ?? 'Failed to save';
+      setError(msg);
+      toast('error', 'Failed to save policy');
     } finally {
       setSaving(false);
     }
@@ -666,6 +678,7 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [form, setForm] = useState({
     type: policy?.type ?? 'EMPLOYEE_PAY_PERIOD',
     title: policy?.title ?? '',
@@ -686,9 +699,12 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
       } else {
         await api.post(`/clients/${clientId}/policies`, payload);
       }
+      toast('success', 'Policy saved');
       onSaved();
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Failed to save');
+      const msg = err?.response?.data?.error ?? 'Failed to save';
+      setError(msg);
+      toast('error', 'Failed to save policy');
     } finally {
       setSaving(false);
     }
@@ -770,6 +786,7 @@ function ClientModal({ client, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [form, setForm] = useState<any>(client ?? { ...BLANK });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -784,9 +801,12 @@ function ClientModal({ client, onClose, onSaved }: {
       } else {
         await api.post('/clients', form);
       }
+      toast('success', 'Client saved');
       onSaved();
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Failed to save');
+      const msg = err?.response?.data?.error ?? 'Failed to save';
+      setError(msg);
+      toast('error', 'Failed to save client');
     } finally {
       setSaving(false);
     }

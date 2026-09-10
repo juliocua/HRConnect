@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { ClientCombobox } from '@/components/ClientCombobox';
 import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest } from '@/types';
@@ -33,6 +34,7 @@ const AVATAR_COLORS = [
 
 export default function Employees() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [clientFilter, setClientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -61,7 +63,8 @@ export default function Employees() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/employees/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['employees'] }),
+    onSuccess: () => { toast('success', 'Employee terminated'); qc.invalidateQueries({ queryKey: ['employees'] }); },
+    onError: () => toast('error', 'Failed to terminate employee'),
   });
 
   const openAdd = () => { setEditTarget(null); setShowModal(true); };
@@ -282,6 +285,7 @@ function EmployeeModal({
     queryKey: ['clients'],
     queryFn: () => api.get('/clients').then(r => r.data),
   });
+  const toast = useToast();
   const isEdit = !!initial;
   const [activeTab, setActiveTab] = useState('Profile');
   const qc = useQueryClient();
@@ -303,8 +307,11 @@ function EmployeeModal({
       const res = await api.get(`/employees/${initial.id}`);
       setPhotoUrl(res.data.photoUrl ?? null);
       qc.invalidateQueries({ queryKey: ['employees'] });
+      toast('success', 'Photo uploaded');
     } catch (err: any) {
-      setPhotoError(err?.response?.data?.error ?? 'Upload failed');
+      const msg = err?.response?.data?.error ?? 'Upload failed';
+      setPhotoError(msg);
+      toast('error', msg);
     } finally {
       setPhotoUploading(false);
     }
@@ -317,6 +324,9 @@ function EmployeeModal({
       await api.delete(`/employees/${initial.id}/photo`);
       setPhotoUrl(null);
       qc.invalidateQueries({ queryKey: ['employees'] });
+      toast('success', 'Photo removed');
+    } catch {
+      toast('error', 'Failed to remove photo');
     } finally {
       setPhotoUploading(false);
     }
@@ -380,8 +390,11 @@ function EmployeeModal({
       const res = await api.post(`/employees/${initial!.id}/create-account`);
       setAccountInfo(res.data);
       setAccountAction('done');
+      toast('success', 'Account created');
     } catch (err: unknown) {
-      setAccountError((err as any)?.response?.data?.error ?? 'Failed to create account');
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to create account';
+      setAccountError(msg);
+      toast('error', msg);
       setAccountAction('idle');
     }
   };
@@ -393,8 +406,11 @@ function EmployeeModal({
       const res = await api.post(`/employees/${initial!.id}/reset-password`);
       setAccountInfo(res.data);
       setAccountAction('done');
+      toast('success', 'Password reset');
     } catch (err: unknown) {
-      setAccountError((err as any)?.response?.data?.error ?? 'Failed to reset password');
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to reset password';
+      setAccountError(msg);
+      toast('error', msg);
       setAccountAction('idle');
     }
   };
@@ -408,18 +424,22 @@ function EmployeeModal({
     try {
       if (isEdit) {
         await api.put(`/employees/${initial!.id}`, form);
+        toast('success', 'Employee saved');
         onSaved();
       } else {
         const res = await api.post('/employees', form);
         if (res.data._tempPassword) {
           setTempPassword(res.data._tempPassword);
         } else {
+          toast('success', 'Employee added');
           onSaved();
         }
       }
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError((err as any)?.response?.data?.error ?? 'Failed to save employee');
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to save employee';
+      setError(msg);
+      toast('error', msg);
     } finally {
       setSaving(false);
     }
@@ -842,6 +862,7 @@ const CR_FIELD_LABELS: Record<string, string> = {
 
 function ChangeRequestsPanel() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [collapsed, setCollapsed] = useState(false);
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState('');
@@ -853,17 +874,20 @@ function ChangeRequestsPanel() {
 
   const approveMutation = useMutation({
     mutationFn: (id: string) => api.put(`/employees/change-requests/${id}/approve`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['change-requests'] }),
+    onSuccess: () => { toast('success', 'Change request approved'); qc.invalidateQueries({ queryKey: ['change-requests'] }); },
+    onError: () => toast('error', 'Failed to approve change request'),
   });
 
   const rejectMutation = useMutation({
     mutationFn: ({ id, note }: { id: string; note: string }) =>
       api.put(`/employees/change-requests/${id}/reject`, { rejectionNote: note }),
     onSuccess: () => {
+      toast('success', 'Change request rejected');
       qc.invalidateQueries({ queryKey: ['change-requests'] });
       setRejectId(null);
       setRejectNote('');
     },
+    onError: () => toast('error', 'Failed to reject change request'),
   });
 
   const fmtDate = (d: string) =>
@@ -984,6 +1008,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
   employee: Employee; onClose: () => void; onEdit: () => void;
 }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState('');
@@ -1001,8 +1026,11 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       qc.invalidateQueries({ queryKey: ['employees'] });
+      toast('success', 'Photo uploaded');
     } catch (err: any) {
-      setPhotoError(err?.response?.data?.error ?? 'Upload failed');
+      const msg = err?.response?.data?.error ?? 'Upload failed';
+      setPhotoError(msg);
+      toast('error', msg);
     } finally {
       setPhotoUploading(false);
     }
@@ -1014,6 +1042,9 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
     try {
       await api.delete(`/employees/${e.id}/photo`);
       qc.invalidateQueries({ queryKey: ['employees'] });
+      toast('success', 'Photo removed');
+    } catch {
+      toast('error', 'Failed to remove photo');
     } finally {
       setPhotoUploading(false);
     }

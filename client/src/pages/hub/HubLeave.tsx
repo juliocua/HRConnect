@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { useAuth } from '@/context/AuthContext';
 import type { LeaveRequest, LeaveBalance, LeaveType, LeaveStatus } from '@/types';
 
@@ -164,6 +165,7 @@ function FileLeaveModal({ balances, employeeId, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const { data: leaveTypes = [] } = useQuery<LeaveType[]>({
     queryKey: ['leave-types', employeeId],
     queryFn: () => api.get(`/leave/types${employeeId ? `?employeeId=${employeeId}` : ''}`).then(r => r.data),
@@ -207,9 +209,12 @@ function FileLeaveModal({ balances, employeeId, onClose, onSaved }: {
     setError('');
     try {
       await api.post('/leave/me', { ...form, totalDays });
+      toast('success', 'Leave filed');
       onSaved();
     } catch (err: unknown) {
-      setError((err as any)?.response?.data?.error ?? 'Failed to file leave');
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to file leave';
+      setError(msg);
+      toast('error', msg);
     } finally {
       setSaving(false);
     }

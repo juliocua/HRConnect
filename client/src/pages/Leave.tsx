@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import type { LeaveRequest, LeaveBalance, LeaveType, Employee, LeaveStatus } from '@/types';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
@@ -13,6 +14,7 @@ const STATUS_COLORS: Record<LeaveStatus, string> = {
 
 export default function Leave() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [statusFilter, setStatusFilter] = useState('');
   const [empFilter, setEmpFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -45,18 +47,21 @@ export default function Leave() {
 
   const initBalances = useMutation({
     mutationFn: (employeeId: string) => api.post(`/leave/balances/${employeeId}/initialize`),
-    onSuccess: () => refetchBalances(),
+    onSuccess: () => { toast('success', 'Balances initialized'); refetchBalances(); },
+    onError: () => toast('error', 'Failed to initialize balances'),
   });
 
   const approveMutation = useMutation({
     mutationFn: (id: string) => api.put(`/leave/${id}/approve`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['leaves'] }),
+    onSuccess: () => { toast('success', 'Leave approved'); qc.invalidateQueries({ queryKey: ['leaves'] }); },
+    onError: () => toast('error', 'Failed to approve leave'),
   });
 
   const rejectMutation = useMutation({
     mutationFn: ({ id, note }: { id: string; note: string }) =>
       api.put(`/leave/${id}/reject`, { rejectionNote: note }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['leaves'] }); setRejModal(null); },
+    onSuccess: () => { toast('success', 'Leave rejected'); qc.invalidateQueries({ queryKey: ['leaves'] }); setRejModal(null); },
+    onError: () => toast('error', 'Failed to reject leave'),
   });
 
   const pending = requests.filter(r => r.status === 'PENDING').length;
@@ -321,6 +326,7 @@ function LeaveModal({ employees, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [form, setForm] = useState({
     employeeId: '',
     leaveTypeId: '',
@@ -373,10 +379,13 @@ function LeaveModal({ employees, onClose, onSaved }: {
     setError('');
     try {
       await api.post('/leave', { ...form, totalDays });
+      toast('success', 'Leave filed');
       onSaved();
     } catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setError((err as any)?.response?.data?.error ?? 'Failed to file leave');
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to file leave';
+      setError(msg);
+      toast('error', 'Failed to file leave');
     } finally {
       setSaving(false);
     }

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import type { OTStatus, AttendanceRecord } from '@/types';
 
 interface MyOTRequest {
@@ -137,6 +138,7 @@ export default function HubOvertime() {
 }
 
 function FileOTModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
   const [form, setForm] = useState({ date: '', hours: '1', reason: '' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -163,9 +165,12 @@ function FileOTModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
     setError('');
     try {
       await api.post('/overtime/me', { ...form, hours: Number(form.hours) });
+      toast('success', 'Overtime filed');
       onSaved();
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Failed to file overtime request');
+      const msg = err?.response?.data?.error ?? 'Failed to file overtime request';
+      setError(msg);
+      toast('error', msg);
     } finally {
       setSaving(false);
     }

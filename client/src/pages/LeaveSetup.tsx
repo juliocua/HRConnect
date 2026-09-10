@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import type { LeaveType, Employee, LeaveBalance } from '@/types';
@@ -21,6 +22,7 @@ const BLANK_FORM = {
 
 export default function LeaveSetup() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [tab, setTab] = useState<'types' | 'balances'>('types');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<LeaveType | null>(null);
@@ -92,9 +94,12 @@ export default function LeaveSetup() {
       }
       qc.invalidateQueries({ queryKey: ['leave-types-all'] });
       qc.invalidateQueries({ queryKey: ['leave-types'] });
+      toast('success', 'Leave type saved');
       setShowForm(false);
     } catch (e: any) {
-      setError(e.response?.data?.error ?? 'Save failed');
+      const msg = e.response?.data?.error ?? 'Save failed';
+      setError(msg);
+      toast('error', 'Failed to save leave type');
     } finally {
       setSaving(false);
     }
@@ -102,15 +107,25 @@ export default function LeaveSetup() {
 
   async function handleDeactivate(lt: LeaveType) {
     if (!confirm(`Deactivate "${lt.name}"? It will no longer appear in leave requests.`)) return;
-    await api.delete(`/leave/types/${lt.id}`);
-    qc.invalidateQueries({ queryKey: ['leave-types-all'] });
-    qc.invalidateQueries({ queryKey: ['leave-types'] });
+    try {
+      await api.delete(`/leave/types/${lt.id}`);
+      qc.invalidateQueries({ queryKey: ['leave-types-all'] });
+      qc.invalidateQueries({ queryKey: ['leave-types'] });
+      toast('success', 'Leave type deactivated');
+    } catch {
+      toast('error', 'Failed to deactivate leave type');
+    }
   }
 
   async function handleReactivate(lt: LeaveType) {
-    await api.put(`/leave/types/${lt.id}`, { isActive: true });
-    qc.invalidateQueries({ queryKey: ['leave-types-all'] });
-    qc.invalidateQueries({ queryKey: ['leave-types'] });
+    try {
+      await api.put(`/leave/types/${lt.id}`, { isActive: true });
+      qc.invalidateQueries({ queryKey: ['leave-types-all'] });
+      qc.invalidateQueries({ queryKey: ['leave-types'] });
+      toast('success', 'Leave type reactivated');
+    } catch {
+      toast('error', 'Failed to reactivate leave type');
+    }
   }
 
   async function handleSilSave() {
@@ -124,8 +139,11 @@ export default function LeaveSetup() {
       setSilMsg('Balance updated.');
       qc.invalidateQueries({ queryKey: ['leave-balances', silEmployeeId, silYear] });
       setTimeout(() => setSilMsg(''), 3000);
+      toast('success', 'Balance updated');
     } catch (e: any) {
-      setSilMsg(e.response?.data?.error ?? 'Failed to update balance');
+      const msg = e.response?.data?.error ?? 'Failed to update balance';
+      setSilMsg(msg);
+      toast('error', 'Failed to update balance');
     }
   }
 

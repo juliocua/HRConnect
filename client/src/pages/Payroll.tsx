@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { useAuth } from '@/context/AuthContext';
 import { formatPHP } from '@/lib/payroll';
 import { DataTable } from '@/components/DataTable';
@@ -19,6 +20,7 @@ const MONTHS = [
 export default function Payroll() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const toast = useToast();
   const now = new Date();
   const [showRunModal, setShowRunModal] = useState(false);
   const [viewRunId, setViewRunId] = useState<string | null>(null);
@@ -47,33 +49,40 @@ export default function Payroll() {
   const postMutation = useMutation({
     mutationFn: (runId: string) => api.put(`/payroll/${runId}/post`),
     onSuccess: () => {
+      toast('success', 'Payroll posted');
       qc.invalidateQueries({ queryKey: ['payroll-history'] });
       qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] });
       qc.invalidateQueries({ queryKey: ['payroll-audit', viewRunId] });
     },
+    onError: () => toast('error', 'Failed to post payroll'),
   });
 
   const paidMutation = useMutation({
     mutationFn: (runId: string) => api.put(`/payroll/${runId}/paid`),
     onSuccess: () => {
+      toast('success', 'Payroll marked as paid');
       qc.invalidateQueries({ queryKey: ['payroll-history'] });
       qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] });
       qc.invalidateQueries({ queryKey: ['payroll-audit', viewRunId] });
     },
+    onError: () => toast('error', 'Failed to mark payroll as paid'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (runId: string) => api.delete(`/payroll/run/${runId}`),
     onSuccess: () => {
+      toast('success', 'Payroll run deleted');
       qc.invalidateQueries({ queryKey: ['payroll-history'] });
       setViewRunId(null);
     },
+    onError: () => toast('error', 'Failed to delete payroll run'),
   });
 
   const updateRecordMutation = useMutation({
     mutationFn: ({ recordId, updates }: { recordId: string; updates: Record<string, number> }) =>
       api.put(`/payroll/run/${viewRunId}/record/${recordId}`, updates).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] }),
+    onError: () => toast('error', 'Failed to update record'),
   });
 
   const records = currentRun?.records ?? [];
@@ -299,7 +308,7 @@ export default function Payroll() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      alert('Failed to generate disbursement file.');
+      toast('error', 'Failed to generate disbursement file');
     } finally {
       setDownloadingDisb(false);
     }
@@ -566,6 +575,7 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
   defaultYear: number;
   defaultMonth: number;
 }) {
+  const toast = useToast();
   const [year, setYear] = useState(defaultYear);
   const [month, setMonth] = useState(defaultMonth);
   const [payPeriodType, setPayPeriodType] = useState<number>(1);
@@ -576,8 +586,12 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
 
   const runMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.post('/payroll/run', body).then(r => r.data),
-    onSuccess: (data) => onSuccess(data.id),
-    onError: (err: any) => setError(err?.response?.data?.error ?? 'Failed to run payroll'),
+    onSuccess: (data) => { toast('success', 'Payroll run created'); onSuccess(data.id); },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error ?? 'Failed to run payroll';
+      setError(msg);
+      toast('error', msg);
+    },
   });
 
   const is13th = payPeriodType === 9;

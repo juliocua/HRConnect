@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import type { Employee } from '@/types';
@@ -32,6 +33,7 @@ function fmtDate(iso: string) {
 
 export default function Overtime() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [empFilter, setEmpFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -54,13 +56,15 @@ export default function Overtime() {
 
   const approveMutation = useMutation({
     mutationFn: (id: string) => api.put(`/overtime/${id}/approve`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['overtime'] }),
+    onSuccess: () => { toast('success', 'Overtime approved'); qc.invalidateQueries({ queryKey: ['overtime'] }); },
+    onError: () => toast('error', 'Failed to approve overtime'),
   });
 
   const rejectMutation = useMutation({
     mutationFn: ({ id, note }: { id: string; note: string }) =>
       api.put(`/overtime/${id}/reject`, { note }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['overtime'] }); setRejModal(null); },
+    onSuccess: () => { toast('success', 'Overtime rejected'); qc.invalidateQueries({ queryKey: ['overtime'] }); setRejModal(null); },
+    onError: () => toast('error', 'Failed to reject overtime'),
   });
 
   const pending = requests.filter(r => r.status === 'PENDING').length;
@@ -218,6 +222,7 @@ function OTModal({ employees, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [form, setForm] = useState({ employeeId: '', date: '', hours: '1', reason: '' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -229,9 +234,12 @@ function OTModal({ employees, onClose, onSaved }: {
     setError('');
     try {
       await api.post('/overtime', { ...form, hours: Number(form.hours) });
+      toast('success', 'Overtime filed');
       onSaved();
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'Failed to file overtime request');
+      const msg = err?.response?.data?.error ?? 'Failed to file overtime request';
+      setError(msg);
+      toast('error', msg);
     } finally {
       setSaving(false);
     }

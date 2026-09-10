@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useToast } from '@/lib/toast';
 import type { AttendanceRecord, AttendanceEditRequest } from '@/types';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -54,6 +55,7 @@ function firstOfMonth() {
 
 export default function HubClock() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [showManual, setShowManual] = useState(false);
   const [showEditRequest, setShowEditRequest] = useState(false);
   const [editRequestTarget, setEditRequestTarget] = useState<AttendanceRecord | null>(null);
@@ -76,12 +78,14 @@ export default function HubClock() {
 
   const clockInMutation = useMutation({
     mutationFn: () => api.post('/attendance/clock-in'),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hub-today'] }); qc.invalidateQueries({ queryKey: ['hub-attendance'] }); },
+    onSuccess: () => { toast('success', 'Clocked in'); qc.invalidateQueries({ queryKey: ['hub-today'] }); qc.invalidateQueries({ queryKey: ['hub-attendance'] }); },
+    onError: (err: any) => toast('error', err?.response?.data?.error ?? 'Failed to clock in'),
   });
 
   const clockOutMutation = useMutation({
     mutationFn: () => api.post('/attendance/clock-out'),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['hub-today'] }); qc.invalidateQueries({ queryKey: ['hub-attendance'] }); },
+    onSuccess: () => { toast('success', 'Clocked out'); qc.invalidateQueries({ queryKey: ['hub-today'] }); qc.invalidateQueries({ queryKey: ['hub-attendance'] }); },
+    onError: (err: any) => toast('error', err?.response?.data?.error ?? 'Failed to clock out'),
   });
 
   const hasClockedIn = !!todayRecord?.clockInAt;
@@ -270,6 +274,7 @@ export default function HubClock() {
 }
 
 function AttendanceEditRequestModal({ record, onClose, onSaved }: { record: AttendanceRecord | null; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
   const toTime = (iso?: string) => {
     if (!iso) return '';
     const d = new Date(iso);
@@ -307,9 +312,12 @@ function AttendanceEditRequestModal({ record, onClose, onSaved }: { record: Atte
       fd.append('reason', form.reason);
       if (attachment) fd.append('attachment', attachment);
       await api.post('/attendance/edit-request', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast('success', 'Attendance request submitted');
       onSaved();
     } catch (err: unknown) {
-      setError((err as any)?.response?.data?.error ?? 'Failed to submit');
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to submit';
+      setError(msg);
+      toast('error', msg);
     } finally {
       setSaving(false);
     }
