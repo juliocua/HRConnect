@@ -1,7 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { formatPHP } from '@/lib/payroll';
+import { DataTable } from '@/components/DataTable';
 import type { Client, Billing, BillingSummary, BillingCycle } from '@/types';
 
 const CYCLE_LABELS: Record<BillingCycle, string> = {
@@ -65,6 +67,7 @@ export default function ClientBilling() {
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ['billing-summary'] });
       qc.invalidateQueries({ queryKey: ['billing-all'] });
+      qc.invalidateQueries({ queryKey: ['billing-clients-due'] });
       // Switch to invoices tab to show results
       if ((res.data.generated ?? []).length > 0) setBillingTab('invoices');
     },
@@ -139,6 +142,134 @@ export default function ClientBilling() {
     .reduce((sum, c) => sum + clientAmount(c), 0);
   const lineItemTotal = lineItems.filter(li => li.description.trim()).reduce((s, li) => s + (li.amount || 0), 0);
   const totalSelected = resourceTotal + lineItemTotal;
+
+  // Billing table columns for DataTable
+  type BillingRow = Billing & { client: { id: string; name: string } };
+  const billingColumns = useMemo<ColumnDef<BillingRow>[]>(() => [
+    {
+      id: 'client',
+      header: 'Client',
+      accessorFn: row => row.client.name,
+      cell: ({ row }) => <span style={{ fontWeight: 600 }}>{row.original.client.name}</span>,
+    },
+    {
+      id: 'invoiceNo',
+      header: 'Invoice #',
+      accessorFn: row => row.id.slice(-8).toUpperCase(),
+      cell: ({ getValue }) => (
+        <span style={{ fontFamily: 'monospace', fontSize: 12 }}>#{getValue() as string}</span>
+      ),
+    },
+    {
+      id: 'date',
+      header: 'Date',
+      accessorFn: row => row.billingDate,
+      cell: ({ row }) => <span style={{ fontSize: 13 }}>{fmtDate(row.original.billingDate)}</span>,
+    },
+    {
+      id: 'amount',
+      header: 'Amount',
+      accessorFn: row => row.amount,
+      cell: ({ row }) => <span style={{ fontWeight: 700 }}>{formatPHP(row.original.amount)}</span>,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorFn: row => row.status,
+      cell: ({ row }) => (
+        <span className={`badge ${row.original.status === 'PAID' ? 'badge-green' : 'badge-yellow'}`}>
+          {row.original.status}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: ({ row }) => {
+        const b = row.original;
+        return (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 11 }}
+              onClick={() => downloadPDF(b.id, b.client.name)}
+              title="Download PDF"
+            >
+              📄 PDF
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 11 }}
+              disabled={sendingInvoice === b.id}
+              onClick={() => sendInvoice(b.id)}
+              title="Send invoice by email"
+            >
+              {sendingInvoice === b.id ? '…' : '📧 Email'}
+            </button>
+            {b.status === 'PENDING' && (
+              <>
+                {b.paymentLinkUrl && (
+                  <a
+                    href={b.paymentLinkUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-ghost btn-sm"
+                    style={{ textDecoration: 'none', fontSize: 11 }}
+                  >
+                    🔗 Link
+                  </a>
+                )}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: 11 }}
+                  disabled={resend.isPending}
+                  onClick={() => resend.mutate(b.id)}
+                >
+                  Resend
+                </button>
+                <button
+                  className="btn btn-success btn-sm"
+                  style={{ fontSize: 11 }}
+                  onClick={() => setMarkPaidBillingId(b.id)}
+                >
+                  Paid
+                </button>
+                <button
+                  className="btn btn-danger-outline btn-sm"
+                  style={{ fontSize: 11 }}
+                  disabled={deleteBilling.isPending}
+                  onClick={() => {
+                    if (confirm('Delete this invoice? This cannot be undone.')) {
+                      deleteBilling.mutate(b.id);
+                    }
+                  }}
+                  title="Delete invoice"
+                >
+                  🗑
+                </button>
+              </>
+            )}
+            {b.status === 'PAID' && (b as any).paymentScreenshotUrl && (
+              <a
+                href={(b as any).paymentScreenshotUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: 11, textDecoration: 'none' }}
+              >
+                🖼 Proof
+              </a>
+            )}
+            {sendMsg?.id === b.id && (
+              <span style={{ fontSize: 11, color: sendMsg.ok ? '#15803D' : '#DC2626' }}>
+                {sendMsg.text}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+  ], [sendingInvoice, sendMsg, resend.isPending, deleteBilling.isPending]);
 
   return (
     <div>
@@ -436,132 +567,23 @@ export default function ClientBilling() {
               <div>No billing records yet</div>
             </div>
           ) : (
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Client</th>
-                    <th>Invoice #</th>
-                    <th>Date</th>
-                    <th style={{ textAlign: 'right' }}>Amount</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allBillings.map(b => (
-                    <>
-                      <tr
-                        key={b.id}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setExpandedId(prev => prev === b.id ? null : b.id)}
-                      >
-                        <td>
-                          <span style={{ fontWeight: 600 }}>{b.client.name}</span>
-                        </td>
-                        <td>
-                          <span style={{ fontFamily: 'monospace', fontSize: 12 }}>#{b.id.slice(-8).toUpperCase()}</span>
-                        </td>
-                        <td style={{ fontSize: 13 }}>{fmtDate(b.billingDate)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{formatPHP(b.amount)}</td>
-                        <td>
-                          <span className={`badge ${b.status === 'PAID' ? 'badge-green' : 'badge-yellow'}`}>
-                            {b.status}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              style={{ fontSize: 11 }}
-                              onClick={() => downloadPDF(b.id, b.client.name)}
-                              title="Download PDF"
-                            >
-                              📄 PDF
-                            </button>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              style={{ fontSize: 11 }}
-                              disabled={sendingInvoice === b.id}
-                              onClick={() => sendInvoice(b.id)}
-                              title="Send invoice by email"
-                            >
-                              {sendingInvoice === b.id ? '…' : '📧 Email'}
-                            </button>
-                            {b.status === 'PENDING' && (
-                              <>
-                                {b.paymentLinkUrl && (
-                                  <a
-                                    href={b.paymentLinkUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="btn btn-ghost btn-sm"
-                                    style={{ textDecoration: 'none', fontSize: 11 }}
-                                  >
-                                    🔗 Link
-                                  </a>
-                                )}
-                                <button
-                                  className="btn btn-ghost btn-sm"
-                                  style={{ fontSize: 11 }}
-                                  disabled={resend.isPending}
-                                  onClick={() => resend.mutate(b.id)}
-                                >
-                                  Resend
-                                </button>
-                                <button
-                                  className="btn btn-success btn-sm"
-                                  style={{ fontSize: 11 }}
-                                  onClick={() => setMarkPaidBillingId(b.id)}
-                                >
-                                  Paid
-                                </button>
-                                <button
-                                  className="btn btn-danger-outline btn-sm"
-                                  style={{ fontSize: 11 }}
-                                  disabled={deleteBilling.isPending}
-                                  onClick={() => {
-                                    if (confirm('Delete this invoice? This cannot be undone.')) {
-                                      deleteBilling.mutate(b.id);
-                                    }
-                                  }}
-                                  title="Delete invoice"
-                                >
-                                  🗑
-                                </button>
-                              </>
-                            )}
-                            {b.status === 'PAID' && (b as any).paymentScreenshotUrl && (
-                              <a
-                                href={(b as any).paymentScreenshotUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="btn btn-ghost btn-sm"
-                                style={{ fontSize: 11, textDecoration: 'none' }}
-                              >
-                                🖼 Proof
-                              </a>
-                            )}
-                            {sendMsg?.id === b.id && (
-                              <span style={{ fontSize: 11, color: sendMsg.ok ? '#15803D' : '#DC2626' }}>
-                                {sendMsg.text}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedId === b.id && (
-                        <tr key={`${b.id}-detail`}>
-                          <td colSpan={6} style={{ padding: 0, background: 'var(--color-surface-2)' }}>
-                            <InvoiceDetail billing={b} />
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <DataTable
+                data={allBillings}
+                columns={billingColumns}
+                globalFilterPlaceholder="Search invoices…"
+                exportFilename="invoices"
+                onRowClick={row => setExpandedId(prev => prev === row.id ? null : row.id)}
+              />
+              {expandedId && (() => {
+                const b = allBillings.find(x => x.id === expandedId);
+                return b ? (
+                  <div style={{ marginTop: 12, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-2)' }}>
+                    <InvoiceDetail billing={b} />
+                  </div>
+                ) : null;
+              })()}
+            </>
           )}
         </div>
       )}

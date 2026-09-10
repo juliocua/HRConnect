@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
+import { DataTable } from '@/components/DataTable';
+import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import type { LeaveType, Employee, LeaveBalance } from '@/types';
 
 const BLANK_FORM = {
@@ -48,8 +51,6 @@ export default function LeaveSetup() {
     queryFn: () => api.get(`/leave/balances/${silEmployeeId}?year=${silYear}`).then(r => r.data),
     enabled: !!silEmployeeId,
   });
-
-  const manualTypes = types.filter(t => t.isActive);
 
   function openCreate() {
     setEditing(null);
@@ -132,6 +133,79 @@ export default function LeaveSetup() {
 
   const genderLabel = (g: string) => ({ ALL: 'All', MALE: 'Male only', FEMALE: 'Female only' }[g] ?? g);
 
+  // Leave Types table columns
+  const columns = useMemo<ColumnDef<LeaveType>[]>(() => [
+    {
+      accessorKey: 'code',
+      header: 'Code',
+      cell: ({ row }) => <strong>{row.original.code}</strong>,
+    },
+    { accessorKey: 'name', header: 'Name' },
+    { accessorKey: 'daysPerYear', header: 'Days/Year' },
+    {
+      id: 'isPaid',
+      header: 'Paid',
+      accessorFn: row => row.isPaid ? 'Yes' : 'No',
+    },
+    {
+      id: 'gender',
+      header: 'Gender',
+      accessorFn: row => genderLabel(row.applicableGender),
+    },
+    {
+      id: 'accrues',
+      header: 'Accrues',
+      accessorFn: row => row.accruesMonthly ? 'Monthly' : row.isManual ? 'Manual' : '—',
+    },
+    {
+      id: 'resets',
+      header: 'Resets Jan',
+      accessorFn: row => row.resetsAnnually ? 'Yes' : 'No',
+    },
+    {
+      id: 'manual',
+      header: 'Manual',
+      accessorFn: row => row.isManual ? 'Yes' : 'No',
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorFn: row => row.isActive ? 'Active' : 'Inactive',
+      cell: ({ row }) => (
+        <span className={`badge ${row.original.isActive ? 'badge-success' : 'badge-neutral'}`}>
+          {row.original.isActive ? 'Active' : 'Inactive'}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: ({ row }) => (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn btn-sm btn-secondary" onClick={() => openEdit(row.original)}>Edit</button>
+          {row.original.isActive
+            ? <button className="btn btn-sm btn-danger-outline" onClick={() => handleDeactivate(row.original)}>Deactivate</button>
+            : <button className="btn btn-sm btn-secondary" onClick={() => handleReactivate(row.original)}>Activate</button>
+          }
+        </div>
+      ),
+    },
+  ], [types]);
+
+  // Balance sub-table columns
+  const balanceColumns = useMemo<ColumnDef<LeaveBalance>[]>(() => [
+    { accessorFn: row => row.leaveType?.name ?? row.leaveTypeId, id: 'leaveType', header: 'Leave Type' },
+    { accessorKey: 'totalDays', header: 'Total Days' },
+    { accessorKey: 'usedDays', header: 'Used' },
+    { accessorKey: 'pendingDays', header: 'Pending' },
+    {
+      id: 'available',
+      header: 'Available',
+      accessorFn: row => row.totalDays - row.usedDays - row.pendingDays,
+      cell: ({ getValue }) => <strong>{getValue() as number}</strong>,
+    },
+  ], []);
+
   return (
     <div className="page-container">
       <div className="page-header">
@@ -164,55 +238,12 @@ export default function LeaveSetup() {
           {isLoading ? (
             <div className="loading-center"><div className="spinner" /></div>
           ) : (
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Code</th>
-                    <th>Name</th>
-                    <th>Days/Year</th>
-                    <th>Paid?</th>
-                    <th>Gender</th>
-                    <th>Accrues</th>
-                    <th>Resets Jan</th>
-                    <th>Manual</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {types.length === 0 && (
-                    <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '32px 0' }}>No leave types yet</td></tr>
-                  )}
-                  {types.map(lt => (
-                    <tr key={lt.id} style={{ opacity: lt.isActive ? 1 : 0.5 }}>
-                      <td><strong>{lt.code}</strong></td>
-                      <td>{lt.name}</td>
-                      <td>{lt.daysPerYear}</td>
-                      <td>{lt.isPaid ? '✓' : '—'}</td>
-                      <td>{genderLabel(lt.applicableGender)}</td>
-                      <td>{lt.accruesMonthly ? 'Monthly' : lt.isManual ? 'Manual' : '—'}</td>
-                      <td>{lt.resetsAnnually ? '✓' : '—'}</td>
-                      <td>{lt.isManual ? '✓' : '—'}</td>
-                      <td>
-                        <span className={`badge ${lt.isActive ? 'badge-success' : 'badge-neutral'}`}>
-                          {lt.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button className="btn btn-sm btn-secondary" onClick={() => openEdit(lt)}>Edit</button>
-                          {lt.isActive
-                            ? <button className="btn btn-sm btn-danger-outline" onClick={() => handleDeactivate(lt)}>Deactivate</button>
-                            : <button className="btn btn-sm btn-secondary" onClick={() => handleReactivate(lt)}>Activate</button>
-                          }
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              data={types}
+              columns={columns}
+              globalFilterPlaceholder="Search leave types…"
+              exportFilename="leave-types"
+            />
           )}
         </div>
       )}
@@ -228,16 +259,13 @@ export default function LeaveSetup() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
             <div className="form-group">
               <label className="form-label">Employee</label>
-              <select
-                className="form-control"
+              <EmployeeCombobox
+                employees={employees}
                 value={silEmployeeId}
-                onChange={e => { setSilEmployeeId(e.target.value); setSilLeaveTypeId(''); setSilDays(''); setSilMsg(''); }}
-              >
-                <option value="">Select employee…</option>
-                {employees.map(e => (
-                  <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>
-                ))}
-              </select>
+                onChange={id => { setSilEmployeeId(id); setSilLeaveTypeId(''); setSilDays(''); setSilMsg(''); }}
+                placeholder="Select employee…"
+                required
+              />
             </div>
 
             <div className="form-group">
@@ -249,7 +277,7 @@ export default function LeaveSetup() {
                 disabled={!silEmployeeId}
               >
                 <option value="">Select leave type…</option>
-                {manualTypes.map(lt => (
+                {types.map(lt => (
                   <option key={lt.id} value={lt.id}>{lt.name}</option>
                 ))}
               </select>
@@ -302,30 +330,13 @@ export default function LeaveSetup() {
               {empBalances.length === 0 ? (
                 <p style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>No balances recorded for this year.</p>
               ) : (
-                <div className="table-container">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Leave Type</th>
-                        <th>Total Days</th>
-                        <th>Used</th>
-                        <th>Pending</th>
-                        <th>Available</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {empBalances.map(b => (
-                        <tr key={b.id}>
-                          <td>{b.leaveType?.name ?? b.leaveTypeId}</td>
-                          <td>{b.totalDays}</td>
-                          <td>{b.usedDays}</td>
-                          <td>{b.pendingDays}</td>
-                          <td><strong>{b.totalDays - b.usedDays - b.pendingDays}</strong></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  data={empBalances}
+                  columns={balanceColumns}
+                  globalFilterPlaceholder="Search balances…"
+                  exportFilename="leave-balances"
+                  pageSize={10}
+                />
               )}
             </div>
           )}
