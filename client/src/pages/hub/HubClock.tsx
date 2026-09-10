@@ -246,14 +246,15 @@ export default function HubClock() {
                       }
                     </td>
                     <td>
-                      {pendingByDate.has(r.date.slice(0, 10))
-                        ? <span className="badge badge-yellow" title="Edit request pending HR review">Pending</span>
-                        : <button
-                            className="btn btn-ghost btn-sm"
-                            style={{ fontSize: 12, padding: '3px 10px', whiteSpace: 'nowrap' }}
-                            onClick={() => { setEditRequestTarget(r); setShowEditRequest(true); }}
-                          >Request Edit</button>
-                      }
+                      {r.status !== 'WEEKEND' && r.status !== 'HOLIDAY' && (
+                        pendingByDate.has(r.date.slice(0, 10))
+                          ? <span className="badge badge-yellow" title="Edit request pending HR review">Pending</span>
+                          : <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ fontSize: 12, padding: '3px 10px', whiteSpace: 'nowrap' }}
+                              onClick={() => { setEditRequestTarget(r); setShowEditRequest(true); }}
+                            >Request Edit</button>
+                      )}
                     </td>
                   </tr>
                 ))}
