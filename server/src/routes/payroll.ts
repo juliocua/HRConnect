@@ -681,21 +681,26 @@ router.put('/run/:runId/record/:recordId', requireRole('HR_MANAGER', 'SUPER_ADMI
     if (body.holidayPay        !== undefined) updateData.holidayPay        = body.holidayPay;
     if (body.nightDifferential !== undefined) updateData.nightDifferential = body.nightDifferential;
 
+    // Read record BEFORE applying partial update — needed for delta-based recompute
+    const prev = await prisma.payrollRecord.findUnique({ where: { id: req.params.recordId } });
+    if (!prev) return res.status(404).json({ error: 'Record not found' });
+
     await prisma.payrollRecord.update({ where: { id: req.params.recordId }, data: updateData });
 
-    // Re-fetch and recompute grossPay / netPay from all current values
-    const fresh = await prisma.payrollRecord.findUnique({ where: { id: req.params.recordId } });
-    if (fresh) {
-      const basePay       = (fresh.basicSalary / 22) * fresh.daysWorked;
-      const newGrossPay   = basePay + (fresh.overtimePay ?? 0) + (fresh.allowances ?? 0)
-                          + (fresh.holidayPay ?? 0) + (fresh.nightDifferential ?? 0);
-      const newNetPay     = newGrossPay - fresh.totalDeductions
-                          - (fresh.otherDeductions ?? 0) - (fresh.lateDeduction ?? 0);
-      await prisma.payrollRecord.update({
-        where: { id: req.params.recordId },
-        data:  { grossPay: newGrossPay, netPay: newNetPay },
-      });
-    }
+    // Delta-based recompute — preserves original run-time grossPay regardless of daysWorked
+    const prevHoliday   = (prev as any).holidayPay        ?? 0;
+    const prevNightDiff = (prev as any).nightDifferential ?? 0;
+    const grossDelta    = ((body.holidayPay        ?? prevHoliday)   - prevHoliday)
+                        + ((body.nightDifferential ?? prevNightDiff) - prevNightDiff);
+    const newGrossPay   = prev.grossPay + grossDelta;
+    const newOtherDed   = body.otherDeductions ?? (prev.otherDeductions ?? 0);
+    const newLateDed    = body.lateDeduction   ?? ((prev as any).lateDeduction ?? 0);
+    const newNetPay     = newGrossPay - prev.totalDeductions - newOtherDed - newLateDed;
+
+    await prisma.payrollRecord.update({
+      where: { id: req.params.recordId },
+      data:  { grossPay: newGrossPay, netPay: newNetPay },
+    });
 
     const updated = await prisma.payrollRecord.findUnique({
       where: { id: req.params.recordId },
