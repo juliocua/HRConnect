@@ -22,6 +22,15 @@ const POLICY_TYPES = [
   { value: 'OTHER', label: 'Other' },
 ];
 
+function parseShiftValue(value?: string | null): { shiftStart: string; shiftEnd: string } {
+  try {
+    const parsed = value ? JSON.parse(value) : {};
+    return { shiftStart: parsed.shiftStart ?? '08:00', shiftEnd: parsed.shiftEnd ?? '17:00' };
+  } catch {
+    return { shiftStart: '08:00', shiftEnd: '17:00' };
+  }
+}
+
 const PAY_PERIOD_VALUES = [
   { value: 'SEMI_MONTHLY', label: 'Semi-Monthly (paid twice a month)' },
   { value: 'MONTHLY', label: 'Monthly (paid once a month)' },
@@ -37,6 +46,7 @@ export default function ClientDetail() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [editingPolicy, setEditingPolicy] = useState<ClientPolicy | null>(null);
+  const [showShiftModal, setShowShiftModal] = useState(false);
   const [quickEmpId, setQuickEmpId] = useState<string | null>(null);
   const [markPaidBillingId, setMarkPaidBillingId] = useState<string | null>(null);
 
@@ -202,52 +212,84 @@ export default function ClientDetail() {
       )}
 
       {/* Tab: Policies */}
-      {tab === 'policies' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-            <button className="btn btn-primary" onClick={() => { setEditingPolicy(null); setShowPolicyModal(true); }}>
-              + Add Policy
-            </button>
-          </div>
-          {(client.policies ?? []).length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">📋</div>
-              <div className="empty-state-title">No policies yet</div>
-              <div>Add client requirements and policies</div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {client.policies!.map(p => (
-                <div key={p.id} className="card" style={{ padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <span className="badge badge-blue" style={{ fontSize: 11 }}>
-                          {POLICY_TYPES.find(t => t.value === p.type)?.label ?? p.type}
-                        </span>
-                        <span style={{ fontWeight: 700, fontSize: 14 }}>{p.title}</span>
-                        {p.type === 'EMPLOYEE_PAY_PERIOD' && p.value && (
-                          <span className="badge badge-green" style={{ fontSize: 11 }}>
-                            {PAY_PERIOD_VALUES.find(v => v.value === p.value)?.label?.split(' (')[0] ?? p.value}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{p.description}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditingPolicy(p); setShowPolicyModal(true); }}>Edit</button>
-                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }}
-                        onClick={() => { if (confirm('Delete this policy?')) deletePolicy.mutate(p.id); }}>
-                        Delete
-                      </button>
-                    </div>
+      {tab === 'policies' && (() => {
+        const shiftPolicy = (client.policies ?? []).find(p => p.type === 'EMPLOYEE_SHIFT');
+        const shiftTimes = parseShiftValue(shiftPolicy?.value);
+        const regularPolicies = (client.policies ?? []).filter(p => p.type !== 'EMPLOYEE_SHIFT');
+        return (
+          <div>
+            {/* Shift Configuration Card */}
+            <div className="card" style={{ padding: '16px 20px', marginBottom: 16, borderLeft: '4px solid var(--color-primary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>🕐 Employee Shift Schedule</span>
+                    {shiftPolicy ? (
+                      <span className="badge badge-blue" style={{ fontSize: 11 }}>Configured</span>
+                    ) : (
+                      <span className="badge badge-gray" style={{ fontSize: 11 }}>Using Default</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                    {shiftPolicy
+                      ? `Shift: ${shiftTimes.shiftStart} – ${shiftTimes.shiftEnd} · OT calculated after ${shiftTimes.shiftEnd}`
+                      : 'No shift policy set — OT defaults to after 17:00 (5:00 PM)'}
                   </div>
                 </div>
-              ))}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowShiftModal(true)}
+                >
+                  {shiftPolicy ? 'Edit Shift' : 'Configure'}
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-      )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+              <button className="btn btn-primary" onClick={() => { setEditingPolicy(null); setShowPolicyModal(true); }}>
+                + Add Policy
+              </button>
+            </div>
+            {regularPolicies.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-state-icon">📋</div>
+                <div className="empty-state-title">No policies yet</div>
+                <div>Add client requirements and policies</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {regularPolicies.map(p => (
+                  <div key={p.id} className="card" style={{ padding: '16px 20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <span className="badge badge-blue" style={{ fontSize: 11 }}>
+                            {POLICY_TYPES.find(t => t.value === p.type)?.label ?? p.type}
+                          </span>
+                          <span style={{ fontWeight: 700, fontSize: 14 }}>{p.title}</span>
+                          {p.type === 'EMPLOYEE_PAY_PERIOD' && p.value && (
+                            <span className="badge badge-green" style={{ fontSize: 11 }}>
+                              {PAY_PERIOD_VALUES.find(v => v.value === p.value)?.label?.split(' (')[0] ?? p.value}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{p.description}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setEditingPolicy(p); setShowPolicyModal(true); }}>Edit</button>
+                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-danger)' }}
+                          onClick={() => { if (confirm('Delete this policy?')) deletePolicy.mutate(p.id); }}>
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Tab: Billing History */}
       {tab === 'billing' && (
@@ -334,6 +376,15 @@ export default function ClientDetail() {
           policy={editingPolicy}
           onClose={() => setShowPolicyModal(false)}
           onSaved={() => { setShowPolicyModal(false); invalidate(); }}
+        />
+      )}
+
+      {showShiftModal && (
+        <ShiftPolicyModal
+          clientId={client.id}
+          policy={(client.policies ?? []).find(p => p.type === 'EMPLOYEE_SHIFT') ?? null}
+          onClose={() => setShowShiftModal(false)}
+          onSaved={() => { setShowShiftModal(false); invalidate(); }}
         />
       )}
 
@@ -510,6 +561,95 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-success" disabled={saving || uploading}>
               {uploading ? 'Uploading…' : saving ? 'Saving…' : '✓ Confirm Payment'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Shift Policy Modal ────────────────────────────────────────────────────────
+
+function ShiftPolicyModal({ clientId, policy, onClose, onSaved }: {
+  clientId: string;
+  policy: ClientPolicy | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const existing = parseShiftValue(policy?.value);
+  const [shiftStart, setShiftStart] = useState(existing.shiftStart);
+  const [shiftEnd, setShiftEnd] = useState(existing.shiftEnd);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError('');
+    try {
+      const value = JSON.stringify({ shiftStart, shiftEnd });
+      const payload = {
+        type: 'EMPLOYEE_SHIFT',
+        title: 'Employee Shift Schedule',
+        description: `Work shift: ${shiftStart} – ${shiftEnd}. Overtime calculated after ${shiftEnd}.`,
+        value,
+      };
+      if (policy) {
+        await api.put(`/clients/${clientId}/policies/${policy.id}`, payload);
+      } else {
+        await api.post(`/clients/${clientId}/policies`, payload);
+      }
+      onSaved();
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 420 }}>
+        <div className="modal-header">
+          <h2 className="modal-title">🕐 Employee Shift Schedule</h2>
+          <button className="icon-btn" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
+              Set the standard work shift for this client's employees. Overtime hours are automatically calculated when an employee clocks out or has their time approved after the shift end time.
+            </div>
+            <div className="form-grid form-grid-2" style={{ gap: 12 }}>
+              <div className="form-group">
+                <label>Shift Start *</label>
+                <input
+                  type="time"
+                  className="form-control"
+                  required
+                  value={shiftStart}
+                  onChange={e => setShiftStart(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>Shift End *</label>
+                <input
+                  type="time"
+                  className="form-control"
+                  required
+                  value={shiftEnd}
+                  onChange={e => setShiftEnd(e.target.value)}
+                />
+                <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  OT is counted after this time
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Saving…' : policy ? 'Save Changes' : 'Set Shift'}
             </button>
           </div>
         </form>

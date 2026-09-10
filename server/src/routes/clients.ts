@@ -118,6 +118,15 @@ router.get('/:id/policies', async (req: Request, res: Response, next: NextFuncti
 router.post('/:id/policies', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = PolicySchema.parse(req.body);
+    // EMPLOYEE_SHIFT is a singleton policy per client
+    if (body.type === 'EMPLOYEE_SHIFT') {
+      const existing = await prisma.clientPolicy.findFirst({
+        where: { clientId: req.params.id, type: 'EMPLOYEE_SHIFT' },
+      });
+      if (existing) {
+        return res.status(409).json({ error: 'An Employee Shift policy already exists for this client. Edit the existing one.' });
+      }
+    }
     const policy = await prisma.clientPolicy.create({
       data: { ...body, clientId: req.params.id },
     });

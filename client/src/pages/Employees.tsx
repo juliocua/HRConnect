@@ -236,12 +236,13 @@ function TabBar({ tabs, active, onChange }: {
   return (
     <div style={{
       display: 'flex',
-      gap: 0,
+      gap: 2,
       borderBottom: '2px solid var(--color-border)',
       marginBottom: 20,
       overflowX: 'auto',
       scrollbarWidth: 'none' as any,
       msOverflowStyle: 'none' as any,
+      padding: '0 2px',
     }}>
       {tabs.map(t => (
         <button
@@ -249,16 +250,18 @@ function TabBar({ tabs, active, onChange }: {
           type="button"
           onClick={() => onChange(t)}
           style={{
-            background: 'none',
-            border: 'none',
-            borderBottom: active === t ? '2px solid var(--color-primary)' : '2px solid transparent',
+            background: active === t ? 'var(--color-primary)' : 'transparent',
+            border: active === t ? 'none' : '1px solid var(--color-border)',
+            borderBottom: active === t ? 'none' : '1px solid var(--color-border)',
+            borderRadius: '6px 6px 0 0',
             marginBottom: -2,
-            padding: '8px 14px',
+            padding: '7px 16px',
             fontSize: 13,
             fontWeight: active === t ? 700 : 500,
-            color: active === t ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            color: active === t ? '#fff' : 'var(--color-text-secondary)',
             cursor: 'pointer',
             whiteSpace: 'nowrap',
+            transition: 'background 0.12s, color 0.12s',
           }}
         >
           {t}

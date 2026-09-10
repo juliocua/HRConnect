@@ -139,8 +139,7 @@ router.post('/clock-out', async (req: Request, res: Response, next: NextFunction
     }
 
     const now = new Date();
-    const hoursWorked = (now.getTime() - existing.clockInAt.getTime()) / 3_600_000;
-    const overtimeHrs = Math.max(0, parseFloat((hoursWorked - 8).toFixed(2)));
+    const overtimeHrs = await computeOvertimeHrs(employeeId, now);
 
     const record = await prisma.attendance.update({
       where: { id: existing.id },
@@ -175,11 +174,15 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
     const timeOutDt = body.timeOut ? new Date(`${dateStr}T${body.timeOut}:00+08:00`) : undefined;
     const { timeIn: _ti, timeOut: _to, ...rest } = body;
     // Write to both timeIn/timeOut (HR attendance view) and clockInAt/clockOutAt (Hub clock view)
-    const data = {
+    const data: any = {
       ...rest,
       ...(timeInDt ? { timeIn: timeInDt, clockInAt: timeInDt } : {}),
       ...(timeOutDt ? { timeOut: timeOutDt, clockOutAt: timeOutDt } : {}),
     };
+    // Auto-compute OT from shift policy if timeOut is provided
+    if (timeOutDt) {
+      data.overtimeHrs = await computeOvertimeHrs(employeeId, timeOutDt);
+    }
 
     const record = await prisma.attendance.upsert({
       where: { employeeId_date: { employeeId, date: body.date } },
@@ -278,6 +281,10 @@ router.put('/edit-requests/:id/approve', requireRole('HR_MANAGER', 'HR_STAFF', '
     if (editReq.requestedStatus) updateData.status = editReq.requestedStatus;
     updateData.isManualEntry = true;
     updateData.manualReason = editReq.reason;
+    // Auto-compute OT from shift policy when timeOut is being applied
+    if (editReq.requestedTimeOut) {
+      updateData.overtimeHrs = await computeOvertimeHrs(editReq.employeeId, editReq.requestedTimeOut);
+    }
 
     await prisma.attendance.upsert({
       where: { employeeId_date: { employeeId: editReq.employeeId, date: editReq.attendanceDate } },
@@ -374,6 +381,36 @@ function toDateTime(dateStr: string, timeStr: string): Date {
   return new Date(`${dateStr.slice(0, 10)}T${timeStr}:00+08:00`);
 }
 
+/** Return the shift-end hour as a decimal for an employee based on their client's EMPLOYEE_SHIFT policy.
+ *  Defaults to 17.0 (5:00 PM) if no policy is found. */
+async function getShiftEndHours(employeeId: string): Promise<number> {
+  const DEFAULT = 17.0;
+  try {
+    const emp = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { clientId: true },
+    });
+    if (!emp?.clientId) return DEFAULT;
+    const policy = await prisma.clientPolicy.findFirst({
+      where: { clientId: emp.clientId, type: 'EMPLOYEE_SHIFT' },
+    });
+    if (!policy?.value) return DEFAULT;
+    const parsed = JSON.parse(policy.value) as { shiftEnd?: string };
+    if (!parsed.shiftEnd) return DEFAULT;
+    const [h, m] = parsed.shiftEnd.split(':').map(Number);
+    return h + (m ?? 0) / 60;
+  } catch {
+    return DEFAULT;
+  }
+}
+
+/** Compute overtime hours: max(0, timeOut_decimal_hour - shiftEnd_hour). */
+async function computeOvertimeHrs(employeeId: string, timeOut: Date): Promise<number> {
+  const shiftEnd = await getShiftEndHours(employeeId);
+  const outHours = timeOut.getHours() + timeOut.getMinutes() / 60;
+  return Math.max(0, parseFloat((outHours - shiftEnd).toFixed(2)));
+}
+
 function buildAttendanceData(body: z.infer<typeof AttendanceSchema>) {
   const dateStr = body.date.slice(0, 10);
   const date = new Date(body.date);
@@ -393,11 +430,16 @@ function buildAttendanceData(body: z.infer<typeof AttendanceSchema>) {
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = AttendanceSchema.parse(req.body);
-    const data = buildAttendanceData(body);
+    const data = buildAttendanceData(body) as any;
+    // Auto-compute OT from shift policy if timeOut is provided
+    if (body.timeOut) {
+      const timeOutDt = toDateTime(body.date.slice(0, 10), body.timeOut);
+      data.overtimeHrs = await computeOvertimeHrs(body.employeeId, timeOutDt);
+    }
     const record = await prisma.attendance.upsert({
       where: { employeeId_date: { employeeId: data.employeeId, date: data.date } },
-      update: data as any,
-      create: { ...data as any, isManualEntry: true },
+      update: data,
+      create: { ...data, isManualEntry: true },
     });
     res.status(201).json(record);
   } catch (err) {
@@ -412,13 +454,20 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     const dateStr = (body.date ?? '').slice(0, 10);
     const timeIn = body.timeIn && dateStr ? toDateTime(dateStr, body.timeIn) : undefined;
     const timeOut = body.timeOut && dateStr ? toDateTime(dateStr, body.timeOut) : undefined;
-    const data = {
+    const data: Record<string, unknown> = {
       ...(body.status !== undefined ? { status: body.status } : {}),
-      ...(body.overtimeHrs !== undefined ? { overtimeHrs: body.overtimeHrs } : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
       ...(timeIn ? { timeIn, clockInAt: timeIn } : {}),
       ...(timeOut ? { timeOut, clockOutAt: timeOut } : {}),
     };
+    // Auto-compute OT from shift policy if timeOut is being updated; otherwise use manual value
+    if (timeOut) {
+      const empId = body.employeeId
+        ?? (await prisma.attendance.findUnique({ where: { id: req.params.id }, select: { employeeId: true } }))?.employeeId;
+      if (empId) data.overtimeHrs = await computeOvertimeHrs(empId, timeOut);
+    } else if (body.overtimeHrs !== undefined) {
+      data.overtimeHrs = body.overtimeHrs;
+    }
     const record = await prisma.attendance.update({
       where: { id: req.params.id },
       data: data as any,
@@ -444,13 +493,18 @@ router.post('/bulk', async (req: Request, res: Response, next: NextFunction) => 
   try {
     const { records } = z.object({ records: z.array(AttendanceSchema) }).parse(req.body);
     const results = await Promise.all(
-      records.map(r =>
-        prisma.attendance.upsert({
-          where: { employeeId_date: { employeeId: r.employeeId, date: r.date } },
-          update: r as any,
-          create: r as any,
-        })
-      )
+      records.map(async r => {
+        const data = buildAttendanceData(r) as any;
+        if (r.timeOut) {
+          const timeOutDt = toDateTime(r.date.slice(0, 10), r.timeOut);
+          data.overtimeHrs = await computeOvertimeHrs(r.employeeId, timeOutDt);
+        }
+        return prisma.attendance.upsert({
+          where: { employeeId_date: { employeeId: data.employeeId, date: data.date } },
+          update: data,
+          create: { ...data, isManualEntry: true },
+        });
+      })
     );
     res.json({ count: results.length, records: results });
   } catch (err) {
