@@ -72,7 +72,7 @@ export default function Payroll() {
 
   const updateRecordMutation = useMutation({
     mutationFn: ({ recordId, otherDeductions }: { recordId: string; otherDeductions: number }) =>
-      api.put(`/payroll/${viewRunId}/record/${recordId}`, { otherDeductions }).then(r => r.data),
+      api.put(`/payroll/run/${viewRunId}/record/${recordId}`, { otherDeductions }).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] }),
   });
 
