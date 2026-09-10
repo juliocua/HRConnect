@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { formatPHP } from '@/lib/payroll';
 import type { Client, Employee } from '@/types';
 import { SearchableMultiSelect } from '@/components/SearchableMultiSelect';
+import { DataTable } from '@/components/DataTable';
 
 type ReportType = 'billing-summary' | 'margin' | 'deployment' | 'attendance-summary';
 
@@ -106,83 +108,6 @@ const GROUP_ROW_STYLE: React.CSSProperties = {
 const DETAIL_ROW_STYLE: React.CSSProperties = {
   background: 'var(--color-surface)',
 };
-
-// ── CSV export helper ──────────────────────────────────────────────────────────
-function exportCSV(rows: Record<string, string | number>[], filename: string) {
-  if (!rows.length) return;
-  const headers = Object.keys(rows[0]);
-  const csvContent = [
-    headers.join(','),
-    ...rows.map(r => headers.map(h => {
-      const val = String(r[h] ?? '');
-      return val.includes(',') || val.includes('"') || val.includes('\n')
-        ? `"${val.replace(/"/g, '""')}"`
-        : val;
-    }).join(','))
-  ].join('\n');
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function buildCSVRows(reportType: ReportType, data: any[]): Record<string, string | number>[] {
-  if (!data || !data.length) return [];
-  if (reportType === 'billing-summary') {
-    return (data as BillingSummaryRow[]).map(r => ({
-      Client: r.client.name,
-      Invoices: r.invoiceCount,
-      'Total Billed': r.totalBilled,
-      Collected: r.totalPaid,
-      Outstanding: r.totalPending,
-      'Collection Rate %': r.totalBilled > 0 ? Math.round((r.totalPaid / r.totalBilled) * 100) : 0,
-    }));
-  }
-  if (reportType === 'margin') {
-    return (data as MarginRow[]).map(r => ({
-      Employee: `${r.employee.firstName} ${r.employee.lastName}`,
-      Position: r.employee.position,
-      Department: r.employee.department?.name ?? '',
-      Client: r.client?.name ?? '',
-      'Resource Cost': r.resourceCost,
-      'Payroll Cost': r.payrollCost,
-      Margin: r.margin,
-      'Margin %': r.marginPct.toFixed(2),
-    }));
-  }
-  if (reportType === 'deployment') {
-    return (data as DeploymentRow[]).map(r => ({
-      Employee: `${r.employee.firstName} ${r.employee.lastName}`,
-      Position: r.employee.position,
-      Department: r.employee.department?.name ?? '',
-      Status: r.employee.status,
-      Client: r.client?.name ?? 'On Bench',
-      'Resource Cost': r.resourceCost ?? 0,
-      'Payroll Cost': r.payrollCost ?? 0,
-    }));
-  }
-  if (reportType === 'attendance-summary') {
-    return (data as AttendanceSummaryRow[]).map(r => ({
-      Employee: `${r.employee.firstName} ${r.employee.lastName}`,
-      Position: r.employee.position,
-      Department: r.employee.department?.name ?? '',
-      Client: r.client?.name ?? '',
-      Present: r.present,
-      Late: r.late,
-      Absent: r.absent,
-      'On Leave': r.onLeave,
-      'Total Days': r.total,
-      'Attendance Rate %': r.attendanceRate.toFixed(2),
-    }));
-  }
-  return [];
-}
 
 export default function Reports() {
   const today = new Date().toISOString().slice(0, 10);
@@ -356,9 +281,7 @@ export default function Reports() {
         <div className="card">
           <div className="card-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <div className="card-title">
-                Results
-              </div>
+              <div className="card-title">Results</div>
               {groupBy && (
                 <span style={{
                   fontSize: 12, fontWeight: 600,
@@ -369,23 +292,9 @@ export default function Reports() {
                 </span>
               )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {rowCount > 0 && (
-                <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{rowCount} row{rowCount !== 1 ? 's' : ''}</span>
-              )}
-              {reportData && Array.isArray(reportData) && reportData.length > 0 && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ fontSize: 12 }}
-                  onClick={() => {
-                    const rows = buildCSVRows(reportType, reportData);
-                    exportCSV(rows, `${reportType}-${new Date().toISOString().slice(0, 10)}.csv`);
-                  }}
-                >
-                  ⬇ CSV
-                </button>
-              )}
-            </div>
+            {rowCount > 0 && (
+              <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{rowCount} row{rowCount !== 1 ? 's' : ''}</span>
+            )}
           </div>
           {isFetching ? (
             <div className="loading-center" style={{ padding: 48 }}><div className="spinner" /></div>
@@ -412,6 +321,52 @@ function BillingSummaryTable({ data }: { data: BillingSummaryRow[] }) {
   const totalBilled = data.reduce((s, r) => s + r.totalBilled, 0);
   const totalPaid = data.reduce((s, r) => s + r.totalPaid, 0);
   const totalPending = data.reduce((s, r) => s + r.totalPending, 0);
+
+  const columns: ColumnDef<BillingSummaryRow, any>[] = [
+    {
+      id: 'client',
+      header: 'Client',
+      accessorFn: r => r.client.name,
+      cell: info => <span style={{ fontWeight: 600 }}>{info.getValue()}</span>,
+    },
+    {
+      id: 'invoices',
+      header: 'Invoices',
+      accessorFn: r => r.invoiceCount,
+    },
+    {
+      id: 'totalBilled',
+      header: 'Total Billed',
+      accessorFn: r => r.totalBilled,
+      cell: info => formatPHP(info.getValue() as number),
+    },
+    {
+      id: 'collected',
+      header: 'Collected',
+      accessorFn: r => r.totalPaid,
+      cell: info => (
+        <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>
+          {formatPHP(info.getValue() as number)}
+        </span>
+      ),
+    },
+    {
+      id: 'outstanding',
+      header: 'Outstanding',
+      accessorFn: r => r.totalPending,
+      cell: info => {
+        const val = info.getValue() as number;
+        return <span style={{ color: val > 0 ? 'var(--color-danger)' : undefined }}>{formatPHP(val)}</span>;
+      },
+    },
+    {
+      id: 'collectionRate',
+      header: 'Collection Rate',
+      accessorFn: r => r.totalBilled > 0 ? Math.round((r.totalPaid / r.totalBilled) * 100) : 0,
+      cell: info => <span style={{ fontWeight: 700 }}>{info.getValue() as number}%</span>,
+    },
+  ];
+
   return (
     <div>
       <div className="grid-4" style={{ marginBottom: 16 }}>
@@ -420,36 +375,13 @@ function BillingSummaryTable({ data }: { data: BillingSummaryRow[] }) {
         <SummaryBox label="Outstanding" value={formatPHP(totalPending)} color="#FEF2F2" />
         <SummaryBox label="Invoices" value={String(data.reduce((s, r) => s + r.invoiceCount, 0))} color="#FFFBEB" />
       </div>
-      <div className="table-wrap">
-        <table className="data-table" style={{ minWidth: '100%' }}>
-          <thead>
-            <tr>
-              <th>Client</th>
-              <th style={{ textAlign: 'right' }}>Invoices</th>
-              <th style={{ textAlign: 'right' }}>Total Billed</th>
-              <th style={{ textAlign: 'right' }}>Collected</th>
-              <th style={{ textAlign: 'right' }}>Outstanding</th>
-              <th style={{ textAlign: 'right' }}>Collection Rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map(r => (
-              <tr key={r.client.id}>
-                <td style={{ fontWeight: 600 }}>{r.client.name}</td>
-                <td style={{ textAlign: 'right' }}>{r.invoiceCount}</td>
-                <td style={{ textAlign: 'right' }}>{formatPHP(r.totalBilled)}</td>
-                <td style={{ textAlign: 'right', color: 'var(--color-success)', fontWeight: 600 }}>{formatPHP(r.totalPaid)}</td>
-                <td style={{ textAlign: 'right', color: r.totalPending > 0 ? 'var(--color-danger)' : undefined }}>{formatPHP(r.totalPending)}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <span style={{ fontWeight: 700 }}>
-                    {r.totalBilled > 0 ? Math.round((r.totalPaid / r.totalBilled) * 100) : 0}%
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={data}
+        columns={columns}
+        exportFilename="billing-summary"
+        globalFilterPlaceholder="Search clients…"
+        pageSize={20}
+      />
     </div>
   );
 }
@@ -527,7 +459,11 @@ function MarginTable({ data, groupBy }: { data: MarginRow[]; groupBy: string }) 
                       <tr key={r.employee.id} style={DETAIL_ROW_STYLE}>
                         <td style={{ paddingLeft: 40 }}>
                           <div style={{ fontSize: 13 }}>{r.employee.firstName} {r.employee.lastName}</div>
-                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{r.employee.position}{groupBy === 'client' && r.employee.department ? ` · ${r.employee.department.name}` : ''}{groupBy === 'department' && r.client ? ` · ${r.client.name}` : ''}</div>
+                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                            {r.employee.position}
+                            {groupBy === 'client' && r.employee.department ? ` · ${r.employee.department.name}` : ''}
+                            {groupBy === 'department' && r.client ? ` · ${r.client.name}` : ''}
+                          </div>
                         </td>
                         <td style={{ textAlign: 'right' }}>—</td>
                         <td style={{ textAlign: 'right' }}>{r.resourceCost > 0 ? formatPHP(r.resourceCost) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}</td>
@@ -548,7 +484,72 @@ function MarginTable({ data, groupBy }: { data: MarginRow[]; groupBy: string }) 
     );
   }
 
-  // Flat (no grouping)
+  // Flat (no grouping) — DataTable
+  const columns: ColumnDef<MarginRow, any>[] = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      accessorFn: r => `${r.employee.firstName} ${r.employee.lastName}`,
+      cell: info => (
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{info.getValue() as string}</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{info.row.original.employee.position}</div>
+        </div>
+      ),
+    },
+    {
+      id: 'client',
+      header: 'Client',
+      accessorFn: r => r.client?.name ?? '',
+      cell: info => {
+        const val = info.getValue() as string;
+        return val
+          ? <span style={{ fontSize: 13 }}>{val}</span>
+          : <span style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>— Not deployed —</span>;
+      },
+    },
+    {
+      id: 'resourceCost',
+      header: 'Billed (Resource Cost)',
+      accessorFn: r => r.resourceCost,
+      cell: info => {
+        const val = info.getValue() as number;
+        return val > 0 ? formatPHP(val) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>;
+      },
+    },
+    {
+      id: 'payrollCost',
+      header: 'Payroll Cost',
+      accessorFn: r => r.payrollCost,
+      cell: info => {
+        const val = info.getValue() as number;
+        return val > 0 ? formatPHP(val) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>;
+      },
+    },
+    {
+      id: 'margin',
+      header: 'Margin',
+      accessorFn: r => r.margin,
+      cell: info => {
+        const row = info.row.original;
+        const val = info.getValue() as number;
+        if (row.resourceCost <= 0 && row.payrollCost <= 0) return '—';
+        return <span style={{ fontWeight: 700, color: val >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{formatPHP(val)}</span>;
+      },
+    },
+    {
+      id: 'marginPct',
+      header: 'Margin %',
+      accessorFn: r => r.marginPct,
+      cell: info => {
+        const row = info.row.original;
+        return row.resourceCost > 0
+          ? <span style={{ fontWeight: 700 }}>{(info.getValue() as number).toFixed(1)}%</span>
+          : '—';
+      },
+    },
+  ];
+
   return (
     <div>
       <div className="grid-4" style={{ marginBottom: 16 }}>
@@ -557,41 +558,13 @@ function MarginTable({ data, groupBy }: { data: MarginRow[]; groupBy: string }) 
         <SummaryBox label="Net Margin" value={formatPHP(totalMargin)} color={totalMargin >= 0 ? '#F0FDF4' : '#FEF2F2'} />
         <SummaryBox label="Avg Margin %" value={totalRC > 0 ? `${Math.round((totalMargin / totalRC) * 100)}%` : '—'} color="#FFFBEB" />
       </div>
-      <div className="table-wrap">
-        <table className="data-table" style={{ minWidth: '100%' }}>
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Client</th>
-              <th style={{ textAlign: 'right' }}>Billed (Resource Cost)</th>
-              <th style={{ textAlign: 'right' }}>Payroll Cost</th>
-              <th style={{ textAlign: 'right' }}>Margin</th>
-              <th style={{ textAlign: 'right' }}>Margin %</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map(r => (
-              <tr key={r.employee.id}>
-                <td>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{r.employee.firstName} {r.employee.lastName}</div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{r.employee.position}</div>
-                </td>
-                <td style={{ color: r.client ? undefined : 'var(--color-text-muted)', fontSize: 13 }}>
-                  {r.client?.name ?? '— Not deployed —'}
-                </td>
-                <td style={{ textAlign: 'right' }}>{r.resourceCost > 0 ? formatPHP(r.resourceCost) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}</td>
-                <td style={{ textAlign: 'right' }}>{r.payrollCost > 0 ? formatPHP(r.payrollCost) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}</td>
-                <td style={{ textAlign: 'right', color: r.margin >= 0 ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 700 }}>
-                  {r.resourceCost > 0 || r.payrollCost > 0 ? formatPHP(r.margin) : '—'}
-                </td>
-                <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                  {r.resourceCost > 0 ? `${r.marginPct.toFixed(1)}%` : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={data}
+        columns={columns}
+        exportFilename="margin-report"
+        globalFilterPlaceholder="Search employees or clients…"
+        pageSize={20}
+      />
     </div>
   );
 }
@@ -702,7 +675,68 @@ function DeploymentTable({ data, groupBy }: { data: DeploymentRow[]; groupBy: st
     );
   }
 
-  // Flat (no grouping)
+  // Flat (no grouping) — DataTable
+  const columns: ColumnDef<DeploymentRow, any>[] = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      accessorFn: r => `${r.employee.firstName} ${r.employee.lastName}`,
+      cell: info => (
+        <div className="emp-info">
+          <div className="emp-avatar" style={{ background: info.row.original.employee.avatarColor, width: 32, height: 32, fontSize: 12 }}>
+            {info.row.original.employee.firstName[0]}{info.row.original.employee.lastName[0]}
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>{info.getValue() as string}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{info.row.original.employee.position}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorFn: r => r.employee.status.replace(/_/g, ' '),
+      cell: info => {
+        const status = info.row.original.employee.status;
+        return (
+          <span className={`badge ${status === 'ACTIVE' ? 'badge-green' : status === 'ON_LEAVE' ? 'badge-yellow' : 'badge-gray'}`}>
+            {(info.getValue() as string)}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'client',
+      header: 'Deployed To',
+      accessorFn: r => r.client?.name ?? '',
+      cell: info => {
+        const val = info.getValue() as string;
+        return val
+          ? <span style={{ fontWeight: 600 }}>{val}</span>
+          : <span className="badge badge-gray">On Bench</span>;
+      },
+    },
+    {
+      id: 'resourceCost',
+      header: 'Resource Cost (Billed)',
+      accessorFn: r => r.resourceCost ?? 0,
+      cell: info => {
+        const val = info.getValue() as number;
+        return val > 0 ? formatPHP(val) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>;
+      },
+    },
+    {
+      id: 'payrollCost',
+      header: 'Payroll Cost',
+      accessorFn: r => r.payrollCost ?? 0,
+      cell: info => {
+        const val = info.getValue() as number;
+        return val > 0 ? formatPHP(val) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>;
+      },
+    },
+  ];
+
   return (
     <div>
       <div className="grid-4" style={{ marginBottom: 16 }}>
@@ -711,53 +745,13 @@ function DeploymentTable({ data, groupBy }: { data: DeploymentRow[]; groupBy: st
         <SummaryBox label="On Bench" value={String(bench)} color="#FFFBEB" />
         <SummaryBox label="Deployment Rate" value={data.length > 0 ? `${Math.round((deployed / data.length) * 100)}%` : '—'} color="#F5F3FF" />
       </div>
-      <div className="table-wrap">
-        <table className="data-table" style={{ minWidth: '100%' }}>
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Status</th>
-              <th>Deployed To</th>
-              <th style={{ textAlign: 'right' }}>Resource Cost (Billed)</th>
-              <th style={{ textAlign: 'right' }}>Payroll Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map(r => (
-              <tr key={r.employee.id}>
-                <td>
-                  <div className="emp-info">
-                    <div className="emp-avatar" style={{ background: r.employee.avatarColor, width: 32, height: 32, fontSize: 12 }}>
-                      {r.employee.firstName[0]}{r.employee.lastName[0]}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{r.employee.firstName} {r.employee.lastName}</div>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{r.employee.position}</div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <span className={`badge ${r.employee.status === 'ACTIVE' ? 'badge-green' : r.employee.status === 'ON_LEAVE' ? 'badge-yellow' : 'badge-gray'}`}>
-                    {r.employee.status.replace('_', ' ')}
-                  </span>
-                </td>
-                <td>
-                  {r.client
-                    ? <span style={{ fontWeight: 600 }}>{r.client.name}</span>
-                    : <span className="badge badge-gray">On Bench</span>
-                  }
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  {r.resourceCost != null && r.resourceCost > 0 ? formatPHP(r.resourceCost) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  {r.payrollCost != null && r.payrollCost > 0 ? formatPHP(r.payrollCost) : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={data}
+        columns={columns}
+        exportFilename="deployment-report"
+        globalFilterPlaceholder="Search employees or clients…"
+        pageSize={20}
+      />
     </div>
   );
 }
@@ -878,7 +872,72 @@ function AttendanceTable({ data, groupBy }: { data: AttendanceSummaryRow[]; grou
     );
   }
 
-  // Flat (no grouping)
+  // Flat (no grouping) — DataTable
+  const columns: ColumnDef<AttendanceSummaryRow, any>[] = [
+    {
+      id: 'employee',
+      header: 'Employee',
+      accessorFn: r => `${r.employee.firstName} ${r.employee.lastName}`,
+      cell: info => (
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{info.getValue() as string}</div>
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{info.row.original.employee.position}</div>
+        </div>
+      ),
+    },
+    {
+      id: 'present',
+      header: 'Present',
+      accessorFn: r => r.present,
+      cell: info => <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>{info.getValue() as number}</span>,
+    },
+    {
+      id: 'late',
+      header: 'Late',
+      accessorFn: r => r.late,
+      cell: info => <span style={{ color: 'var(--color-warning)' }}>{info.getValue() as number}</span>,
+    },
+    {
+      id: 'absent',
+      header: 'Absent',
+      accessorFn: r => r.absent,
+      cell: info => {
+        const val = info.getValue() as number;
+        return <span style={{ color: val > 0 ? 'var(--color-danger)' : undefined }}>{val}</span>;
+      },
+    },
+    {
+      id: 'onLeave',
+      header: 'On Leave',
+      accessorFn: r => r.onLeave,
+    },
+    {
+      id: 'total',
+      header: 'Total Days',
+      accessorFn: r => r.total,
+    },
+    {
+      id: 'attendanceRate',
+      header: 'Attendance Rate',
+      accessorFn: r => r.attendanceRate,
+      cell: info => {
+        const rate = info.getValue() as number;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 48, background: 'var(--color-surface-2)', borderRadius: 99, height: 6, overflow: 'hidden' }}>
+              <div style={{
+                width: `${rate}%`,
+                background: rate >= 90 ? 'var(--color-success)' : rate >= 75 ? 'var(--color-warning)' : 'var(--color-danger)',
+                height: '100%',
+              }} />
+            </div>
+            <span style={{ fontWeight: 700, minWidth: 38 }}>{rate.toFixed(1)}%</span>
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div>
       <div className="grid-4" style={{ marginBottom: 16 }}>
@@ -887,44 +946,13 @@ function AttendanceTable({ data, groupBy }: { data: AttendanceSummaryRow[]; grou
         <SummaryBox label="Total Absent Days" value={String(data.reduce((s, r) => s + r.absent, 0))} color="#FEF2F2" />
         <SummaryBox label="Total Leave Days" value={String(data.reduce((s, r) => s + r.onLeave, 0))} color="#FFFBEB" />
       </div>
-      <div className="table-wrap">
-        <table className="data-table" style={{ minWidth: '100%' }}>
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th style={{ textAlign: 'right' }}>Present</th>
-              <th style={{ textAlign: 'right' }}>Late</th>
-              <th style={{ textAlign: 'right' }}>Absent</th>
-              <th style={{ textAlign: 'right' }}>On Leave</th>
-              <th style={{ textAlign: 'right' }}>Total Days</th>
-              <th style={{ textAlign: 'right' }}>Attendance Rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map(r => (
-              <tr key={r.employee.id}>
-                <td>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{r.employee.firstName} {r.employee.lastName}</div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{r.employee.position}</div>
-                </td>
-                <td style={{ textAlign: 'right', color: 'var(--color-success)', fontWeight: 600 }}>{r.present}</td>
-                <td style={{ textAlign: 'right', color: 'var(--color-warning)' }}>{r.late}</td>
-                <td style={{ textAlign: 'right', color: r.absent > 0 ? 'var(--color-danger)' : undefined }}>{r.absent}</td>
-                <td style={{ textAlign: 'right' }}>{r.onLeave}</td>
-                <td style={{ textAlign: 'right' }}>{r.total}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-                    <div style={{ width: 48, background: 'var(--color-surface-2)', borderRadius: 99, height: 6, overflow: 'hidden' }}>
-                      <div style={{ width: `${r.attendanceRate}%`, background: r.attendanceRate >= 90 ? 'var(--color-success)' : r.attendanceRate >= 75 ? 'var(--color-warning)' : 'var(--color-danger)', height: '100%' }} />
-                    </div>
-                    <span style={{ fontWeight: 700, minWidth: 38 }}>{r.attendanceRate.toFixed(1)}%</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        data={data}
+        columns={columns}
+        exportFilename="attendance-summary"
+        globalFilterPlaceholder="Search employees…"
+        pageSize={20}
+      />
     </div>
   );
 }
