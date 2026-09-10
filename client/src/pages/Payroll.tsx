@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
@@ -87,9 +87,15 @@ export default function Payroll() {
   const totalOtherDeductions = records.reduce((s, r) => s + (r.otherDeductions ?? 0), 0);
   const totalOT = records.reduce((s, r) => s + r.overtimePay, 0);
 
+  // Stable ref so columns useMemo never recomputes when mutation state changes.
+  // Without this, isPending toggling re-creates column defs → TanStack tears down
+  // OtherDeductionsCell → useState reinitialises to initialValue (server 0).
+  const updateRecordMutationRef = useRef(updateRecordMutation);
+  updateRecordMutationRef.current = updateRecordMutation;
+
   const handleOtherDeductionsBlur = useCallback((recordId: string, value: number) => {
-    updateRecordMutation.mutate({ recordId, otherDeductions: value });
-  }, [updateRecordMutation]);
+    updateRecordMutationRef.current.mutate({ recordId, otherDeductions: value });
+  }, []); // intentionally empty — reads through ref
 
   // ── Table columns — different layout for 13th month vs regular ───────────────
   const columns = useMemo<ColumnDef<PayrollRecord>[]>(() => {
@@ -218,7 +224,6 @@ export default function Payroll() {
             recordId={r.id}
             initialValue={r.otherDeductions ?? 0}
             onBlur={handleOtherDeductionsBlur}
-            saving={updateRecordMutation.isPending && updateRecordMutation.variables?.recordId === r.id}
           />
         ) : (
           <span className="td-mono text-muted">{(r.otherDeductions ?? 0) > 0 ? formatPHP(r.otherDeductions ?? 0) : '—'}</span>
@@ -235,7 +240,7 @@ export default function Payroll() {
       },
       slipCol,
     ];
-  }, [is13th, isDraft, handleOtherDeductionsBlur, updateRecordMutation]);
+  }, [is13th, isDraft, handleOtherDeductionsBlur]);
 
   const handleDownloadDisbursement = async () => {
     if (!viewRunId || !currentRun) return;
