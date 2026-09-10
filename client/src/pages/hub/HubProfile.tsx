@@ -18,6 +18,10 @@ export default function HubProfile() {
     queryFn: () => api.get('/employees/me').then(r => r.data),
   });
 
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+
   if (isLoading) return <div className="loading-center"><div className="spinner" /></div>;
   if (!employee) return (
     <div className="empty-state">
@@ -29,9 +33,6 @@ export default function HubProfile() {
 
   const initials = `${employee.firstName[0]}${employee.lastName[0]}`.toUpperCase();
   const onSaved = () => qc.invalidateQueries({ queryKey: ['hub-profile'] });
-  const photoInputRef = useRef<HTMLInputElement>(null);
-  const [photoUploading, setPhotoUploading] = useState(false);
-  const [photoError, setPhotoError] = useState('');
 
   const handlePhotoUpload = async (file: File) => {
     setPhotoError('');
