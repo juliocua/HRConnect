@@ -486,11 +486,10 @@ export default function Payroll() {
 }
 
 // ── Inline editable other deductions cell ─────────────────────────────────────
-function OtherDeductionsCell({ recordId, initialValue, onBlur, saving }: {
+function OtherDeductionsCell({ recordId, initialValue, onBlur }: {
   recordId: string;
   initialValue: number;
   onBlur: (recordId: string, value: number) => void;
-  saving: boolean;
 }) {
   const [raw, setRaw] = useState(initialValue > 0 ? initialValue.toFixed(2) : '');
   return (
@@ -505,7 +504,6 @@ function OtherDeductionsCell({ recordId, initialValue, onBlur, saving }: {
         setRaw(parsed > 0 ? parsed.toFixed(2) : '');
         onBlur(recordId, parsed);
       }}
-      disabled={saving}
       style={{
         width: 80, padding: '3px 6px', fontSize: 12,
         border: '1px solid var(--color-border)', borderRadius: 4,
