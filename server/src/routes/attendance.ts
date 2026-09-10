@@ -417,10 +417,12 @@ async function getShiftEndHours(employeeId: string): Promise<number> {
   }
 }
 
-/** Compute overtime hours: max(0, timeOut_decimal_hour - shiftEnd_hour). */
+/** Compute overtime hours: max(0, timeOut_decimal_hour - shiftEnd_hour).
+ *  Always uses UTC+8 (PHT) — Railway server runs UTC so getHours() would return
+ *  the UTC hour, not the Philippine local hour. */
 async function computeOvertimeHrs(employeeId: string, timeOut: Date): Promise<number> {
   const shiftEnd = await getShiftEndHours(employeeId);
-  const outHours = timeOut.getHours() + timeOut.getMinutes() / 60;
+  const outHours = ((timeOut.getUTCHours() + 8) % 24) + timeOut.getUTCMinutes() / 60;
   return Math.max(0, parseFloat((outHours - shiftEnd).toFixed(2)));
 }
 
