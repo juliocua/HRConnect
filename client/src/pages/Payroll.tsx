@@ -487,21 +487,25 @@ function OtherDeductionsCell({ recordId, initialValue, onBlur, saving }: {
   onBlur: (recordId: string, value: number) => void;
   saving: boolean;
 }) {
-  const [value, setValue] = useState(initialValue);
+  const [raw, setRaw] = useState(initialValue > 0 ? initialValue.toFixed(2) : '');
   return (
     <input
-      type="number"
-      min={0}
-      step={0.01}
-      value={value}
-      onChange={e => setValue(parseFloat(e.target.value) || 0)}
-      onBlur={() => onBlur(recordId, value)}
+      type="text"
+      inputMode="decimal"
+      placeholder="0.00"
+      value={raw}
+      onChange={e => setRaw(e.target.value)}
+      onBlur={() => {
+        const parsed = parseFloat(raw.replace(/,/g, '')) || 0;
+        setRaw(parsed > 0 ? parsed.toFixed(2) : '');
+        onBlur(recordId, parsed);
+      }}
       disabled={saving}
       style={{
         width: 80, padding: '3px 6px', fontSize: 12,
         border: '1px solid var(--color-border)', borderRadius: 4,
         background: 'var(--color-surface)', color: 'var(--color-text)',
-        fontFamily: 'monospace',
+        fontFamily: 'monospace', textAlign: 'right',
       }}
     />
   );
