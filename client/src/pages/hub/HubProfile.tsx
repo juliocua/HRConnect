@@ -4,6 +4,11 @@ import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import type { Employee, ProfileChangeRequest } from '@/types';
 
+const API_ORIGIN = (import.meta.env.VITE_API_URL ?? '').replace(/\/api$/, '');
+function resolvePhotoUrl(url: string): string {
+  try { return `${API_ORIGIN}${new URL(url).pathname}`; } catch { return url; }
+}
+
 const AVATAR_COLORS = [
   '#2563EB', '#7C3AED', '#DB2777', '#EA580C',
   '#CA8A04', '#16A34A', '#0891B2', '#DC2626',
@@ -86,7 +91,7 @@ export default function HubProfile() {
               fontSize: 24, fontWeight: 800, color: '#fff', flexShrink: 0,
             }}>
               {employee.photoUrl
-                ? <img src={employee.photoUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                ? <img src={resolvePhotoUrl(employee.photoUrl)} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
                 : initials
               }
             </div>

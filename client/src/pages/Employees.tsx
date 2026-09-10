@@ -4,7 +4,14 @@ import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { DataTable } from '@/components/DataTable';
 import { ClientCombobox } from '@/components/ClientCombobox';
-import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client } from '@/types';
+import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest } from '@/types';
+
+// Resolve photo URL — strips stored origin and uses VITE_API_URL so photos work even if
+// SERVER_URL was misconfigured (e.g. fell back to localhost) at upload time.
+const API_ORIGIN = (import.meta.env.VITE_API_URL ?? '').replace(/\/api$/, '');
+function resolvePhotoUrl(url: string): string {
+  try { return `${API_ORIGIN}${new URL(url).pathname}`; } catch { return url; }
+}
 
 const STATUS_COLORS: Record<EmployeeStatus, string> = {
   ACTIVE: 'badge-green',
@@ -75,7 +82,7 @@ export default function Employees() {
         <div className="emp-info">
           <div className="emp-avatar" style={{ background: e.avatarColor, overflow: 'hidden', padding: 0 }}>
             {e.photoUrl
-              ? <img src={e.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+              ? <img src={resolvePhotoUrl(e.photoUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
               : <>{e.firstName[0]}{e.lastName[0]}</>
             }
           </div>
@@ -174,6 +181,9 @@ export default function Employees() {
           </select>
         </div>
       </div>
+
+      {/* Change Requests */}
+      <ChangeRequestsPanel />
 
       {/* Table */}
       {isLoading ? (
@@ -611,6 +621,153 @@ function EmployeeModal({
   );
 }
 
+// ── Change Requests Panel ──────────────────────────────────────────────────
+const CR_FIELD_LABELS: Record<string, string> = {
+  phone: 'Phone',
+  address: 'Home Address',
+  emergencyContactName: 'Emergency Contact Name',
+  emergencyContactPhone: 'Emergency Contact Phone',
+};
+
+function ChangeRequestsPanel() {
+  const qc = useQueryClient();
+  const [collapsed, setCollapsed] = useState(false);
+  const [rejectId, setRejectId] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState('');
+
+  const { data: requests = [], isLoading } = useQuery<ProfileChangeRequest[]>({
+    queryKey: ['change-requests'],
+    queryFn: () => api.get('/employees/change-requests').then(r => r.data),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => api.put(`/employees/change-requests/${id}/approve`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['change-requests'] }),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) =>
+      api.put(`/employees/change-requests/${id}/reject`, { rejectionNote: note }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['change-requests'] });
+      setRejectId(null);
+      setRejectNote('');
+    },
+  });
+
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  if (isLoading || requests.length === 0) return null;
+
+  return (
+    <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--color-warning, #CA8A04)' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+        onClick={() => setCollapsed(c => !c)}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 16 }}>📋</span>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>Pending Change Requests</span>
+          <span className="badge badge-yellow" style={{ fontSize: 11 }}>{requests.length}</span>
+        </div>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{collapsed ? '▼ Show' : '▲ Hide'}</span>
+      </div>
+
+      {!collapsed && (
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {requests.map(req => {
+            const emp = req.employee;
+            return (
+              <div key={req.id} style={{
+                background: 'var(--color-surface-raised, var(--color-background))',
+                border: '1px solid var(--color-border)',
+                borderRadius: 10, padding: '14px 16px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {emp && (
+                      <div className="emp-avatar" style={{ width: 32, height: 32, fontSize: 12, background: emp.avatarColor, flexShrink: 0 }}>
+                        {emp.firstName[0]}{emp.lastName[0]}
+                      </div>
+                    )}
+                    <div>
+                      {emp && <div style={{ fontWeight: 700, fontSize: 13.5 }}>{emp.firstName} {emp.lastName}</div>}
+                      <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Submitted {fmtDate(req.submittedAt)}</div>
+                    </div>
+                  </div>
+
+                  {rejectId !== req.id && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={approveMutation.isPending}
+                        onClick={() => approveMutation.mutate(req.id)}
+                      >
+                        ✓ Approve
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: 'var(--color-danger)' }}
+                        onClick={() => { setRejectId(req.id); setRejectNote(''); }}
+                      >
+                        ✕ Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Changes */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {Object.entries(req.changes).map(([k, v]) => (
+                    <div key={k} style={{
+                      background: 'var(--color-warning-light, #FFFBEB)',
+                      border: '1px solid var(--color-warning, #CA8A04)',
+                      borderRadius: 6, padding: '4px 10px', fontSize: 12,
+                    }}>
+                      <span style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>{CR_FIELD_LABELS[k] ?? k}:</span>{' '}
+                      <span style={{ fontWeight: 700 }}>{v as string}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Inline reject form */}
+                {rejectId === req.id && (
+                  <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 4 }}>Rejection Note (optional)</label>
+                      <input
+                        className="form-control"
+                        style={{ fontSize: 13 }}
+                        placeholder="Reason for rejection…"
+                        value={rejectNote}
+                        onChange={e => setRejectNote(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      disabled={rejectMutation.isPending}
+                      onClick={() => rejectMutation.mutate({ id: req.id, note: rejectNote })}
+                    >
+                      {rejectMutation.isPending ? 'Rejecting…' : 'Confirm Reject'}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setRejectId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Employee Detail Modal ──────────────────────────────────────────────────
 function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
   employee: Employee; onClose: () => void; onEdit: () => void;
@@ -670,7 +827,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                 fontSize: 26, fontWeight: 800, color: '#fff',
               }}>
                 {e.photoUrl
-                  ? <img src={e.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                  ? <img src={resolvePhotoUrl(e.photoUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
                   : <>{e.firstName[0]}{e.lastName[0]}</>
                 }
               </div>
