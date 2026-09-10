@@ -49,7 +49,7 @@ export default function LeaveSetup() {
     enabled: !!silEmployeeId,
   });
 
-  const manualTypes = types.filter(t => t.isManual);
+  const manualTypes = types.filter(t => t.isActive);
 
   function openCreate() {
     setEditing(null);

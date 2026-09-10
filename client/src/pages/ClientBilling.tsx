@@ -12,6 +12,7 @@ const CYCLE_LABELS: Record<BillingCycle, string> = {
 export default function ClientBilling() {
   const qc = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
+  const [billingTab, setBillingTab] = useState<'generate' | 'invoices'>('generate');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [billingDate, setBillingDate] = useState(today);
   const [notes, setNotes] = useState('');
@@ -21,7 +22,6 @@ export default function ClientBilling() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [markPaidBillingId, setMarkPaidBillingId] = useState<string | null>(null);
 
-  // Additional line items
   type LineItem = { description: string; amount: number };
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const addLineItem = () => setLineItems(li => [...li, { description: '', amount: 0 }]);
@@ -65,6 +65,8 @@ export default function ClientBilling() {
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ['billing-summary'] });
       qc.invalidateQueries({ queryKey: ['billing-all'] });
+      // Switch to invoices tab to show results
+      if ((res.data.generated ?? []).length > 0) setBillingTab('invoices');
     },
   });
 
@@ -83,6 +85,7 @@ export default function ClientBilling() {
 
   const [sendingInvoice, setSendingInvoice] = useState<string | null>(null);
   const [sendMsg, setSendMsg] = useState<{ id: string; ok: boolean; text: string } | null>(null);
+
   const downloadPDF = async (billingId: string, clientName: string) => {
     try {
       const res = await api.get(`/billing/${billingId}/pdf`, { responseType: 'blob' });
@@ -126,10 +129,7 @@ export default function ClientBilling() {
     });
   };
 
-  const selectAll = () => {
-    const ids = displayClients.map(c => c.id);
-    setSelected(new Set(ids));
-  };
+  const selectAll = () => setSelected(new Set(displayClients.map(c => c.id)));
 
   const clientAmount = (c: any) =>
     (c.employees ?? []).reduce((sum: number, e: any) => sum + (e.resourceCost ?? 0), 0);
@@ -139,8 +139,6 @@ export default function ClientBilling() {
     .reduce((sum, c) => sum + clientAmount(c), 0);
   const lineItemTotal = lineItems.filter(li => li.description.trim()).reduce((s, li) => s + (li.amount || 0), 0);
   const totalSelected = resourceTotal + lineItemTotal;
-
-  const recentBillings = allBillings.slice(0, 20);
 
   return (
     <div>
@@ -189,8 +187,29 @@ export default function ClientBilling() {
         </div>
       )}
 
-      <div className="grid-2" style={{ gap: 24 }}>
-        {/* Generate billing panel */}
+      {/* Tabs */}
+      <div className="tab-bar" style={{ marginBottom: 24 }}>
+        <button
+          className={`tab-btn${billingTab === 'generate' ? ' active' : ''}`}
+          onClick={() => setBillingTab('generate')}
+        >
+          Generate Billing
+        </button>
+        <button
+          className={`tab-btn${billingTab === 'invoices' ? ' active' : ''}`}
+          onClick={() => setBillingTab('invoices')}
+        >
+          Recent Invoices
+          {allBillings.length > 0 && (
+            <span style={{ marginLeft: 6, background: 'var(--color-primary)', color: '#fff', borderRadius: 999, fontSize: 10, padding: '1px 7px', fontWeight: 700 }}>
+              {allBillings.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ── Generate Billing Tab ───────────────────────────────────────────── */}
+      {billingTab === 'generate' && (
         <div className="card">
           <div className="card-header">
             <div>
@@ -400,130 +419,152 @@ export default function ClientBilling() {
             </div>
           )}
         </div>
+      )}
 
-        {/* Recent billing history */}
+      {/* ── Recent Invoices Tab ────────────────────────────────────────────── */}
+      {billingTab === 'invoices' && (
         <div className="card">
-          <div className="card-header">
+          <div className="card-header" style={{ marginBottom: 16 }}>
             <div className="card-title">Recent Invoices</div>
           </div>
+
           {billingsLoading ? (
             <div className="loading-center" style={{ padding: 32 }}><div className="spinner" /></div>
-          ) : recentBillings.length === 0 ? (
-            <div className="empty-state" style={{ padding: '24px 0' }}>
+          ) : allBillings.length === 0 ? (
+            <div className="empty-state" style={{ padding: '40px 0' }}>
               <div className="empty-state-icon">📋</div>
               <div>No billing records yet</div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {recentBillings.map(b => (
-                <div key={b.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  {/* Main row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
-                    {/* Expand toggle */}
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ fontSize: 12, padding: '2px 6px', color: 'var(--color-text-muted)', minWidth: 24 }}
-                      onClick={() => setExpandedId(prev => prev === b.id ? null : b.id)}
-                      title="View details"
-                    >
-                      {expandedId === b.id ? '▲' : '▼'}
-                    </button>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{b.client.name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                        #{b.id.slice(-8).toUpperCase()} · {fmtDate(b.billingDate)}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{formatPHP(b.amount)}</div>
-                      <span className={`badge ${b.status === 'PAID' ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: 11 }}>
-                        {b.status}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ fontSize: 11 }}
-                        onClick={() => downloadPDF(b.id, b.client.name)}
-                        title="Download PDF"
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th>Invoice #</th>
+                    <th>Date</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allBillings.map(b => (
+                    <>
+                      <tr
+                        key={b.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setExpandedId(prev => prev === b.id ? null : b.id)}
                       >
-                        📄 PDF
-                      </button>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ fontSize: 11 }}
-                        disabled={sendingInvoice === b.id}
-                        onClick={() => sendInvoice(b.id)}
-                        title="Send invoice by email"
-                      >
-                        {sendingInvoice === b.id ? '…' : '📧 Email'}
-                      </button>
-                      {sendMsg?.id === b.id && (
-                        <div style={{ fontSize: 10, color: sendMsg.ok ? '#15803D' : '#DC2626', maxWidth: 120, textAlign: 'right' }}>
-                          {sendMsg.text}
-                        </div>
+                        <td>
+                          <span style={{ fontWeight: 600 }}>{b.client.name}</span>
+                        </td>
+                        <td>
+                          <span style={{ fontFamily: 'monospace', fontSize: 12 }}>#{b.id.slice(-8).toUpperCase()}</span>
+                        </td>
+                        <td style={{ fontSize: 13 }}>{fmtDate(b.billingDate)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{formatPHP(b.amount)}</td>
+                        <td>
+                          <span className={`badge ${b.status === 'PAID' ? 'badge-green' : 'badge-yellow'}`}>
+                            {b.status}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ fontSize: 11 }}
+                              onClick={() => downloadPDF(b.id, b.client.name)}
+                              title="Download PDF"
+                            >
+                              📄 PDF
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ fontSize: 11 }}
+                              disabled={sendingInvoice === b.id}
+                              onClick={() => sendInvoice(b.id)}
+                              title="Send invoice by email"
+                            >
+                              {sendingInvoice === b.id ? '…' : '📧 Email'}
+                            </button>
+                            {b.status === 'PENDING' && (
+                              <>
+                                {b.paymentLinkUrl && (
+                                  <a
+                                    href={b.paymentLinkUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ textDecoration: 'none', fontSize: 11 }}
+                                  >
+                                    🔗 Link
+                                  </a>
+                                )}
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  style={{ fontSize: 11 }}
+                                  disabled={resend.isPending}
+                                  onClick={() => resend.mutate(b.id)}
+                                >
+                                  Resend
+                                </button>
+                                <button
+                                  className="btn btn-success btn-sm"
+                                  style={{ fontSize: 11 }}
+                                  onClick={() => setMarkPaidBillingId(b.id)}
+                                >
+                                  Paid
+                                </button>
+                                <button
+                                  className="btn btn-danger-outline btn-sm"
+                                  style={{ fontSize: 11 }}
+                                  disabled={deleteBilling.isPending}
+                                  onClick={() => {
+                                    if (confirm('Delete this invoice? This cannot be undone.')) {
+                                      deleteBilling.mutate(b.id);
+                                    }
+                                  }}
+                                  title="Delete invoice"
+                                >
+                                  🗑
+                                </button>
+                              </>
+                            )}
+                            {b.status === 'PAID' && (b as any).paymentScreenshotUrl && (
+                              <a
+                                href={(b as any).paymentScreenshotUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn btn-ghost btn-sm"
+                                style={{ fontSize: 11, textDecoration: 'none' }}
+                              >
+                                🖼 Proof
+                              </a>
+                            )}
+                            {sendMsg?.id === b.id && (
+                              <span style={{ fontSize: 11, color: sendMsg.ok ? '#15803D' : '#DC2626' }}>
+                                {sendMsg.text}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedId === b.id && (
+                        <tr key={`${b.id}-detail`}>
+                          <td colSpan={6} style={{ padding: 0, background: 'var(--color-surface-2)' }}>
+                            <InvoiceDetail billing={b} />
+                          </td>
+                        </tr>
                       )}
-                      {b.status === 'PENDING' && (
-                        <>
-                          {b.paymentLinkUrl && (
-                            <a href={b.paymentLinkUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none', fontSize: 11 }}>
-                              🔗 Link
-                            </a>
-                          )}
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            style={{ fontSize: 11 }}
-                            disabled={resend.isPending}
-                            onClick={() => resend.mutate(b.id)}
-                          >
-                            Resend
-                          </button>
-                          <button
-                            className="btn btn-success btn-sm"
-                            style={{ fontSize: 11 }}
-                            onClick={() => setMarkPaidBillingId(b.id)}
-                          >
-                            Paid
-                          </button>
-                          <button
-                            className="btn btn-danger-outline btn-sm"
-                            style={{ fontSize: 11 }}
-                            disabled={deleteBilling.isPending}
-                            onClick={() => {
-                              if (confirm('Delete this invoice? This cannot be undone.')) {
-                                deleteBilling.mutate(b.id);
-                              }
-                            }}
-                            title="Delete invoice"
-                          >
-                            🗑
-                          </button>
-                        </>
-                      )}
-                      {b.status === 'PAID' && (b as any).paymentScreenshotUrl && (
-                        <a
-                          href={(b as any).paymentScreenshotUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn btn-ghost btn-sm"
-                          style={{ fontSize: 11, textDecoration: 'none' }}
-                        >
-                          🖼 Proof
-                        </a>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Expanded inline details */}
-                  {expandedId === b.id && (
-                    <InvoiceDetail billing={b} />
-                  )}
-                </div>
-              ))}
+                    </>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
-      </div>
+      )}
 
       {markPaidBillingId && (
         <MarkPaidModal
@@ -550,7 +591,7 @@ function InvoiceDetail({ billing }: { billing: any }) {
 
   if (isLoading) {
     return (
-      <div style={{ padding: '8px 0 12px 36px' }}>
+      <div style={{ padding: '12px 16px' }}>
         <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
       </div>
     );
@@ -561,7 +602,7 @@ function InvoiceDetail({ billing }: { billing: any }) {
   const employees: any[] = b.employees ?? [];
 
   return (
-    <div style={{ margin: '0 0 12px 36px', padding: 14, background: 'var(--color-surface-2)', borderRadius: 8, fontSize: 13 }}>
+    <div style={{ padding: '12px 16px', fontSize: 13 }}>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Invoice No.</div>
@@ -673,8 +714,6 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
     setError('');
     try {
       let paymentScreenshotUrl: string | undefined;
-
-      // Step 1: Upload screenshot if provided
       if (screenshotFile) {
         const fd = new FormData();
         fd.append('screenshot', screenshotFile);
@@ -683,13 +722,10 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
         });
         paymentScreenshotUrl = uploadRes.data.url;
       }
-
-      // Step 2: Mark as paid
       await api.put(`/billing/${billingId}/mark-paid`, {
         paymentRef: paymentRef.trim(),
         paymentScreenshotUrl,
       });
-
       onSaved();
     } catch (err: any) {
       setError(err?.response?.data?.error ?? 'Failed to mark as paid.');
