@@ -250,6 +250,15 @@ export default function Attendance() {
   );
 }
 
+/** Compute OT hours from a "HH:MM" time string using 17:00 as the default shift end.
+ *  Mirrors the backend's computeOvertimeHrs default so the field stays accurate before saving. */
+function computeLocalOT(timeOut: string): number {
+  if (!timeOut) return 0;
+  const [h, m] = timeOut.split(':').map(Number);
+  const outDecimal = h + (isNaN(m) ? 0 : m) / 60;
+  return Math.max(0, parseFloat((outDecimal - 17.0).toFixed(2)));
+}
+
 function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: {
   employees: Employee[];
   defaultDate: string;
@@ -336,13 +345,26 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
                 </div>
                 <div className="form-group">
                   <label>Time Out</label>
-                  <input type="time" className="form-control" value={form.timeOut} onChange={e => set('timeOut', e.target.value)} />
+                  <input
+                    type="time"
+                    className="form-control"
+                    value={form.timeOut}
+                    onChange={e => {
+                      const t = e.target.value;
+                      setForm(f => ({ ...f, timeOut: t, overtimeHrs: computeLocalOT(t) }));
+                    }}
+                  />
                 </div>
               </div>
             )}
             <div className="form-group">
-              <label>Overtime Hours</label>
-              <input type="number" className="form-control" min={0} max={12} step={0.5} value={form.overtimeHrs} onChange={e => set('overtimeHrs', parseFloat(e.target.value) || 0)} />
+              <label>
+                Overtime Hours
+                <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 6 }}>
+                  (auto-calculated · override if needed)
+                </span>
+              </label>
+              <input type="number" className="form-control" min={0} max={24} step={0.5} value={form.overtimeHrs} onChange={e => set('overtimeHrs', parseFloat(e.target.value) || 0)} />
             </div>
             <div className="form-group">
               <label>Notes</label>
