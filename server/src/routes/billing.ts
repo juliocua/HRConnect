@@ -563,6 +563,17 @@ router.get('/reports/attendance-summary', async (req: Request, res: Response, ne
 
 // ── Invoice PDF & Email ───────────────────────────────────────────────────────
 
+// DELETE /api/billing/:id  — delete a PENDING invoice (PAID invoices cannot be deleted)
+router.delete('/:id', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const billing = await prisma.billing.findUnique({ where: { id: req.params.id } });
+    if (!billing) return res.status(404).json({ error: 'Billing not found' });
+    if (billing.status !== 'PENDING') return res.status(422).json({ error: 'Only PENDING invoices can be deleted.' });
+    await prisma.billing.delete({ where: { id: billing.id } });
+    res.json({ deleted: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/billing/:id/pdf  — download invoice as PDF
 router.get('/:id/pdf', async (req: Request, res: Response, next: NextFunction) => {
   try {

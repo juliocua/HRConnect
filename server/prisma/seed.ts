@@ -56,7 +56,7 @@ async function main() {
     prisma.leaveType.create({ data: { code: 'VL',  name: 'Vacation Leave',          daysPerYear: 15,  isPaid: true,  legalBasis: 'Company Policy' } }),
     prisma.leaveType.create({ data: { code: 'SL',  name: 'Sick Leave',              daysPerYear: 15,  isPaid: true,  legalBasis: 'Labor Code Art. 95' } }),
     prisma.leaveType.create({ data: { code: 'EL',  name: 'Emergency Leave',         daysPerYear: 3,   isPaid: true,  legalBasis: 'Company Policy' } }),
-    prisma.leaveType.create({ data: { code: 'SIL', name: 'Service Incentive Leave', daysPerYear: 5,   isPaid: true,  legalBasis: 'Labor Code Art. 95' } }),
+    prisma.leaveType.create({ data: { code: 'SIL', name: 'Service Incentive Leave', daysPerYear: 5,   isPaid: true,  legalBasis: 'Labor Code Art. 95', isManual: true, resetsAnnually: false } }),
     prisma.leaveType.create({ data: { code: 'ML',  name: 'Maternity Leave',         daysPerYear: 105, isPaid: true,  legalBasis: 'RA 11210' } }),
     prisma.leaveType.create({ data: { code: 'PL',  name: 'Paternity Leave',         daysPerYear: 7,   isPaid: true,  legalBasis: 'RA 8187' } }),
   ]);

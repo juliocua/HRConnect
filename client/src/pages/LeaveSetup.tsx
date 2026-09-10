@@ -235,7 +235,7 @@ export default function LeaveSetup() {
               >
                 <option value="">Select employee…</option>
                 {employees.map(e => (
-                  <option key={e.id} value={e.id}>{e.lastName}, {e.firstName}</option>
+                  <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>
                 ))}
               </select>
             </div>

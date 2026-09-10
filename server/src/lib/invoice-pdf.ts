@@ -104,50 +104,58 @@ export async function generateInvoicePDF(billing: any): Promise<Buffer> {
     rowY += 50;
 
     // ── Payment section ───────────────────────────────────────────────────────────
-    if (billing.paymentLinkUrl) {
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text('Pay Online:', 50, rowY);
-      doc.font('Helvetica').fontSize(10).fillColor(primary)
-        .text(billing.paymentLinkUrl, 50, rowY + 14, { link: billing.paymentLinkUrl, underline: true });
-      rowY += 40;
-    } else {
-      // Bank transfer fallback
-      const bankName = process.env.BANK_NAME;
-      const bankAccountName = process.env.BANK_ACCOUNT_NAME;
-      const bankAccountNumber = process.env.BANK_ACCOUNT_NUMBER;
+    const bankName = process.env.BANK_NAME;
+    const bankAccountName = process.env.BANK_ACCOUNT_NAME;
+    const bankAccountNumber = process.env.BANK_ACCOUNT_NUMBER;
+    const hasBankDetails = !!(bankName || bankAccountName || bankAccountNumber);
 
-      if (bankName || bankAccountName || bankAccountNumber) {
-        // Section box
-        doc.rect(50, rowY, doc.page.width - 100, 4).fill(primary);
-        rowY += 12;
-        doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text('PAYMENT INSTRUCTIONS', 50, rowY);
-        rowY += 16;
-        doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('Bank Transfer / Deposit', 50, rowY);
+    if (billing.paymentLinkUrl || hasBankDetails) {
+      // Section header bar
+      doc.rect(50, rowY, doc.page.width - 100, 4).fill(primary);
+      rowY += 12;
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text('PAYMENT INSTRUCTIONS', 50, rowY);
+      rowY += 18;
+    }
+
+    // Online payment link (PayMongo)
+    if (billing.paymentLinkUrl) {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('Online Payment', 50, rowY);
+      rowY += 12;
+      doc.font('Helvetica').fontSize(10).fillColor(primary)
+        .text(billing.paymentLinkUrl, 50, rowY, { link: billing.paymentLinkUrl, underline: true });
+      rowY += 22;
+    }
+
+    // Bank transfer details (shown alongside PayMongo link when both are set)
+    if (hasBankDetails) {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('Bank Transfer / Deposit', 50, rowY);
+      rowY += 14;
+      if (bankName) {
+        doc.font('Helvetica').fontSize(10).fillColor(dark)
+          .text('Bank:', 50, rowY)
+          .font('Helvetica-Bold').text(bankName, 110, rowY);
         rowY += 14;
-        if (bankName) {
-          doc.font('Helvetica').fontSize(10).fillColor(dark)
-            .text('Bank:', 50, rowY)
-            .font('Helvetica-Bold').text(bankName, 110, rowY);
-          rowY += 14;
-        }
-        if (bankAccountName) {
-          doc.font('Helvetica').fontSize(10).fillColor(dark)
-            .text('Account Name:', 50, rowY)
-            .font('Helvetica-Bold').text(bankAccountName, 150, rowY);
-          rowY += 14;
-        }
-        if (bankAccountNumber) {
-          doc.font('Helvetica').fontSize(10).fillColor(dark)
-            .text('Account Number:', 50, rowY)
-            .font('Helvetica-Bold').fontSize(12).fillColor(primary).text(bankAccountNumber, 165, rowY);
-          rowY += 14;
-        }
-        rowY += 12;
-      } else {
-        // Minimal fallback — just a contact note
-        doc.font('Helvetica').fontSize(10).fillColor(muted)
-          .text('To arrange payment, please reply to the invoice email or contact us directly.', 50, rowY);
-        rowY += 24;
       }
+      if (bankAccountName) {
+        doc.font('Helvetica').fontSize(10).fillColor(dark)
+          .text('Account Name:', 50, rowY)
+          .font('Helvetica-Bold').text(bankAccountName, 150, rowY);
+        rowY += 14;
+      }
+      if (bankAccountNumber) {
+        doc.font('Helvetica').fontSize(10).fillColor(dark)
+          .text('Account Number:', 50, rowY)
+          .font('Helvetica-Bold').fontSize(12).fillColor(primary).text(bankAccountNumber, 165, rowY);
+        rowY += 14;
+      }
+      rowY += 12;
+    }
+
+    if (!billing.paymentLinkUrl && !hasBankDetails) {
+      // Minimal fallback — neither PayMongo nor bank env vars configured
+      doc.font('Helvetica').fontSize(10).fillColor(muted)
+        .text('To arrange payment, please reply to the invoice email or contact us directly.', 50, rowY);
+      rowY += 24;
     }
 
     // ── Notes ─────────────────────────────────────────────────────────────────────

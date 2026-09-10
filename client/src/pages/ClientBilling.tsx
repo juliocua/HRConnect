@@ -73,6 +73,14 @@ export default function ClientBilling() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['billing-all'] }),
   });
 
+  const deleteBilling = useMutation({
+    mutationFn: (billingId: string) => api.delete(`/billing/${billingId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['billing-all'] });
+      qc.invalidateQueries({ queryKey: ['billing-summary'] });
+    },
+  });
+
   const [sendingInvoice, setSendingInvoice] = useState<string | null>(null);
   const [sendMsg, setSendMsg] = useState<{ id: string; ok: boolean; text: string } | null>(null);
   const downloadPDF = async (billingId: string, clientName: string) => {
@@ -476,6 +484,19 @@ export default function ClientBilling() {
                             onClick={() => setMarkPaidBillingId(b.id)}
                           >
                             Paid
+                          </button>
+                          <button
+                            className="btn btn-danger-outline btn-sm"
+                            style={{ fontSize: 11 }}
+                            disabled={deleteBilling.isPending}
+                            onClick={() => {
+                              if (confirm('Delete this invoice? This cannot be undone.')) {
+                                deleteBilling.mutate(b.id);
+                              }
+                            }}
+                            title="Delete invoice"
+                          >
+                            🗑
                           </button>
                         </>
                       )}
