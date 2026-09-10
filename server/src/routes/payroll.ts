@@ -184,6 +184,7 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
       doc.font('Helvetica-Bold').text('Client', 50, doc.y);
       doc.font('Helvetica').text(emp.client.name, 50, doc.y);
     }
+    const leftColEndY = doc.y; // save left-column bottom before right column resets cursor
     // Right column
     doc.fontSize(10).font('Helvetica-Bold').text('Pay Period', 310, infoY, { width: 235 });
     doc.font('Helvetica').text(run.period ?? '', 310, doc.y, { width: 235 });
@@ -191,7 +192,8 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
       doc.font('Helvetica-Bold').text('Coverage', 310, doc.y, { width: 235 });
       doc.font('Helvetica').text(`${fmtDate(run.periodStart)} — ${fmtDate(run.periodEnd)}`, 310, doc.y, { width: 235 });
     }
-    doc.y = Math.max(doc.y, infoY + 80);
+    // Use whichever column is taller so the separator never overlaps left-column text
+    doc.y = Math.max(leftColEndY, doc.y) + 10;
     separator();
 
     // ── Earnings / Computation ─────────────────────────────────────────────────
