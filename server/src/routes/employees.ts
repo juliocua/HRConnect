@@ -5,7 +5,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { prisma } from '../lib/prisma';
-import { authenticate } from '../middleware/authenticate';
+import { authenticate, requireRole } from '../middleware/authenticate';
 
 // ── Photo upload config ───────────────────────────────────────────────────────
 const uploadsDir = path.join(process.cwd(), 'uploads', 'photos');
@@ -52,6 +52,9 @@ const EmployeeSchema = z.object({
   resourceCost: z.number().nonnegative().optional().nullable(),
   payrollCost: z.number().nonnegative().optional().nullable(),
   clientId: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
+  emergencyContactName: z.string().optional().nullable(),
+  emergencyContactPhone: z.string().optional().nullable(),
 });
 
 // GET /api/employees
@@ -123,6 +126,122 @@ router.patch('/me', async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/employees/me/change-request  — employee submits contact/emergency changes for HR review
+router.post('/me/change-request', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { employeeId } = req.user!;
+    if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
+
+    const body = z.object({
+      phone: z.string().optional(),
+      address: z.string().optional(),
+      emergencyContactName: z.string().optional(),
+      emergencyContactPhone: z.string().optional(),
+    }).parse(req.body);
+
+    // Cancel any existing pending request from this employee
+    await (prisma as any).profileChangeRequest.updateMany({
+      where: { employeeId, status: 'PENDING' },
+      data: { status: 'REJECTED', rejectionNote: 'Superseded by new request', reviewedAt: new Date() },
+    });
+
+    const request = await (prisma as any).profileChangeRequest.create({
+      data: {
+        employeeId,
+        changes: body,
+      },
+      include: {
+        employee: { select: { firstName: true, lastName: true } },
+      },
+    });
+    res.status(201).json(request);
+  } catch (err) { next(err); }
+});
+
+// GET /api/employees/change-requests  — HR: list PENDING profile change requests
+router.get('/change-requests', requireRole('HR_MANAGER', 'HR_STAFF', 'SUPER_ADMIN'), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requests = await (prisma as any).profileChangeRequest.findMany({
+      where: { status: 'PENDING' },
+      include: {
+        employee: {
+          select: {
+            id: true, firstName: true, lastName: true, position: true,
+            avatarColor: true, phone: true, address: true,
+            emergencyContactName: true, emergencyContactPhone: true,
+          },
+        },
+      },
+      orderBy: { submittedAt: 'asc' },
+    });
+    res.json(requests);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/employees/change-requests/:id/approve  — HR: apply and approve
+router.put('/change-requests/:id/approve', requireRole('HR_MANAGER', 'HR_STAFF', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const changeReq = await (prisma as any).profileChangeRequest.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!changeReq) return res.status(404).json({ error: 'Change request not found' });
+    if (changeReq.status !== 'PENDING') return res.status(422).json({ error: 'Request is not pending' });
+
+    await prisma.employee.update({
+      where: { id: changeReq.employeeId },
+      data: changeReq.changes as any,
+    });
+
+    const updated = await (prisma as any).profileChangeRequest.update({
+      where: { id: req.params.id },
+      data: {
+        status: 'APPROVED',
+        reviewedById: req.user!.userId,
+        reviewedAt: new Date(),
+      },
+      include: {
+        employee: { select: { firstName: true, lastName: true } },
+      },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/employees/change-requests/:id/reject  — HR: reject with note
+router.put('/change-requests/:id/reject', requireRole('HR_MANAGER', 'HR_STAFF', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { rejectionNote } = z.object({ rejectionNote: z.string().optional() }).parse(req.body);
+    const changeReq = await (prisma as any).profileChangeRequest.findUnique({ where: { id: req.params.id } });
+    if (!changeReq) return res.status(404).json({ error: 'Change request not found' });
+    if (changeReq.status !== 'PENDING') return res.status(422).json({ error: 'Request is not pending' });
+
+    const updated = await (prisma as any).profileChangeRequest.update({
+      where: { id: req.params.id },
+      data: {
+        status: 'REJECTED',
+        reviewedById: req.user!.userId,
+        reviewedAt: new Date(),
+        rejectionNote: rejectionNote ?? null,
+      },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// GET /api/employees/me/change-requests  — employee: view their own change request history
+router.get('/me/change-requests', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { employeeId } = req.user!;
+    if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
+    const requests = await (prisma as any).profileChangeRequest.findMany({
+      where: { employeeId },
+      orderBy: { submittedAt: 'desc' },
+      take: 10,
+    });
+    res.json(requests);
+  } catch (err) { next(err); }
+});
+
 // GET /api/employees/:id
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -147,27 +266,22 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = EmployeeSchema.parse(req.body);
 
-    // Fix: coerce empty string managerId to null (FK constraint)
     if (!body.managerId) body.managerId = null;
 
-    // Auto-generate employee number if not provided
     if (!body.employeeNo) {
       const count = await prisma.employee.count();
       body.employeeNo = `EMP-${String(count + 1).padStart(10, '0')}`;
     }
 
-    // Auto-create user account for the employee
     const tempPassword = `Welcome@${body.employeeNo}`;
     const hashed = await bcrypt.hash(tempPassword, 12);
 
     const employee = await prisma.$transaction(async (tx) => {
-      // Create the employee record
       const emp = await tx.employee.create({
         data: body as any,
         include: { department: true },
       });
 
-      // Check if a user with this email already exists
       const existingUser = await tx.user.findUnique({ where: { email: body.email } });
       if (!existingUser) {
         await tx.user.create({
@@ -180,7 +294,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
           },
         });
       } else if (!existingUser.employeeId) {
-        // Link existing user to this employee record
         await tx.user.update({
           where: { id: existingUser.id },
           data: { employeeId: emp.id },
@@ -190,7 +303,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       return emp;
     });
 
-    // Include temp password in response so HR can share it (only on creation)
     res.status(201).json({ ...employee, _tempPassword: tempPassword });
   } catch (err) {
     next(err);
@@ -201,7 +313,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = EmployeeSchema.partial().parse(req.body);
-    // Fix: coerce empty string managerId to null
     if ('managerId' in body && !body.managerId) body.managerId = null;
 
     const employee = await prisma.employee.update({
@@ -215,7 +326,7 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// POST /api/employees/:id/create-account  — create login for existing employee
+// POST /api/employees/:id/create-account
 router.post('/:id/create-account', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const employee = await prisma.employee.findUnique({
@@ -249,7 +360,7 @@ router.post('/:id/create-account', async (req: Request, res: Response, next: Nex
   }
 });
 
-// POST /api/employees/:id/reset-password  — reset login password
+// POST /api/employees/:id/reset-password
 router.post('/:id/reset-password', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const employee = await prisma.employee.findUnique({
@@ -283,7 +394,7 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-// POST /api/employees/:id/photo — upload employee photo
+// POST /api/employees/:id/photo
 router.post('/:id/photo', photoUpload.single('photo'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -294,7 +405,6 @@ router.post('/:id/photo', photoUpload.single('photo'), async (req: Request, res:
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    // Delete old photo if exists
     if (employee.photoUrl) {
       const oldFilename = employee.photoUrl.split('/uploads/photos/').pop();
       if (oldFilename) {
@@ -315,7 +425,7 @@ router.post('/:id/photo', photoUpload.single('photo'), async (req: Request, res:
   } catch (err) { next(err); }
 });
 
-// DELETE /api/employees/:id/photo — remove employee photo
+// DELETE /api/employees/:id/photo
 router.delete('/:id/photo', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const employee = await prisma.employee.findUnique({ where: { id: req.params.id } });

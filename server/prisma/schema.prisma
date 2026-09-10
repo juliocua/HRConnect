@@ -21,6 +21,8 @@ model User {
   isActive   Boolean      @default(true)
   employeeId String?      @unique
   employee   Employee?    @relation(fields: [employeeId], references: [id])
+  companyId  String?
+  company    Company?     @relation(fields: [companyId], references: [id])
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
@@ -41,6 +43,19 @@ enum AuthProvider {
 }
 
 // ── Organization ──────────────────────────────────────────────────────────────
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+
+  @@map("companies")
+}
 
 model Department {
   id        String     @id @default(cuid())
@@ -76,6 +91,9 @@ model Employee {
   gender       Gender?
   avatarColor  String         @default("#2563EB")
   photoUrl     String?
+  address      String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -88,12 +106,13 @@ model Employee {
   bankAccountNo   String?
   bankAccountName String?
 
-  attendance       Attendance[]
-  leaveRequests    LeaveRequest[]
-  leaveBalances    LeaveBalance[]
-  payrollRecords   PayrollRecord[]
-  overtimeRequests OvertimeRequest[]
-  user             User?
+  attendance            Attendance[]
+  leaveRequests         LeaveRequest[]
+  leaveBalances         LeaveBalance[]
+  payrollRecords        PayrollRecord[]
+  overtimeRequests      OvertimeRequest[]
+  profileChangeRequests ProfileChangeRequest[]
+  user                  User?
 
   @@map("employees")
 }
@@ -109,6 +128,45 @@ enum Gender {
   MALE
   FEMALE
   OTHER
+}
+
+// ── Profile Change Requests ───────────────────────────────────────────────────
+
+model ProfileChangeRequest {
+  id            String              @id @default(cuid())
+  employeeId    String
+  employee      Employee            @relation(fields: [employeeId], references: [id])
+  changes       Json
+  status        ProfileChangeStatus @default(PENDING)
+  reviewedById  String?
+  reviewedAt    DateTime?
+  rejectionNote String?
+  submittedAt   DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@map("profile_change_requests")
+}
+
+enum ProfileChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  entityType    String
+  entityId      String
+  action        String
+  performedById String
+  performedAt   DateTime @default(now())
+  before        Json?
+  after         Json?
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
 }
 
 // ── Clients ───────────────────────────────────────────────────────────────────
@@ -154,7 +212,7 @@ model ClientPolicy {
   type        String
   title       String
   description String   @db.Text
-  value       String?  // structured value for special types (e.g. EMPLOYEE_PAY_PERIOD: '1','2','7','9')
+  value       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -175,7 +233,7 @@ model Billing {
   paymentLinkId        String?
   paymentLinkUrl       String?
   notes                String?
-  lineItems            Json?         // [{ description: string, amount: number }]
+  lineItems            Json?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
@@ -230,13 +288,9 @@ model LeaveType {
   daysPerYear      Int
   isPaid           Boolean @default(true)
   legalBasis       String?
-  // Gender restriction: ALL | MALE | FEMALE
   applicableGender String  @default("ALL")
-  // Whether balance resets every Jan 1 (VL, SL, EL = true; SIL = false)
   resetsAnnually   Boolean @default(true)
-  // Whether days accrue monthly (daysPerYear/12 per month) vs granted upfront
   accruesMonthly   Boolean @default(false)
-  // Whether allocation is set manually per employee (SIL)
   isManual         Boolean @default(false)
   isActive         Boolean @default(true)
 
@@ -320,11 +374,11 @@ enum OTStatus {
 
 model PayrollRun {
   id            String        @id @default(cuid())
-  period        String        // e.g. "2026-09 · Type 1" or "Christmas Bonus 2026"
+  period        String
   year          Int
   month         Int
-  payPeriodType Int           @default(1)  // 1=semi-monthly 1st, 2=semi-monthly 2nd, 7=special, 9=13th month
-  description   String?       // label for type 7 and 9
+  payPeriodType Int           @default(1)
+  description   String?
   periodStart   DateTime      @db.Date
   periodEnd     DateTime      @db.Date
   status        PayrollStatus @default(DRAFT)

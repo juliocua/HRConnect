@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import type { Employee } from '@/types';
+import type { Employee, ProfileChangeRequest } from '@/types';
 
 const AVATAR_COLORS = [
   '#2563EB', '#7C3AED', '#DB2777', '#EA580C',
@@ -78,7 +78,6 @@ export default function HubProfile() {
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Profile Photo</div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
-            {/* Photo / Avatar display */}
             <div style={{
               width: 80, height: 100, borderRadius: 10,
               background: employee.avatarColor, overflow: 'hidden',
@@ -143,11 +142,19 @@ export default function HubProfile() {
       </section>
 
       {/* ── Government IDs ───────────────────────────────────────────── */}
-      <section className="card">
+      <section className="card" style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 16 }}>
           Government IDs
         </div>
         <GovtIdsForm employee={employee} onSaved={onSaved} />
+      </section>
+
+      {/* ── Contact Details ──────────────────────────────────────────── */}
+      <section className="card">
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 16 }}>
+          Contact Details
+        </div>
+        <ContactDetailsForm employee={employee} />
       </section>
     </div>
   );
@@ -352,3 +359,142 @@ function GovtIdsForm({ employee, onSaved }: { employee: Employee; onSaved: () =>
     </form>
   );
 }
+
+// ── Contact Details form ──────────────────────────────────────────────────────
+function ContactDetailsForm({ employee }: { employee: Employee }) {
+  const qc = useQueryClient();
+
+  const { data: requests } = useQuery<ProfileChangeRequest[]>({
+    queryKey: ['my-change-requests'],
+    queryFn: () => api.get('/employees/me/change-requests').then(r => r.data),
+  });
+
+  const latest = requests?.[0];
+  const hasPending = latest?.status === 'PENDING';
+
+  const [form, setForm] = useState({
+    phone: employee.phone ?? '',
+    address: employee.address ?? '',
+    emergencyContactName: employee.emergencyContactName ?? '',
+    emergencyContactPhone: employee.emergencyContactPhone ?? '',
+  });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const set = (k: string, v: string) => { setForm(f => ({ ...f, [k]: v })); setError(''); setSuccess(false); };
+
+  const submitMutation = useMutation({
+    mutationFn: (data: typeof form) => api.post('/employees/me/change-request', data),
+    onSuccess: () => {
+      setSuccess(true);
+      qc.invalidateQueries({ queryKey: ['my-change-requests'] });
+    },
+    onError: (err: any) => setError(err?.response?.data?.error ?? 'Failed to submit request'),
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(''); setSuccess(false);
+    submitMutation.mutate(form);
+  };
+
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div>
+      {/* Pending request banner */}
+      {hasPending && latest && (
+        <div style={{
+          background: 'var(--color-warning-light, #FFFBEB)',
+          border: '1px solid var(--color-warning, #CA8A04)',
+          borderRadius: 8, padding: '12px 14px', marginBottom: 16, fontSize: 13,
+        }}>
+          <div style={{ fontWeight: 700, color: '#92400E', marginBottom: 6 }}>
+            ⏳ Change request pending review
+          </div>
+          <div style={{ color: '#78350F', marginBottom: 4 }}>Submitted {fmtDate(latest.submittedAt)}</div>
+          {Object.entries(latest.changes).map(([k, v]) => (
+            <div key={k} style={{ fontSize: 12, color: '#92400E', marginTop: 2 }}>
+              <strong>{FIELD_LABELS[k] ?? k}:</strong> {v as string}
+            </div>
+          ))}
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 6 }}>
+            Your current values are shown below. Changes will apply once approved.
+          </div>
+        </div>
+      )}
+
+      {latest?.status === 'REJECTED' && (
+        <div style={{
+          background: 'var(--color-danger-light, #FEF2F2)',
+          border: '1px solid var(--color-danger, #DC2626)',
+          borderRadius: 8, padding: '12px 14px', marginBottom: 16, fontSize: 13,
+        }}>
+          <div style={{ fontWeight: 700, color: '#991B1B', marginBottom: 4 }}>
+            ✗ Previous request rejected
+          </div>
+          {latest.rejectionNote && (
+            <div style={{ color: '#7F1D1D', fontSize: 12 }}>Note: {latest.rejectionNote}</div>
+          )}
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>
+            You can submit a new request below.
+          </div>
+        </div>
+      )}
+
+      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 14 }}>
+        Changes to contact and emergency information require HR approval. Submitting a new request will supersede any pending one.
+      </p>
+
+      <form onSubmit={handleSubmit}>
+        {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
+        {success && (
+          <div style={{ background: 'var(--color-success-light, #F0FDF4)', border: '1px solid var(--color-success, #16A34A)', borderRadius: 8, padding: '10px 14px', fontSize: 13.5, color: '#15803D', marginBottom: 12 }}>
+            ✓ Change request submitted — HR will review shortly
+          </div>
+        )}
+
+        <div className="form-grid form-grid-2" style={{ gap: 12 }}>
+          <div className="form-group">
+            <label>Phone</label>
+            <input className="form-control" placeholder="+63 9XX XXX XXXX" value={form.phone} onChange={e => set('phone', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Emergency Contact Name</label>
+            <input className="form-control" placeholder="Full name" value={form.emergencyContactName} onChange={e => set('emergencyContactName', e.target.value)} />
+          </div>
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label>Home Address</label>
+            <input className="form-control" placeholder="Street, City, Province" value={form.address} onChange={e => set('address', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Emergency Contact Phone</label>
+            <input className="form-control" placeholder="+63 9XX XXX XXXX" value={form.emergencyContactPhone} onChange={e => set('emergencyContactPhone', e.target.value)} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+          <button
+            type="submit"
+            className="btn btn-primary btn-sm"
+            disabled={submitMutation.isPending}
+          >
+            {submitMutation.isPending ? 'Submitting…' : 'Submit Change Request'}
+          </button>
+          {hasPending && (
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+              This will replace your pending request
+            </span>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  phone: 'Phone',
+  address: 'Home Address',
+  emergencyContactName: 'Emergency Contact Name',
+  emergencyContactPhone: 'Emergency Contact Phone',
+};

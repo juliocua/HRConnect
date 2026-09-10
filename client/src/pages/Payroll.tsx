@@ -5,7 +5,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { formatPHP } from '@/lib/payroll';
 import { DataTable } from '@/components/DataTable';
-import type { PayrollRun, PayrollRecord, PayrollStatus } from '@/types';
+import type { PayrollRun, PayrollRecord, PayrollStatus, AuditLog } from '@/types';
 
 const STATUS_COLORS: Record<PayrollStatus, string> = {
   DRAFT: 'badge-yellow', POSTED: 'badge-blue', PAID: 'badge-green',
@@ -38,11 +38,27 @@ export default function Payroll() {
     enabled: !!viewRunId,
   });
 
+  const { data: auditLogs = [] } = useQuery<AuditLog[]>({
+    queryKey: ['payroll-audit', viewRunId],
+    queryFn: () => api.get(`/payroll/audit?entityId=${viewRunId}`).then(r => r.data),
+    enabled: !!viewRunId && isManager,
+  });
+
   const postMutation = useMutation({
     mutationFn: (runId: string) => api.put(`/payroll/${runId}/post`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payroll-history'] });
       qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] });
+      qc.invalidateQueries({ queryKey: ['payroll-audit', viewRunId] });
+    },
+  });
+
+  const paidMutation = useMutation({
+    mutationFn: (runId: string) => api.put(`/payroll/${runId}/paid`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll-history'] });
+      qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] });
+      qc.invalidateQueries({ queryKey: ['payroll-audit', viewRunId] });
     },
   });
 
@@ -267,6 +283,19 @@ export default function Payroll() {
               </button>
             </>
           )}
+          {viewRunId && currentRun?.status === 'POSTED' && isManager && (
+            <button
+              className="btn btn-primary"
+              disabled={paidMutation.isPending}
+              onClick={() => {
+                if (confirm('Mark this payroll run as PAID? This action cannot be reversed.')) {
+                  paidMutation.mutate(viewRunId);
+                }
+              }}
+            >
+              {paidMutation.isPending ? 'Marking…' : '💳 Mark as Paid'}
+            </button>
+          )}
           {viewRunId && (currentRun?.status === 'POSTED' || currentRun?.status === 'PAID') && isManager && (
             <button className="btn btn-secondary btn-sm" disabled={downloadingDisb} onClick={handleDownloadDisbursement}>
               {downloadingDisb ? 'Generating…' : '⬇ Disbursement File'}
@@ -330,7 +359,7 @@ export default function Payroll() {
           </div>
 
           {/* Records table */}
-          <div className="card">
+          <div className="card" style={{ marginBottom: 20 }}>
             <DataTable
               data={records}
               columns={columns}
@@ -338,6 +367,35 @@ export default function Payroll() {
               exportFilename={`Payroll_${currentRun.period?.replace(/\s/g, '_')}`}
             />
           </div>
+
+          {/* Audit log — managers only */}
+          {isManager && (
+            <div className="card">
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>
+                Audit Trail
+              </div>
+              {auditLogs.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--color-text-muted)', padding: '8px 0' }}>No audit entries yet.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {auditLogs.map(log => (
+                    <div key={log.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
+                      <span className={`badge ${log.action === 'PAID' ? 'badge-green' : 'badge-blue'}`} style={{ minWidth: 60, textAlign: 'center' }}>
+                        {log.action === 'POST' ? 'POSTED' : log.action}
+                      </span>
+                      <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                        {new Date(log.performedAt).toLocaleDateString('en-PH', {
+                          year: 'numeric', month: 'short', day: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </span>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>by {log.performedById}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       ) : (
         /* History list */
@@ -472,13 +530,12 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
 
   const is13th = payPeriodType === 9;
   const isSpecial = payPeriodType === 7;
-  const isAdHoc = isSpecial; // only type 7 needs manual dates now
+  const isAdHoc = isSpecial;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (is13th) {
-      // Type 9: only send year + type; backend fills everything else
       runMutation.mutate({ year, payPeriodType });
       return;
     }
@@ -504,7 +561,6 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
             {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
 
             <div className="form-grid form-grid-2" style={{ gap: 12 }}>
-              {/* Month — hidden for 13th month */}
               {!is13th && (
                 <div className="form-group">
                   <label>Month *</label>
@@ -537,7 +593,6 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
                 </select>
               </div>
 
-              {/* Info banner — varies by type */}
               {is13th && (
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
                   <div style={{ fontSize: 12.5, color: 'var(--color-text-muted)', background: 'var(--color-surface-2)', borderRadius: 8, padding: '8px 12px' }}>
@@ -640,7 +695,6 @@ function PayslipModal({ record: r, payPeriodType, runPeriod, onClose }: {
           </div>
         </div>
         <div className="modal-body">
-          {/* Employee info */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
             <div className="emp-avatar" style={{ width: 48, height: 48, fontSize: 16, background: r.employee.avatarColor }}>
               {r.employee.firstName[0]}{r.employee.lastName[0]}
@@ -656,7 +710,6 @@ function PayslipModal({ record: r, payPeriodType, runPeriod, onClose }: {
           </div>
 
           {is13th ? (
-            /* ── 13th Month Payslip ── */
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
                 13th Month Pay Computation
@@ -721,7 +774,6 @@ function PayslipModal({ record: r, payPeriodType, runPeriod, onClose }: {
               </div>
             </>
           ) : (
-            /* ── Regular Payslip ── */
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Earnings</div>
               <div className="payslip-row"><span>Basic Salary</span><span>{formatPHP(r.basicSalary)}</span></div>

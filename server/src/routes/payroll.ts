@@ -64,6 +64,24 @@ router.get('/employee/:employeeId', async (req: Request, res: Response, next: Ne
   }
 });
 
+// GET /api/payroll/audit  — audit log for payroll runs (manager only)
+router.get('/audit', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { entityId, limit = '50' } = req.query as Record<string, string>;
+    const logs = await (prisma as any).auditLog.findMany({
+      where: {
+        entityType: 'PayrollRun',
+        ...(entityId ? { entityId } : {}),
+      },
+      orderBy: { performedAt: 'desc' },
+      take: parseInt(limit, 10),
+    });
+    res.json(logs);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/payroll/record/:recordId/pdf  — download a payslip as PDF
 router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -318,7 +336,6 @@ function computePeriodDates(
   periodStart?: string, periodEnd?: string
 ): { periodStart: Date; periodEnd: Date } {
   if (payPeriodType === 9) {
-    // 13th month: always Jan 1 – Dec 31 of the given year
     return { periodStart: new Date(year, 0, 1), periodEnd: new Date(year, 11, 31) };
   }
   if (payPeriodType === 1) {
@@ -345,7 +362,6 @@ function buildPeriodLabel(year: number, month: number, payPeriodType: number, de
 
 // ── 13th month pay helpers ────────────────────────────────────────────────────
 
-/** Annual TRAIN Law brackets applied to excess over ₱90,000 exemption */
 function computeAnnualWithholdingTax(taxableExcess: number): number {
   if (taxableExcess <= 250000) return 0;
   if (taxableExcess <= 400000) return Math.round((taxableExcess - 250000) * 0.20);
@@ -356,10 +372,8 @@ function computeAnnualWithholdingTax(taxableExcess: number): number {
 }
 
 function compute13thMonthRecord(basicSalary: number, paidDays: number) {
-  // PH formula: (daily rate × paid days) / 12
   const dailyRate = basicSalary / 22;
   const grossPay = (dailyRate * paidDays) / 12;
-  // Exempt up to ₱90,000 (TRAIN Law); tax applied to annual excess
   const taxableExcess = Math.max(0, grossPay - 90000);
   const withholdingTax = computeAnnualWithholdingTax(taxableExcess);
   return {
@@ -381,11 +395,11 @@ function compute13thMonthRecord(basicSalary: number, paidDays: number) {
 // POST /api/payroll/run  — compute and save payroll for a period
 const RunSchema = z.object({
   year: z.number().int(),
-  month: z.number().int().min(1).max(12).optional(), // optional for type 9
+  month: z.number().int().min(1).max(12).optional(),
   payPeriodType: z.number().int().refine(v => [1, 2, 7, 9].includes(v), {
     message: 'payPeriodType must be 1, 2, 7, or 9',
   }),
-  description: z.string().optional(), // optional for type 9 (auto-filled)
+  description: z.string().optional(),
   periodStart: z.string().optional(),
   periodEnd: z.string().optional(),
 });
@@ -396,11 +410,9 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
     const { year, payPeriodType } = body;
     const is13th = payPeriodType === 9;
 
-    // Auto-fill for type 9
     const month = is13th ? 12 : body.month;
     const description = is13th ? `13th Month Pay ${year}` : body.description;
 
-    // Validation for non-13th types
     if (!is13th) {
       if (!month) return res.status(422).json({ error: 'month is required for this pay period type' });
       if (payPeriodType === 7 && !description) {
@@ -435,7 +447,6 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       const clientIds = [...new Set(matchingPolicies.map((p: any) => p.clientId))];
       employeeWhere.clientId = clientIds.length > 0 ? { in: clientIds } : { in: [] };
     }
-    // Types 7 and 9: all active/on-leave employees
 
     const employees = await prisma.employee.findMany({ where: employeeWhere });
 
@@ -453,7 +464,6 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
     let records: any[];
 
     if (is13th) {
-      // ── 13th month: full-year paid days computation ───────────────────────
       const allAttendance = await prisma.attendance.findMany({
         where: {
           employeeId: { in: employees.map((e: any) => e.id) },
@@ -463,7 +473,6 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         select: { employeeId: true, status: true, clockInAt: true, date: true },
       });
 
-      // Build set of (employeeId_YYYY-MM-DD) for approved paid leaves
       const approvedPaidLeaves = await prisma.leaveRequest.findMany({
         where: {
           employeeId: { in: employees.map((e: any) => e.id) },
@@ -485,7 +494,6 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         }
       }
 
-      // Compute paid day fractions per employee
       const paidDaysMap = new Map<string, number>();
       for (const att of allAttendance) {
         const current = paidDaysMap.get(att.employeeId) ?? 0;
@@ -504,10 +512,9 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
             const lateHrs = Math.max(0, clockIn.getTime() - shiftStart.getTime()) / 3_600_000;
             frac = Math.max(0, (8 - lateHrs) / 8);
           } else {
-            frac = 1; // no clock-in data — treat as full day
+            frac = 1;
           }
         } else if (att.status === 'HALF_DAY') {
-          // 0.5 work + 0.5 if the other half is a paid leave
           frac = paidLeaveSet.has(key) ? 1 : 0.5;
         } else if (att.status === 'ON_LEAVE') {
           frac = paidLeaveSet.has(key) ? 1 : 0;
@@ -526,7 +533,6 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         };
       });
     } else {
-      // ── Regular payroll (types 1, 2, 7) ──────────────────────────────────
       const allAttendance = await prisma.attendance.findMany({
         where: {
           employeeId: { in: employees.map((e: any) => e.id) },
@@ -570,14 +576,63 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
   }
 });
 
-// PUT /api/payroll/:runId/post
+// PUT /api/payroll/:runId/post  — DRAFT → POSTED (with audit log)
 router.put('/:runId/post', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const run = await prisma.payrollRun.update({
+    const run = await prisma.payrollRun.findUnique({ where: { id: req.params.runId } });
+    if (!run) return res.status(404).json({ error: 'Payroll run not found' });
+    if (run.status !== 'DRAFT') {
+      return res.status(422).json({ error: `Cannot post a payroll run that is already ${run.status}` });
+    }
+
+    const updated = await prisma.payrollRun.update({
       where: { id: req.params.runId },
       data: { status: 'POSTED' },
     });
-    res.json(run);
+
+    await (prisma as any).auditLog.create({
+      data: {
+        entityType: 'PayrollRun',
+        entityId: run.id,
+        action: 'POST',
+        performedById: req.user!.userId,
+        before: { status: 'DRAFT' },
+        after: { status: 'POSTED' },
+      },
+    });
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/payroll/:runId/paid  — POSTED → PAID (with audit log)
+router.put('/:runId/paid', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const run = await prisma.payrollRun.findUnique({ where: { id: req.params.runId } });
+    if (!run) return res.status(404).json({ error: 'Payroll run not found' });
+    if (run.status !== 'POSTED') {
+      return res.status(422).json({ error: `Only POSTED payroll runs can be marked as PAID. Current status: ${run.status}` });
+    }
+
+    const updated = await prisma.payrollRun.update({
+      where: { id: req.params.runId },
+      data: { status: 'PAID' },
+    });
+
+    await (prisma as any).auditLog.create({
+      data: {
+        entityType: 'PayrollRun',
+        entityId: run.id,
+        action: 'PAID',
+        performedById: req.user!.userId,
+        before: { status: 'POSTED' },
+        after: { status: 'PAID' },
+      },
+    });
+
+    res.json(updated);
   } catch (err) {
     next(err);
   }
@@ -598,12 +653,14 @@ router.delete('/run/:runId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (re
   }
 });
 
-// PUT /api/payroll/run/:runId/record/:recordId — update otherDeductions on a single record
+// PUT /api/payroll/run/:runId/record/:recordId — update otherDeductions (DRAFT only)
 router.put('/run/:runId/record/:recordId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const run = await prisma.payrollRun.findUnique({ where: { id: req.params.runId } });
     if (!run) return res.status(404).json({ error: 'Payroll run not found' });
-    if (run.status === 'PAID') return res.status(422).json({ error: 'Cannot edit a PAID payroll run' });
+    if (run.status !== 'DRAFT') {
+      return res.status(422).json({ error: `Cannot edit a ${run.status} payroll run. Only DRAFT runs are editable.` });
+    }
 
     const { otherDeductions } = z.object({
       otherDeductions: z.number().min(0),

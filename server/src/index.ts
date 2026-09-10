@@ -17,6 +17,7 @@ import clientRoutes from './routes/clients';
 import billingRoutes from './routes/billing';
 import importRoutes from './routes/import';
 import overtimeRoutes from './routes/overtime';
+import companiesRoutes from './routes/companies';
 import { startLeaveAccrualJob } from './jobs/leaveAccrual';
 
 const app = express();
@@ -60,6 +61,7 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/overtime', overtimeRoutes);
+app.use('/api/companies', companiesRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));

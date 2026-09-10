@@ -12,6 +12,18 @@ export interface AuthUser {
   employeeId?: string;
 }
 
+// ── Company ───────────────────────────────────────────────────────────────────
+export interface Company {
+  id: string;
+  name: string;
+  code: string;
+  address?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { users: number };
+}
+
 // ── Department ────────────────────────────────────────────────────────────────
 export interface Department {
   id: string;
@@ -49,6 +61,9 @@ export interface Employee {
   gender?: EmployeeGender | null;
   avatarColor: string;
   photoUrl?: string | null;
+  address?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
   bankName?: string | null;
   bankAccountNo?: string | null;
   bankAccountName?: string | null;
@@ -59,6 +74,39 @@ export interface Employee {
 export type EmployeeFormData = Omit<Employee, 'id' | 'department' | 'manager' | 'subordinates' | 'createdAt' | 'employeeNo'> & {
   employeeNo?: string;
 };
+
+// ── Profile Change Requests ───────────────────────────────────────────────────
+export type ProfileChangeStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface ProfileChangeRequest {
+  id: string;
+  employeeId: string;
+  employee?: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor' | 'phone' | 'address' | 'emergencyContactName' | 'emergencyContactPhone'>;
+  changes: {
+    phone?: string;
+    address?: string;
+    emergencyContactName?: string;
+    emergencyContactPhone?: string;
+  };
+  status: ProfileChangeStatus;
+  reviewedById?: string | null;
+  reviewedAt?: string | null;
+  rejectionNote?: string | null;
+  submittedAt: string;
+  updatedAt: string;
+}
+
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+export interface AuditLog {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  performedById: string;
+  performedAt: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+}
 
 // ── Attendance ────────────────────────────────────────────────────────────────
 export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'HALF_DAY' | 'ON_LEAVE' | 'HOLIDAY' | 'WEEKEND';
