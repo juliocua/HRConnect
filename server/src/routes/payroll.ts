@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import PDFDocument from 'pdfkit';
 import { prisma } from '../lib/prisma';
-import { computePayroll } from '../lib/payroll';
+import { computeSSS, computePhilHealth, computePagIBIG, computeWithholdingTax } from '../lib/payroll';
 import { authenticate, requireRole } from '../middleware/authenticate';
 
 const router = Router();
@@ -554,15 +554,42 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         attendanceMap.set(att.employeeId, current + (att.status === 'HALF_DAY' ? 0.5 : 1));
       }
 
-      records = employees.map((emp: any) => {
-        const computed = computePayroll(emp.basicSalary);
-        return {
-          payrollRunId: payrollRun.id,
-          employeeId: emp.id,
-          ...computed,
-          daysWorked: attendanceMap.get(emp.id) ?? 0,
-        };
-      });
+      // Exclude employees with no attendance in this period
+      records = employees
+        .filter((emp: any) => (attendanceMap.get(emp.id) ?? 0) > 0)
+        .map((emp: any) => {
+          const daysWorked = attendanceMap.get(emp.id)!;
+          // Gross = prorated daily rate × days actually worked
+          const grossPay = (emp.basicSalary / 22) * daysWorked;
+          // Statutory contributions are based on full monthly salary bracket
+          const sssContrib = computeSSS(emp.basicSalary);
+          const philhealthContrib = computePhilHealth(emp.basicSalary);
+          const pagibigContrib = computePagIBIG(emp.basicSalary);
+          const taxableIncome = Math.max(0, grossPay - sssContrib - philhealthContrib - pagibigContrib);
+          const withholdingTax = computeWithholdingTax(taxableIncome);
+          const totalDeductions = sssContrib + philhealthContrib + pagibigContrib + withholdingTax;
+          const netPay = grossPay - totalDeductions;
+          return {
+            payrollRunId: payrollRun.id,
+            employeeId: emp.id,
+            basicSalary: emp.basicSalary,
+            daysWorked,
+            grossPay,
+            overtimePay: 0,
+            allowances: 0,
+            otherDeductions: 0,
+            lateDeduction: 0,
+            holidayPay: 0,
+            nightDifferential: 0,
+            sssContrib,
+            philhealthContrib,
+            pagibigContrib,
+            taxableIncome,
+            withholdingTax,
+            totalDeductions,
+            netPay,
+          };
+        });
     }
 
     await prisma.payrollRecord.createMany({ data: records });
