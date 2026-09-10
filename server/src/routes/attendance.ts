@@ -464,8 +464,17 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = AttendanceSchema.partial().parse(req.body);
-    const dateStr = (body.date ?? '').slice(0, 10);
-    const timeIn = body.timeIn && dateStr ? toDateTime(dateStr, body.timeIn) : undefined;
+    // If times are sent without a date (common from the Edit modal), fall back to the
+    // existing record's date so toDateTime and OT computation work correctly.
+    let dateStr = (body.date ?? '').slice(0, 10);
+    if (!dateStr && (body.timeIn || body.timeOut)) {
+      const existing = await prisma.attendance.findUnique({
+        where: { id: req.params.id },
+        select: { date: true },
+      });
+      if (existing?.date) dateStr = existing.date.toISOString().slice(0, 10);
+    }
+    const timeIn  = body.timeIn  && dateStr ? toDateTime(dateStr, body.timeIn)  : undefined;
     const timeOut = body.timeOut && dateStr ? toDateTime(dateStr, body.timeOut) : undefined;
     const data: Record<string, unknown> = {
       ...(body.status !== undefined ? { status: body.status } : {}),
