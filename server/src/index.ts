@@ -50,7 +50,10 @@ app.use(passport.session());
 
 // ── Static: uploaded files ────────────────────────────────────────────────────
 const uploadsBase = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
-app.use('/uploads', express.static(uploadsBase));
+app.use('/uploads', (_req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(uploadsBase));
 
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
