@@ -357,6 +357,19 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       },
       orderBy: [{ date: 'desc' }, { employee: { lastName: 'asc' } }],
     });
+
+    // Backfill overtimeHrs for legacy records where timeOut exists but overtimeHrs was never computed
+    const needsBackfill = records.filter(r => r.timeOut && r.overtimeHrs == null);
+    if (needsBackfill.length > 0) {
+      await Promise.all(
+        needsBackfill.map(async r => {
+          const ot = await computeOvertimeHrs(r.employee.id, r.timeOut!);
+          await prisma.attendance.update({ where: { id: r.id }, data: { overtimeHrs: ot } });
+          (r as any).overtimeHrs = ot;
+        })
+      );
+    }
+
     res.json(records);
   } catch (err) {
     next(err);

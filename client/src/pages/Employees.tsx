@@ -237,7 +237,6 @@ function TabBar({ tabs, active, onChange }: {
     <div style={{
       display: 'flex',
       gap: 2,
-      borderBottom: '2px solid var(--color-border)',
       marginBottom: 20,
       overflowX: 'auto',
       scrollbarWidth: 'none' as any,
@@ -252,9 +251,7 @@ function TabBar({ tabs, active, onChange }: {
           style={{
             background: active === t ? 'var(--color-primary)' : 'transparent',
             border: active === t ? 'none' : '1px solid var(--color-border)',
-            borderBottom: active === t ? 'none' : '1px solid var(--color-border)',
             borderRadius: '6px 6px 0 0',
-            marginBottom: -2,
             padding: '7px 16px',
             fontSize: 13,
             fontWeight: active === t ? 700 : 500,
@@ -467,7 +464,7 @@ function EmployeeModal({
         ) : (
         <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Pinned profile header — same layout as view modal, never scrolls */}
-          <div style={{ padding: '20px 24px 16px', flexShrink: 0, borderBottom: '1px solid var(--color-border)' }}>
+          <div style={{ padding: '20px 24px 16px', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
               <div style={{ flexShrink: 0 }}>
                 <div style={{
@@ -658,16 +655,12 @@ function EmployeeModal({
               <>
                 <div className="form-group">
                   <label>Deployed To (Client)</label>
-                  <select
-                    className="form-control"
+                  <ClientCombobox
+                    clients={clients.filter(c => c.activeContract)}
                     value={form.clientId ?? ''}
-                    onChange={e => set('clientId', e.target.value || null)}
-                  >
-                    <option value="">— Not deployed / On bench —</option>
-                    {clients.filter(c => c.activeContract).map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={id => set('clientId', id || null)}
+                    placeholder="— Not deployed / On bench —"
+                  />
                 </div>
                 <div className="form-grid form-grid-2">
                   <div className="form-group">
@@ -1037,7 +1030,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
           </div>
         </div>
         {/* Pinned profile header — never scrolls */}
-        <div style={{ padding: '20px 24px 16px', flexShrink: 0, borderBottom: '1px solid var(--color-border)' }}>
+        <div style={{ padding: '20px 24px 16px', flexShrink: 0 }}>
           {/* Profile header — large photo + name, always visible across all tabs */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
             {/* Large portrait photo */}
