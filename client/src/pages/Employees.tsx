@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
@@ -227,6 +227,45 @@ export default function Employees() {
   );
 }
 
+// ── Tab Bar ────────────────────────────────────────────────────────────────
+function TabBar({ tabs, active, onChange }: {
+  tabs: string[];
+  active: string;
+  onChange: (t: string) => void;
+}) {
+  return (
+    <div style={{
+      display: 'flex',
+      gap: 0,
+      borderBottom: '2px solid var(--color-border)',
+      marginBottom: 20,
+      overflowX: 'auto',
+    }}>
+      {tabs.map(t => (
+        <button
+          key={t}
+          type="button"
+          onClick={() => onChange(t)}
+          style={{
+            background: 'none',
+            border: 'none',
+            borderBottom: active === t ? '2px solid var(--color-primary)' : '2px solid transparent',
+            marginBottom: -2,
+            padding: '8px 14px',
+            fontSize: 13,
+            fontWeight: active === t ? 700 : 500,
+            color: active === t ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Employee Modal (Add / Edit) ─────────────────────────────────────────────
 function EmployeeModal({
   departments, employees, initial, onClose, onSaved,
@@ -242,6 +281,8 @@ function EmployeeModal({
     queryFn: () => api.get('/clients').then(r => r.data),
   });
   const isEdit = !!initial;
+  const [activeTab, setActiveTab] = useState('Basic Info');
+
   const [form, setForm] = useState<EmployeeFormData>(initial
     ? {
         employeeNo: initial.employeeNo,
@@ -267,6 +308,9 @@ function EmployeeModal({
         bankAccountName: initial.bankAccountName ?? '',
         avatarColor: initial.avatarColor,
         gender: initial.gender ?? null,
+        address: initial.address ?? '',
+        emergencyContactName: initial.emergencyContactName ?? '',
+        emergencyContactPhone: initial.emergencyContactPhone ?? '',
       }
     : {
         firstName: '', lastName: '', email: '', phone: '', position: '',
@@ -277,6 +321,9 @@ function EmployeeModal({
         bankName: '', bankAccountNo: '', bankAccountName: '',
         avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
         gender: null,
+        address: '',
+        emergencyContactName: '',
+        emergencyContactPhone: '',
       });
 
   const [error, setError] = useState('');
@@ -341,6 +388,10 @@ function EmployeeModal({
 
   const managers = employees.filter(e => e.id !== initial?.id && e.status === 'ACTIVE');
 
+  const EDIT_TABS = isEdit
+    ? ['Basic Info', 'Deployment', 'IDs & Bank', 'Emergency Contact', 'Account']
+    : ['Basic Info', 'Deployment', 'IDs & Bank', 'Emergency Contact'];
+
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal modal-lg">
@@ -375,176 +426,239 @@ function EmployeeModal({
           <div className="modal-body">
             {error && <div className="error-msg">{error}</div>}
 
-            <div className="form-grid form-grid-2">
-              <div className="form-group">
-                <label>First Name *</label>
-                <input className="form-control" required value={form.firstName} onChange={e => set('firstName', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Last Name *</label>
-                <input className="form-control" required value={form.lastName} onChange={e => set('lastName', e.target.value)} />
-              </div>
-            </div>
+            <TabBar tabs={EDIT_TABS} active={activeTab} onChange={setActiveTab} />
 
-            <div className="form-grid form-grid-3">
-              <div className="form-group">
-                <label>Email *</label>
-                <input type="email" className="form-control" required value={form.email} onChange={e => set('email', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Phone</label>
-                <input className="form-control" placeholder="+63 9XX XXX XXXX" value={form.phone ?? ''} onChange={e => set('phone', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Gender</label>
-                <select className="form-control" value={form.gender ?? ''} onChange={e => set('gender', (e.target.value || null) as any)}>
-                  <option value="">— Prefer not to say —</option>
-                  <option value="MALE">Male</option>
-                  <option value="FEMALE">Female</option>
-                  <option value="OTHER">Other</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-grid form-grid-2">
-              <div className="form-group">
-                <label>Position *</label>
-                <input className="form-control" required value={form.position} onChange={e => set('position', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Department *</label>
-                <select className="form-control" required value={form.departmentId} onChange={e => set('departmentId', e.target.value)}>
-                  {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div className="form-grid form-grid-3">
-              <div className="form-group">
-                <label>Direct Manager</label>
-                <select className="form-control" value={form.managerId ?? ''} onChange={e => set('managerId', e.target.value || undefined)}>
-                  <option value="">— None —</option>
-                  {managers.map(m => (
-                    <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Status</label>
-                <select className="form-control" value={form.status} onChange={e => set('status', e.target.value)}>
-                  <option value="ACTIVE">Active</option>
-                  <option value="ON_LEAVE">On Leave</option>
-                  <option value="INACTIVE">Inactive</option>
-                  <option value="TERMINATED">Terminated</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Hire Date *</label>
-                <input type="date" className="form-control" required value={form.hireDate} onChange={e => set('hireDate', e.target.value)} />
-              </div>
-            </div>
-
-            <div className="form-grid form-grid-2">
-              <div className="form-group">
-                <label>Basic Salary (₱) *</label>
-                <input type="number" className="form-control" required min={0} value={form.basicSalary} onChange={e => set('basicSalary', Number(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label>Employee No.</label>
-                <input className="form-control" placeholder="Auto-generated" value={form.employeeNo ?? ''} onChange={e => set('employeeNo', e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '8px 0 4px' }}>
-              Client Deployment
-            </div>
-
-            <div className="form-grid form-grid-2" style={{ gap: 12, marginBottom: 4 }}>
-              <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                <label>Deployed To (Client)</label>
-                <select
-                  className="form-control"
-                  value={form.clientId ?? ''}
-                  onChange={e => set('clientId', e.target.value || null)}
-                >
-                  <option value="">— Not deployed / On bench —</option>
-                  {clients.filter(c => c.activeContract).map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Resource Cost (₱ billed to client)</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  min={0}
-                  placeholder="e.g. 60000"
-                  value={form.resourceCost ?? ''}
-                  onChange={e => set('resourceCost', e.target.value ? Number(e.target.value) : null)}
-                />
-              </div>
-              <div className="form-group">
-                <label>Payroll Cost (₱ paid to employee)</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  min={0}
-                  placeholder="e.g. 45000"
-                  value={form.payrollCost ?? ''}
-                  onChange={e => set('payrollCost', e.target.value ? Number(e.target.value) : null)}
-                />
-              </div>
-            </div>
-
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '8px 0 4px' }}>
-              Government IDs
-            </div>
-
-            <div className="form-grid form-grid-2">
-              <div className="form-group">
-                <label>SSS No.</label>
-                <input className="form-control font-mono" placeholder="XX-XXXXXXX-X" value={form.sssNo ?? ''} onChange={e => set('sssNo', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>PhilHealth No.</label>
-                <input className="form-control font-mono" placeholder="XXXXXXXXXXXX" value={form.philhealthNo ?? ''} onChange={e => set('philhealthNo', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Pag-IBIG No.</label>
-                <input className="form-control font-mono" placeholder="XXXXXXXXXXXX" value={form.pagibigNo ?? ''} onChange={e => set('pagibigNo', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>TIN No.</label>
-                <input className="form-control font-mono" placeholder="XXX-XXX-XXX-XXX" value={form.tinNo ?? ''} onChange={e => set('tinNo', e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '8px 0 4px' }}>
-              Bank Details
-            </div>
-
-            <div className="form-grid form-grid-2">
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Bank Name</label>
-                <input className="form-control" placeholder="e.g. BDO, BPI, UnionBank" value={form.bankName ?? ''} onChange={e => set('bankName', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Account Number</label>
-                <input className="form-control font-mono" placeholder="XXXXXXXXXXXX" value={form.bankAccountNo ?? ''} onChange={e => set('bankAccountNo', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Account Name</label>
-                <input className="form-control" placeholder="Name as registered in bank" value={form.bankAccountName ?? ''} onChange={e => set('bankAccountName', e.target.value)} />
-              </div>
-            </div>
-
-            {/* Login Account — edit mode only */}
-            {isEdit && (
+            {/* ── Tab: Basic Info ── */}
+            {activeTab === 'Basic Info' && (
               <>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '8px 0 4px' }}>
-                  Login Account
+                <div className="form-grid form-grid-2">
+                  <div className="form-group">
+                    <label>First Name *</label>
+                    <input className="form-control" required value={form.firstName} onChange={e => set('firstName', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Last Name *</label>
+                    <input className="form-control" required value={form.lastName} onChange={e => set('lastName', e.target.value)} />
+                  </div>
                 </div>
+
+                <div className="form-grid form-grid-3">
+                  <div className="form-group">
+                    <label>Email *</label>
+                    <input type="email" className="form-control" required value={form.email} onChange={e => set('email', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Phone</label>
+                    <input className="form-control" placeholder="+63 9XX XXX XXXX" value={form.phone ?? ''} onChange={e => set('phone', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Gender</label>
+                    <select className="form-control" value={form.gender ?? ''} onChange={e => set('gender', (e.target.value || null) as any)}>
+                      <option value="">— Prefer not to say —</option>
+                      <option value="MALE">Male</option>
+                      <option value="FEMALE">Female</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-grid form-grid-2">
+                  <div className="form-group">
+                    <label>Position *</label>
+                    <input className="form-control" required value={form.position} onChange={e => set('position', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Department *</label>
+                    <select className="form-control" required value={form.departmentId} onChange={e => set('departmentId', e.target.value)}>
+                      {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-grid form-grid-3">
+                  <div className="form-group">
+                    <label>Direct Manager</label>
+                    <select className="form-control" value={form.managerId ?? ''} onChange={e => set('managerId', e.target.value || undefined)}>
+                      <option value="">— None —</option>
+                      {managers.map(m => (
+                        <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Status</label>
+                    <select className="form-control" value={form.status} onChange={e => set('status', e.target.value)}>
+                      <option value="ACTIVE">Active</option>
+                      <option value="ON_LEAVE">On Leave</option>
+                      <option value="INACTIVE">Inactive</option>
+                      <option value="TERMINATED">Terminated</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Hire Date *</label>
+                    <input type="date" className="form-control" required value={form.hireDate} onChange={e => set('hireDate', e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="form-grid form-grid-2">
+                  <div className="form-group">
+                    <label>Basic Salary (₱) *</label>
+                    <input type="number" className="form-control" required min={0} value={form.basicSalary} onChange={e => set('basicSalary', Number(e.target.value))} />
+                  </div>
+                  <div className="form-group">
+                    <label>Employee No.</label>
+                    <input className="form-control" placeholder="Auto-generated" value={form.employeeNo ?? ''} onChange={e => set('employeeNo', e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Avatar Color</label>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    {AVATAR_COLORS.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => set('avatarColor', c)}
+                        style={{
+                          width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
+                          outline: form.avatarColor === c ? `3px solid var(--color-primary)` : '3px solid transparent',
+                          outlineOffset: 2,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Tab: Deployment ── */}
+            {activeTab === 'Deployment' && (
+              <>
+                <div className="form-group">
+                  <label>Deployed To (Client)</label>
+                  <select
+                    className="form-control"
+                    value={form.clientId ?? ''}
+                    onChange={e => set('clientId', e.target.value || null)}
+                  >
+                    <option value="">— Not deployed / On bench —</option>
+                    {clients.filter(c => c.activeContract).map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-grid form-grid-2">
+                  <div className="form-group">
+                    <label>Resource Cost (₱ billed to client)</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min={0}
+                      placeholder="e.g. 60000"
+                      value={form.resourceCost ?? ''}
+                      onChange={e => set('resourceCost', e.target.value ? Number(e.target.value) : null)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Payroll Cost (₱ paid to employee)</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min={0}
+                      placeholder="e.g. 45000"
+                      value={form.payrollCost ?? ''}
+                      onChange={e => set('payrollCost', e.target.value ? Number(e.target.value) : null)}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Tab: IDs & Bank ── */}
+            {activeTab === 'IDs & Bank' && (
+              <>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+                  Government IDs
+                </div>
+                <div className="form-grid form-grid-2">
+                  <div className="form-group">
+                    <label>SSS No.</label>
+                    <input className="form-control font-mono" placeholder="XX-XXXXXXX-X" value={form.sssNo ?? ''} onChange={e => set('sssNo', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>PhilHealth No.</label>
+                    <input className="form-control font-mono" placeholder="XXXXXXXXXXXX" value={form.philhealthNo ?? ''} onChange={e => set('philhealthNo', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Pag-IBIG No.</label>
+                    <input className="form-control font-mono" placeholder="XXXXXXXXXXXX" value={form.pagibigNo ?? ''} onChange={e => set('pagibigNo', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>TIN No.</label>
+                    <input className="form-control font-mono" placeholder="XXX-XXX-XXX-XXX" value={form.tinNo ?? ''} onChange={e => set('tinNo', e.target.value)} />
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '16px 0 12px' }}>
+                  Bank Details
+                </div>
+                <div className="form-grid form-grid-2">
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>Bank Name</label>
+                    <input className="form-control" placeholder="e.g. BDO, BPI, UnionBank" value={form.bankName ?? ''} onChange={e => set('bankName', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Account Number</label>
+                    <input className="form-control font-mono" placeholder="XXXXXXXXXXXX" value={form.bankAccountNo ?? ''} onChange={e => set('bankAccountNo', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Account Name</label>
+                    <input className="form-control" placeholder="Name as registered in bank" value={form.bankAccountName ?? ''} onChange={e => set('bankAccountName', e.target.value)} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Tab: Emergency Contact ── */}
+            {activeTab === 'Emergency Contact' && (
+              <>
+                <div className="form-group">
+                  <label>Home Address</label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="Full home address"
+                    value={form.address ?? ''}
+                    onChange={e => set('address', e.target.value)}
+                    style={{ resize: 'vertical' }}
+                  />
+                </div>
+                <div className="form-grid form-grid-2">
+                  <div className="form-group">
+                    <label>Emergency Contact Name</label>
+                    <input
+                      className="form-control"
+                      placeholder="Full name"
+                      value={form.emergencyContactName ?? ''}
+                      onChange={e => set('emergencyContactName', e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Emergency Contact Phone</label>
+                    <input
+                      className="form-control"
+                      placeholder="+63 9XX XXX XXXX"
+                      value={form.emergencyContactPhone ?? ''}
+                      onChange={e => set('emergencyContactPhone', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Tab: Account (edit only) ── */}
+            {activeTab === 'Account' && isEdit && (
+              <>
                 {accountAction === 'done' && accountInfo ? (
                   <div style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '12px 16px' }}>
                     <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 2 }}>New temporary password set</div>
@@ -586,27 +700,9 @@ function EmployeeModal({
                     </button>
                   </div>
                 )}
-                {accountError && <div className="error-msg" style={{ marginTop: 0 }}>{accountError}</div>}
+                {accountError && <div className="error-msg" style={{ marginTop: 8 }}>{accountError}</div>}
               </>
             )}
-
-            <div className="form-group">
-              <label>Avatar Color</label>
-              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                {AVATAR_COLORS.map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => set('avatarColor', c)}
-                    style={{
-                      width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
-                      outline: form.avatarColor === c ? `3px solid var(--color-primary)` : '3px solid transparent',
-                      outlineOffset: 2,
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -776,6 +872,9 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState('');
+  const [activeTab, setActiveTab] = useState('Profile');
+
+  const VIEW_TABS = ['Profile', 'Emergency Contact', 'IDs & Bank', 'Organization'];
 
   const handlePhotoUpload = async (file: File) => {
     setPhotoError('');
@@ -807,7 +906,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
 
   return (
     <div className="modal-overlay" onClick={ev => ev.target === ev.currentTarget && onClose()}>
-      <div className="modal">
+      <div className="modal modal-lg">
         <div className="modal-header">
           <h2 className="modal-title">Employee Profile</h2>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -816,23 +915,23 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
           </div>
         </div>
         <div className="modal-body">
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20, marginBottom: 8 }}>
-            {/* Photo / Avatar */}
+          {/* Profile header — large photo + name, always visible across all tabs */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, marginBottom: 24 }}>
+            {/* Large portrait photo */}
             <div style={{ flexShrink: 0 }}>
               <div style={{
-                width: 80, height: 100, borderRadius: 10,
+                width: 240, height: 300, borderRadius: 12,
                 background: e.avatarColor, overflow: 'hidden',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 26, fontWeight: 800, color: '#fff',
+                fontSize: 64, fontWeight: 800, color: '#fff',
               }}>
                 {e.photoUrl
                   ? <img src={resolvePhotoUrl(e.photoUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
                   : <>{e.firstName[0]}{e.lastName[0]}</>
                 }
               </div>
-              {/* Upload / Remove buttons */}
-              <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+              {/* Photo controls */}
+              <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
                 <input
                   ref={photoInputRef}
                   type="file"
@@ -843,11 +942,11 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
-                  style={{ fontSize: 11, padding: '3px 8px' }}
+                  style={{ fontSize: 11, padding: '3px 8px', flex: 1 }}
                   disabled={photoUploading}
                   onClick={() => photoInputRef.current?.click()}
                 >
-                  {photoUploading ? '…' : e.photoUrl ? '📷 Change' : '📷 Add Photo'}
+                  {photoUploading ? '…' : e.photoUrl ? '📷 Change Photo' : '📷 Add Photo'}
                 </button>
                 {e.photoUrl && !photoUploading && (
                   <button
@@ -861,69 +960,118 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
               {photoError && <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 4 }}>{photoError}</div>}
             </div>
 
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 800 }}>{e.firstName} {e.lastName}</div>
-              <div style={{ color: 'var(--color-text-secondary)', marginTop: 2 }}>{e.position} · {e.department.name}</div>
-              <span className={`badge ${STATUS_COLORS[e.status]}`} style={{ marginTop: 6 }}>{STATUS_LABELS[e.status]}</span>
+            {/* Name / meta column */}
+            <div style={{ flex: 1, paddingTop: 4 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>{e.firstName} {e.lastName}</div>
+              <div style={{ color: 'var(--color-text-secondary)', marginTop: 4, fontSize: 14 }}>{e.position}</div>
+              <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{e.department.name}</div>
+              <span className={`badge ${STATUS_COLORS[e.status]}`} style={{ marginTop: 10, display: 'inline-block' }}>{STATUS_LABELS[e.status]}</span>
+              {e.client && (
+                <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+                  Deployed to <strong style={{ color: 'var(--color-text)' }}>{e.client.name}</strong>
+                </div>
+              )}
+              <div style={{ marginTop: 14 }}>
+                <InfoRow label="Emp. No." value={e.employeeNo} mono />
+                <InfoRow label="Hire Date" value={formatDate(e.hireDate)} />
+                <InfoRow label="Basic Salary" value={`₱${e.basicSalary.toLocaleString('en-PH')}`} />
+              </div>
             </div>
           </div>
 
-          <div className="divider" />
+          {/* Tab navigation */}
+          <TabBar tabs={VIEW_TABS} active={activeTab} onChange={setActiveTab} />
 
-          <InfoRow label="Employee No." value={e.employeeNo} mono />
-          <InfoRow label="Email" value={e.email} />
-          {e.phone && <InfoRow label="Phone" value={e.phone} />}
-          {e.address && <InfoRow label="Address" value={e.address} />}
-          <InfoRow label="Hire Date" value={formatDate(e.hireDate)} />
-          <InfoRow label="Basic Salary" value={`₱${e.basicSalary.toLocaleString('en-PH')}`} />
-          {e.manager && (
-            <InfoRow label="Reports To" value={`${e.manager.firstName} ${e.manager.lastName} · ${e.manager.position}`} />
-          )}
-
-          {(e.emergencyContactName || e.emergencyContactPhone) && (
+          {/* ── Profile tab ── */}
+          {activeTab === 'Profile' && (
             <>
-              <div className="divider" />
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Emergency Contact</div>
-              {e.emergencyContactName && <InfoRow label="Name" value={e.emergencyContactName} />}
-              {e.emergencyContactPhone && <InfoRow label="Phone" value={e.emergencyContactPhone} />}
+              <InfoRow label="Email" value={e.email} />
+              <InfoRow label="Phone" value={e.phone ?? '—'} />
+              <InfoRow label="Home Address" value={e.address ?? '—'} />
+              {e.gender && (
+                <InfoRow label="Gender" value={e.gender === 'MALE' ? 'Male' : e.gender === 'FEMALE' ? 'Female' : 'Other'} />
+              )}
+              {e.manager && (
+                <InfoRow label="Reports To" value={`${e.manager.firstName} ${e.manager.lastName} · ${e.manager.position}`} />
+              )}
             </>
           )}
 
-          {(e.sssNo || e.philhealthNo || e.pagibigNo || e.tinNo) && (
+          {/* ── Emergency Contact tab — always shown ── */}
+          {activeTab === 'Emergency Contact' && (
             <>
-              <div className="divider" />
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Government IDs</div>
-              {e.sssNo && <InfoRow label="SSS" value={e.sssNo} mono />}
-              {e.philhealthNo && <InfoRow label="PhilHealth" value={e.philhealthNo} mono />}
-              {e.pagibigNo && <InfoRow label="Pag-IBIG" value={e.pagibigNo} mono />}
-              {e.tinNo && <InfoRow label="TIN" value={e.tinNo} mono />}
+              <InfoRow label="Contact Name" value={e.emergencyContactName ?? '—'} />
+              <InfoRow label="Contact Phone" value={e.emergencyContactPhone ?? '—'} />
             </>
           )}
 
-          {(e.bankName || e.bankAccountNo || e.bankAccountName) && (
+          {/* ── IDs & Bank tab ── */}
+          {activeTab === 'IDs & Bank' && (
             <>
-              <div className="divider" />
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Bank Details</div>
-              {e.bankName && <InfoRow label="Bank" value={e.bankName} />}
-              {e.bankAccountNo && <InfoRow label="Account No." value={e.bankAccountNo} mono />}
-              {e.bankAccountName && <InfoRow label="Account Name" value={e.bankAccountName} />}
-            </>
-          )}
-
-          {e.subordinates && e.subordinates.length > 0 && (
-            <>
-              <div className="divider" />
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-                Direct Reports ({e.subordinates.length})
+                Government IDs
               </div>
-              {e.subordinates.map(s => (
-                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <div className="emp-avatar" style={{ width: 28, height: 28, fontSize: 11, background: 'var(--color-primary)' }}>
-                    {s.firstName[0]}{s.lastName[0]}
+              <InfoRow label="SSS No." value={e.sssNo ?? '—'} mono />
+              <InfoRow label="PhilHealth No." value={e.philhealthNo ?? '—'} mono />
+              <InfoRow label="Pag-IBIG No." value={e.pagibigNo ?? '—'} mono />
+              <InfoRow label="TIN No." value={e.tinNo ?? '—'} mono />
+
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '16px 0 8px' }}>
+                Bank Details
+              </div>
+              <InfoRow label="Bank" value={e.bankName ?? '—'} />
+              <InfoRow label="Account No." value={e.bankAccountNo ?? '—'} mono />
+              <InfoRow label="Account Name" value={e.bankAccountName ?? '—'} />
+            </>
+          )}
+
+          {/* ── Organization tab ── */}
+          {activeTab === 'Organization' && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                Manager
+              </div>
+              {e.manager ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--color-border)', marginBottom: 16 }}>
+                  <div className="emp-avatar" style={{ width: 36, height: 36, fontSize: 13, background: 'var(--color-primary)', flexShrink: 0 }}>
+                    {e.manager.firstName[0]}{e.manager.lastName[0]}
                   </div>
-                  <span style={{ fontSize: 13 }}>{s.firstName} {s.lastName} <span style={{ color: 'var(--color-text-muted)' }}>· {s.position}</span></span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{e.manager.firstName} {e.manager.lastName}</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{e.manager.position}</div>
+                  </div>
                 </div>
-              ))}
+              ) : (
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '8px 0', borderBottom: '1px solid var(--color-border)', marginBottom: 16 }}>
+                  No direct manager assigned
+                </div>
+              )}
+
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                Direct Reports {e.subordinates && e.subordinates.length > 0 ? `(${e.subordinates.length})` : ''}
+              </div>
+              {e.subordinates && e.subordinates.length > 0 ? (
+                e.subordinates.map(s => (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
+                    <div className="emp-avatar" style={{ width: 28, height: 28, fontSize: 11, background: 'var(--color-primary)' }}>
+                      {s.firstName[0]}{s.lastName[0]}
+                    </div>
+                    <span style={{ fontSize: 13 }}>{s.firstName} {s.lastName} <span style={{ color: 'var(--color-text-muted)' }}>· {s.position}</span></span>
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>No direct reports</div>
+              )}
+
+              {(e.resourceCost != null || e.payrollCost != null) && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '16px 0 8px' }}>
+                    Billing
+                  </div>
+                  {e.resourceCost != null && <InfoRow label="Resource Cost" value={`₱${e.resourceCost.toLocaleString('en-PH')}`} />}
+                  {e.payrollCost != null && <InfoRow label="Payroll Cost" value={`₱${e.payrollCost.toLocaleString('en-PH')}`} />}
+                </>
+              )}
             </>
           )}
         </div>
