@@ -301,7 +301,7 @@ export default function Payroll() {
               {paidMutation.isPending ? 'Marking…' : '💳 Mark as Paid'}
             </button>
           )}
-          {viewRunId && (currentRun?.status === 'POSTED' || currentRun?.status === 'PAID') && isManager && (
+          {viewRunId && currentRun?.status === 'POSTED' && isManager && (
             <button className="btn btn-secondary btn-sm" disabled={downloadingDisb} onClick={handleDownloadDisbursement}>
               {downloadingDisb ? 'Generating…' : '⬇ Disbursement File'}
             </button>
