@@ -240,6 +240,8 @@ function TabBar({ tabs, active, onChange }: {
       borderBottom: '2px solid var(--color-border)',
       marginBottom: 20,
       overflowX: 'auto',
+      scrollbarWidth: 'none' as any,
+      msOverflowStyle: 'none' as any,
     }}>
       {tabs.map(t => (
         <button
@@ -281,7 +283,44 @@ function EmployeeModal({
     queryFn: () => api.get('/clients').then(r => r.data),
   });
   const isEdit = !!initial;
-  const [activeTab, setActiveTab] = useState('Basic Info');
+  const [activeTab, setActiveTab] = useState('Profile');
+  const qc = useQueryClient();
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(initial?.photoUrl ?? null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+
+  const handlePhotoUpload = async (file: File) => {
+    if (!initial) return;
+    setPhotoError('');
+    setPhotoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      await api.post(`/employees/${initial.id}/photo`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const res = await api.get(`/employees/${initial.id}`);
+      setPhotoUrl(res.data.photoUrl ?? null);
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    } catch (err: any) {
+      setPhotoError(err?.response?.data?.error ?? 'Upload failed');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!initial || !confirm('Remove this employee\'s photo?')) return;
+    setPhotoUploading(true);
+    try {
+      await api.delete(`/employees/${initial.id}/photo`);
+      setPhotoUrl(null);
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   const [form, setForm] = useState<EmployeeFormData>(initial
     ? {
@@ -388,9 +427,10 @@ function EmployeeModal({
 
   const managers = employees.filter(e => e.id !== initial?.id && e.status === 'ACTIVE');
 
-  const EDIT_TABS = isEdit
-    ? ['Basic Info', 'Deployment', 'IDs & Bank', 'Emergency Contact', 'Account']
-    : ['Basic Info', 'Deployment', 'IDs & Bank', 'Emergency Contact'];
+  const EDIT_TABS = [
+    'Profile', 'Emergency Contact', 'IDs & Bank', 'Organization',
+    ...(isEdit ? ['Account'] : []),
+  ];
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -433,14 +473,43 @@ function EmployeeModal({
                   overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 64, fontWeight: 800, color: '#fff',
                 }}>
-                  {isEdit && initial!.photoUrl
-                    ? <img src={resolvePhotoUrl(initial!.photoUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                  {(isEdit ? photoUrl : null)
+                    ? <img src={resolvePhotoUrl(photoUrl!)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
                     : <>
                         {(isEdit ? initial!.firstName : form.firstName)[0] ?? '?'}
                         {(isEdit ? initial!.lastName : form.lastName)[0] ?? '?'}
                       </>
                   }
                 </div>
+                {isEdit && (
+                  <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={ev => ev.target.files?.[0] && handlePhotoUpload(ev.target.files[0])}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: 11, padding: '3px 8px', flex: 1 }}
+                      disabled={photoUploading}
+                      onClick={() => photoInputRef.current?.click()}
+                    >
+                      {photoUploading ? '…' : photoUrl ? '📷 Change Photo' : '📷 Add Photo'}
+                    </button>
+                    {photoUrl && !photoUploading && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 11, padding: '3px 8px', color: 'var(--color-danger)' }}
+                        onClick={handleRemovePhoto}
+                      >✕</button>
+                    )}
+                  </div>
+                )}
+                {photoError && <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 4 }}>{photoError}</div>}
               </div>
               <div style={{ flex: 1, paddingTop: 4 }}>
                 <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>
@@ -455,6 +524,16 @@ function EmployeeModal({
                   <>
                     <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{initial!.department.name}</div>
                     <span className={`badge ${STATUS_COLORS[form.status]}`} style={{ marginTop: 10, display: 'inline-block' }}>{STATUS_LABELS[form.status]}</span>
+                    {initial!.client && (
+                      <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+                        Deployed to <strong style={{ color: 'var(--color-text)' }}>{initial!.client.name}</strong>
+                      </div>
+                    )}
+                    <div style={{ marginTop: 14 }}>
+                      <InfoRow label="Emp. No." value={initial!.employeeNo} mono />
+                      <InfoRow label="Hire Date" value={formatDate(initial!.hireDate)} />
+                      <InfoRow label="Basic Salary" value={`₱${initial!.basicSalary.toLocaleString('en-PH')}`} />
+                    </div>
                   </>
                 )}
               </div>
@@ -468,8 +547,8 @@ function EmployeeModal({
           <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 16px' }}>
             {error && <div className="error-msg" style={{ marginTop: 16 }}>{error}</div>}
 
-            {/* ── Tab: Basic Info ── */}
-            {activeTab === 'Basic Info' && (
+            {/* ── Tab: Profile ── */}
+            {activeTab === 'Profile' && (
               <>
                 <div className="form-grid form-grid-2">
                   <div className="form-group">
@@ -571,8 +650,8 @@ function EmployeeModal({
               </>
             )}
 
-            {/* ── Tab: Deployment ── */}
-            {activeTab === 'Deployment' && (
+            {/* ── Tab: Organization ── */}
+            {activeTab === 'Organization' && (
               <>
                 <div className="form-group">
                   <label>Deployed To (Client)</label>
