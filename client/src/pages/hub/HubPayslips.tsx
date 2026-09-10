@@ -25,46 +25,84 @@ function fmtDate(iso?: string) {
   return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+const PAY_TYPE_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: '1 — Semi-monthly (1st half)' },
+  { value: 2, label: '2 — Semi-monthly (2nd half)' },
+  { value: 7, label: '7 — Special Pay' },
+  { value: 9, label: '9 — 13th Month Pay' },
+];
+
 export default function HubPayslips() {
   const [showSlip, setShowSlip] = useState<MyPayrollRecord | null>(null);
-  const [periodFilter, setPeriodFilter] = useState<string>('');
+  const [yearFilter, setYearFilter]   = useState<string>('');
+  const [monthFilter, setMonthFilter] = useState<string>('');
+  const [typeFilter, setTypeFilter]   = useState<string>('');
 
   const { data: records = [], isLoading } = useQuery<MyPayrollRecord[]>({
     queryKey: ['hub-payslips'],
     queryFn: () => api.get('/payroll/me').then(r => r.data),
   });
 
-  // Build unique period options from records (newest first)
-  const periodOptions = useMemo(() => {
-    const seen = new Set<string>();
-    return records
-      .filter(r => { const key = r.payrollRunId; if (seen.has(key)) return false; seen.add(key); return true; })
-      .map(r => ({
-        value: r.payrollRunId,
-        label: r.payrollRun.description
-          ? `${r.payrollRun.description} (${r.payrollRun.year})`
-          : `${MONTHS[(r.payrollRun.month || 1) - 1]} ${r.payrollRun.year} — ${PAY_PERIOD_LABELS[r.payrollRun.payPeriodType] ?? ''}`,
-      }));
-  }, [records]);
+  const yearOptions = useMemo(() =>
+    [...new Set(records.map(r => r.payrollRun.year))].sort((a, b) => b - a),
+  [records]);
 
-  const filtered = periodFilter
-    ? records.filter(r => r.payrollRunId === periodFilter)
-    : records;
+  const monthOptions = useMemo(() =>
+    [...new Set(records.map(r => r.payrollRun.month))].sort((a, b) => a - b),
+  [records]);
+
+  const typeOptions = useMemo(() =>
+    [...new Set(records.map(r => r.payrollRun.payPeriodType))].sort((a, b) => a - b),
+  [records]);
+
+  const filtered = useMemo(() => records.filter(r => {
+    if (yearFilter  && String(r.payrollRun.year)          !== yearFilter)  return false;
+    if (monthFilter && String(r.payrollRun.month)         !== monthFilter) return false;
+    if (typeFilter  && String(r.payrollRun.payPeriodType) !== typeFilter)  return false;
+    return true;
+  }), [records, yearFilter, monthFilter, typeFilter]);
 
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800 }}>My Payslips</h1>
-        {periodOptions.length > 1 && (
-          <select
-            className="form-control"
-            style={{ width: 260, fontSize: 13 }}
-            value={periodFilter}
-            onChange={e => setPeriodFilter(e.target.value)}
-          >
-            <option value="">All Cut-off Periods</option>
-            {periodOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+        {records.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {/* Year */}
+            <select
+              className="form-control"
+              style={{ width: 100, fontSize: 13 }}
+              value={yearFilter}
+              onChange={e => setYearFilter(e.target.value)}
+            >
+              <option value="">All Years</option>
+              {yearOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
+            </select>
+
+            {/* Month */}
+            <select
+              className="form-control"
+              style={{ width: 130, fontSize: 13 }}
+              value={monthFilter}
+              onChange={e => setMonthFilter(e.target.value)}
+            >
+              <option value="">All Months</option>
+              {monthOptions.map(m => <option key={m} value={String(m)}>{MONTHS[m - 1]}</option>)}
+            </select>
+
+            {/* Pay period type */}
+            <select
+              className="form-control"
+              style={{ width: 210, fontSize: 13 }}
+              value={typeFilter}
+              onChange={e => setTypeFilter(e.target.value)}
+            >
+              <option value="">All Pay Types</option>
+              {PAY_TYPE_OPTIONS
+                .filter(o => typeOptions.includes(o.value))
+                .map(o => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+            </select>
+          </div>
         )}
       </div>
       <p style={{ color: 'var(--color-text-secondary)', fontSize: 14, marginBottom: 24 }}>
