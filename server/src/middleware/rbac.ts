@@ -23,8 +23,8 @@ export type RbacModule =
 // SUPER_ADMIN        | full      | full       | full  | full    | full    | full    | full    | full   | full     | full
 // HR_MANAGER         | full      | full       | full  | full    | full    | full    | full    | full   | full     | full
 // HR_STAFF           | full      | full       | full  | full    | full    | full    | full    | full   | full     | full
-// EMPLOYEE_RELATIONS | full      | none       | none  | none    | none    | none    | none    | none   | none     | none
-// ACCOUNTS_MGMT      | read      | full       | full  | full    | none    | none    | full    | none   | full     | none
+// EMPLOYEE_RELATIONS | full      | none       | none  | none    | none    | read    | none    | none   | none     | none
+// ACCOUNTS_MGMT      | read      | full       | full  | full    | none    | read    | full    | none   | full     | none
 // BILLING_COLLECTION | full      | full       | full  | full    | full    | full    | full    | full   | full     | full
 // ACCOUNTING         | full      | full       | full  | full    | full    | full    | full    | full   | full     | full
 // EMPLOYEE           | /me only  | hub only   | hub   | hub     | none    | none    | none    | none   | hub      | none
@@ -33,8 +33,8 @@ const ROLE_ACCESS: Record<string, Record<RbacModule, Access>> = {
   SUPER_ADMIN:        { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
   HR_MANAGER:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
   HR_STAFF:           { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
-  EMPLOYEE_RELATIONS: { employees: 'full', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'none', reports: 'none', import: 'none', overtime: 'none', companies: 'none' },
-  ACCOUNTS_MANAGEMENT:{ employees: 'read', attendance: 'full', leave: 'full', payroll: 'full', billing: 'none', clients: 'none', reports: 'full', import: 'none', overtime: 'full', companies: 'none' },
+  EMPLOYEE_RELATIONS: { employees: 'full', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'read', reports: 'none', import: 'none', overtime: 'none', companies: 'none' },
+  ACCOUNTS_MANAGEMENT:{ employees: 'read', attendance: 'full', leave: 'full', payroll: 'full', billing: 'none', clients: 'read', reports: 'full', import: 'none', overtime: 'full', companies: 'none' },
   BILLING_COLLECTION: { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
   ACCOUNTING:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
   // EMPLOYEE: handled by self-service bypass below — matrix values not consulted

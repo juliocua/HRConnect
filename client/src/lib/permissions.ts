@@ -36,12 +36,12 @@ const ROLE_ACCESS: Record<UserRole, Record<Module, Access>> = {
   },
   EMPLOYEE_RELATIONS: {
     dashboard: 'full', employees: 'full', attendance: 'none', leave: 'none',
-    overtime: 'none', payroll: 'none', billing: 'none', clients: 'none',
+    overtime: 'none', payroll: 'none', billing: 'none', clients: 'read',
     reports: 'none', import: 'none', leaveSetup: 'none',
   },
   ACCOUNTS_MANAGEMENT: {
     dashboard: 'full', employees: 'read', attendance: 'full', leave: 'full',
-    overtime: 'full', payroll: 'full', billing: 'none', clients: 'none',
+    overtime: 'full', payroll: 'full', billing: 'none', clients: 'read',
     reports: 'full', import: 'none', leaveSetup: 'none',
   },
   BILLING_COLLECTION: {
