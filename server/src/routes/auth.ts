@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import passport from 'passport';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
@@ -7,7 +6,29 @@ import { signToken } from '../lib/jwt';
 import { authenticate } from '../middleware/authenticate';
 
 const router = Router();
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function generateOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function sendOtpSms(to: string, code: string): Promise<void> {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM_NUMBER;
+  if (!sid || !token || !from) throw new Error('SMS service not configured');
+
+  // Lazy-require twilio so the server still starts without the env vars
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const twilio = require('twilio');
+  const client = twilio(sid, token);
+  await client.messages.create({
+    body: `Your HRConnect OTP is: ${code}. It expires in 5 minutes.`,
+    from,
+    to,
+  });
+}
 
 // ── Register ──────────────────────────────────────────────────────────────────
 const RegisterSchema = z.object({
@@ -35,10 +56,116 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
 });
 
 // ── Login ─────────────────────────────────────────────────────────────────────
-router.post('/login', (req: Request, res: Response, next: NextFunction) => {
-  passport.authenticate('local', { session: false }, (err: any, user: any, info: any) => {
-    if (err) return next(err);
-    if (!user) return res.status(401).json({ error: info?.message || 'Invalid credentials' });
+// Accepts email OR employee code (e.g. EMP-0000000001) as the identifier.
+// Employees get a 2-step OTP flow; HR/admin roles get a JWT immediately.
+router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const raw = z.object({
+      identifier: z.string().optional(),
+      email: z.string().optional(), // legacy alias — AuthContext may still send email
+      password: z.string().min(1),
+    }).parse(req.body);
+    const identifier = raw.identifier ?? raw.email ?? '';
+    const { password } = raw;
+    if (!identifier) return res.status(400).json({ error: 'identifier or email is required' });
+
+    // Find user by email or by linked employee code
+    let user = await prisma.user.findUnique({
+      where: { email: identifier },
+      include: { employee: { select: { id: true, phone: true, employeeNo: true } } },
+    });
+
+    if (!user) {
+      // Try employee code lookup
+      const emp = await prisma.employee.findFirst({
+        where: { employeeNo: { equals: identifier, mode: 'insensitive' } },
+        include: { user: { include: { employee: { select: { id: true, phone: true, employeeNo: true } } } } },
+      });
+      if (emp?.user) user = emp.user as any;
+    }
+
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user.isActive) return res.status(401).json({ error: 'Account is deactivated. Contact HR.' });
+    if (!user.password) return res.status(401).json({ error: 'Password login not available for this account' });
+
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+
+    // Non-employees: return JWT immediately
+    if (user.role !== 'EMPLOYEE') {
+      const token = signToken({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        employeeId: user.employeeId ?? undefined,
+      });
+      return res.json({
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          avatarUrl: user.avatarUrl,
+          employeeId: user.employeeId ?? null,
+        },
+      });
+    }
+
+    // EMPLOYEE role: 2-step OTP
+    const phone = (user as any).employee?.phone;
+    if (!phone) {
+      return res.status(422).json({ error: 'No phone number on file. Contact HR to update your profile.' });
+    }
+
+    const code = generateOtp();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+    await (prisma as any).otpCode.upsert({
+      where: { userId: user.id },
+      update: { code, expiresAt },
+      create: { userId: user.id, code, expiresAt },
+    });
+
+    try {
+      await sendOtpSms(phone, code);
+    } catch (smsErr: any) {
+      console.error('SMS send failed:', smsErr?.message ?? smsErr);
+      return res.status(500).json({ error: 'Failed to send OTP. Please try again or contact HR.' });
+    }
+
+    // Return masked phone for UI display
+    const masked = phone.replace(/(\+?\d{2,3})\d+(\d{2})$/, (_, prefix: string, last: string) =>
+      `${prefix}${'•'.repeat(phone.length - prefix.length - last.length)}${last}`
+    );
+
+    return res.json({ requiresOtp: true, userId: user.id, maskedPhone: masked });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Verify OTP ────────────────────────────────────────────────────────────────
+router.post('/verify-otp', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId, code } = z.object({
+      userId: z.string().min(1),
+      code: z.string().length(6),
+    }).parse(req.body);
+
+    const otp = await (prisma as any).otpCode.findUnique({ where: { userId } });
+    if (!otp) return res.status(401).json({ error: 'No OTP found. Please log in again.' });
+    if (new Date() > otp.expiresAt) {
+      await (prisma as any).otpCode.delete({ where: { userId } });
+      return res.status(401).json({ error: 'OTP has expired. Please log in again.' });
+    }
+    if (otp.code !== code) return res.status(401).json({ error: 'Incorrect OTP' });
+
+    // Consume the OTP
+    await (prisma as any).otpCode.delete({ where: { userId } });
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) return res.status(401).json({ error: 'User not found or inactive' });
 
     const token = signToken({
       userId: user.id,
@@ -57,7 +184,9 @@ router.post('/login', (req: Request, res: Response, next: NextFunction) => {
         employeeId: user.employeeId ?? null,
       },
     });
-  })(req, res, next);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── Me ────────────────────────────────────────────────────────────────────────
@@ -96,67 +225,5 @@ router.post('/change-password', authenticate, async (req: Request, res: Response
     next(err);
   }
 });
-
-// ── Google OAuth ──────────────────────────────────────────────────────────────
-router.get('/google', (req: Request, res: Response, next: NextFunction) => {
-  if (!process.env.GOOGLE_CLIENT_ID) {
-    return res.redirect(`${CLIENT_URL}/login?error=oauth_not_configured`);
-  }
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })(req, res, next);
-});
-
-router.get(
-  '/google/callback',
-  (req: Request, res: Response, next: NextFunction) => {
-    if (!process.env.GOOGLE_CLIENT_ID) {
-      return res.redirect(`${CLIENT_URL}/login?error=oauth_not_configured`);
-    }
-    passport.authenticate('google', {
-      session: false,
-      failureRedirect: `${CLIENT_URL}/login?error=oauth`,
-    })(req, res, next);
-  },
-  (req: Request, res: Response) => {
-    const user = req.user as any;
-    const token = signToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      employeeId: user.employeeId ?? undefined,
-    });
-    res.redirect(`${CLIENT_URL}/auth/callback?token=${token}`);
-  }
-);
-
-// ── Microsoft OAuth ───────────────────────────────────────────────────────────
-router.get('/microsoft', (req: Request, res: Response, next: NextFunction) => {
-  if (!process.env.MICROSOFT_CLIENT_ID) {
-    return res.redirect(`${CLIENT_URL}/login?error=oauth_not_configured`);
-  }
-  passport.authenticate('microsoft', { session: false })(req, res, next);
-});
-
-router.get(
-  '/microsoft/callback',
-  (req: Request, res: Response, next: NextFunction) => {
-    if (!process.env.MICROSOFT_CLIENT_ID) {
-      return res.redirect(`${CLIENT_URL}/login?error=oauth_not_configured`);
-    }
-    passport.authenticate('microsoft', {
-      session: false,
-      failureRedirect: `${CLIENT_URL}/login?error=oauth`,
-    })(req, res, next);
-  },
-  (req: Request, res: Response) => {
-    const user = req.user as any;
-    const token = signToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      employeeId: user.employeeId ?? undefined,
-    });
-    res.redirect(`${CLIENT_URL}/auth/callback?token=${token}`);
-  }
-);
 
 export default router;

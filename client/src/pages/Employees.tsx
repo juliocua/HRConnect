@@ -5,7 +5,7 @@ import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { ClientCombobox } from '@/components/ClientCombobox';
-import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest } from '@/types';
+import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest, GovIdChangeRequest } from '@/types';
 
 // Resolve photo URL — strips stored origin and uses VITE_API_URL so photos work even if
 // SERVER_URL was misconfigured (e.g. fell back to localhost) at upload time.
@@ -187,6 +187,7 @@ export default function Employees() {
 
       {/* Change Requests */}
       <ChangeRequestsPanel />
+      <GovIdChangeRequestsPanel />
 
       {/* Table */}
       {isLoading ? (
@@ -962,6 +963,168 @@ function ChangeRequestsPanel() {
                     }}>
                       <span style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>{CR_FIELD_LABELS[k] ?? k}:</span>{' '}
                       <span style={{ fontWeight: 700 }}>{v as string}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Inline reject form */}
+                {rejectId === req.id && (
+                  <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 4 }}>Rejection Note (optional)</label>
+                      <input
+                        className="form-control"
+                        style={{ fontSize: 13 }}
+                        placeholder="Reason for rejection…"
+                        value={rejectNote}
+                        onChange={e => setRejectNote(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      disabled={rejectMutation.isPending}
+                      onClick={() => rejectMutation.mutate({ id: req.id, note: rejectNote })}
+                    >
+                      {rejectMutation.isPending ? 'Rejecting…' : 'Confirm Reject'}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setRejectId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Gov ID Change Requests Panel ──────────────────────────────────────────────
+const GOV_ID_FIELD_LABELS: Record<string, string> = {
+  sssNo: 'SSS No.',
+  philhealthNo: 'PhilHealth No.',
+  pagibigNo: 'Pag-IBIG No.',
+  tinNo: 'TIN No.',
+};
+
+function GovIdChangeRequestsPanel() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [collapsed, setCollapsed] = useState(false);
+  const [rejectId, setRejectId] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState('');
+
+  const { data: requests = [], isLoading } = useQuery<GovIdChangeRequest[]>({
+    queryKey: ['gov-id-requests'],
+    queryFn: () => api.get('/employees/gov-id-requests').then(r => r.data),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => api.put(`/employees/gov-id-requests/${id}/approve`),
+    onSuccess: () => {
+      toast('success', 'Gov ID change approved');
+      qc.invalidateQueries({ queryKey: ['gov-id-requests'] });
+      qc.invalidateQueries({ queryKey: ['employees'] });
+    },
+    onError: () => toast('error', 'Failed to approve gov ID change'),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) =>
+      api.put(`/employees/gov-id-requests/${id}/reject`, { rejectionNote: note }),
+    onSuccess: () => {
+      toast('success', 'Gov ID change rejected');
+      qc.invalidateQueries({ queryKey: ['gov-id-requests'] });
+      setRejectId(null);
+      setRejectNote('');
+    },
+    onError: () => toast('error', 'Failed to reject gov ID change'),
+  });
+
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  if (isLoading || requests.length === 0) return null;
+
+  return (
+    <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--color-primary, #2563EB)' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+        onClick={() => setCollapsed(c => !c)}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 16 }}>🪪</span>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>Pending Gov ID Change Requests</span>
+          <span className="badge badge-blue" style={{ fontSize: 11 }}>{requests.length}</span>
+        </div>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{collapsed ? '▼ Show' : '▲ Hide'}</span>
+      </div>
+
+      {!collapsed && (
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {requests.map(req => {
+            const emp = req.employee;
+            const fields: [string, string][] = [
+              ['sssNo', req.sssNo ?? ''],
+              ['philhealthNo', req.philhealthNo ?? ''],
+              ['pagibigNo', req.pagibigNo ?? ''],
+              ['tinNo', req.tinNo ?? ''],
+            ].filter(([, v]) => v) as [string, string][];
+
+            return (
+              <div key={req.id} style={{
+                background: 'var(--color-surface-raised, var(--color-background))',
+                border: '1px solid var(--color-border)',
+                borderRadius: 10, padding: '14px 16px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {emp && (
+                      <div className="emp-avatar" style={{ width: 32, height: 32, fontSize: 12, background: emp.avatarColor, flexShrink: 0 }}>
+                        {emp.firstName[0]}{emp.lastName[0]}
+                      </div>
+                    )}
+                    <div>
+                      {emp && <div style={{ fontWeight: 700, fontSize: 13.5 }}>{emp.firstName} {emp.lastName}</div>}
+                      <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Submitted {fmtDate(req.submittedAt)}</div>
+                    </div>
+                  </div>
+
+                  {rejectId !== req.id && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={approveMutation.isPending}
+                        onClick={() => approveMutation.mutate(req.id)}
+                      >
+                        ✓ Approve
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: 'var(--color-danger)' }}
+                        onClick={() => { setRejectId(req.id); setRejectNote(''); }}
+                      >
+                        ✕ Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Requested changes */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {fields.map(([k, v]) => (
+                    <div key={k} style={{
+                      background: 'var(--color-info-light, #EFF6FF)',
+                      border: '1px solid var(--color-primary, #2563EB)',
+                      borderRadius: 6, padding: '4px 10px', fontSize: 12,
+                    }}>
+                      <span style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>{GOV_ID_FIELD_LABELS[k] ?? k}:</span>{' '}
+                      <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{v}</span>
                     </div>
                   ))}
                 </div>

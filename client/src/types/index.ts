@@ -96,6 +96,23 @@ export interface ProfileChangeRequest {
   updatedAt: string;
 }
 
+// ── Gov ID Change Requests ────────────────────────────────────────────────────
+export interface GovIdChangeRequest {
+  id: string;
+  employeeId: string;
+  employee?: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor' | 'sssNo' | 'philhealthNo' | 'pagibigNo' | 'tinNo'>;
+  sssNo?: string | null;
+  philhealthNo?: string | null;
+  pagibigNo?: string | null;
+  tinNo?: string | null;
+  status: ProfileChangeStatus;
+  reviewedById?: string | null;
+  reviewedAt?: string | null;
+  rejectionNote?: string | null;
+  submittedAt: string;
+  updatedAt: string;
+}
+
 // ── Audit Log ─────────────────────────────────────────────────────────────────
 export interface AuditLog {
   id: string;

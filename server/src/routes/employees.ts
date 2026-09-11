@@ -107,17 +107,13 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /api/employees/me  — employee updates their own avatar & govt IDs
+// PATCH /api/employees/me  — employee can only update avatarColor
 router.patch('/me', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { employeeId } = req.user!;
     if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
     const body = z.object({
       avatarColor: z.string().optional(),
-      sssNo: z.string().optional(),
-      philhealthNo: z.string().optional(),
-      pagibigNo: z.string().optional(),
-      tinNo: z.string().optional(),
     }).parse(req.body);
     const employee = await prisma.employee.update({
       where: { id: employeeId },
@@ -243,6 +239,121 @@ router.get('/me/change-requests', async (req: Request, res: Response, next: Next
     res.json(requests);
   } catch (err) { next(err); }
 });
+
+// ── Gov ID Change Requests ────────────────────────────────────────────────────
+
+// POST /api/employees/me/gov-id-request  — employee submits gov ID changes for HR review
+router.post('/me/gov-id-request', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { employeeId } = req.user!;
+    if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
+
+    const body = z.object({
+      sssNo: z.string().optional(),
+      philhealthNo: z.string().optional(),
+      pagibigNo: z.string().optional(),
+      tinNo: z.string().optional(),
+    }).parse(req.body);
+
+    if (!body.sssNo && !body.philhealthNo && !body.pagibigNo && !body.tinNo) {
+      return res.status(422).json({ error: 'Provide at least one ID to update' });
+    }
+
+    // Cancel any existing pending request from this employee
+    await (prisma as any).govIdChangeRequest.updateMany({
+      where: { employeeId, status: 'PENDING' },
+      data: { status: 'REJECTED', rejectionNote: 'Superseded by new request', reviewedAt: new Date() },
+    });
+
+    const request = await (prisma as any).govIdChangeRequest.create({
+      data: { employeeId, ...body },
+      include: {
+        employee: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    res.status(201).json(request);
+  } catch (err) { next(err); }
+});
+
+// GET /api/employees/me/gov-id-requests  — employee: own gov ID request history
+router.get('/me/gov-id-requests', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { employeeId } = req.user!;
+    if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
+    const requests = await (prisma as any).govIdChangeRequest.findMany({
+      where: { employeeId },
+      orderBy: { submittedAt: 'desc' },
+      take: 10,
+    });
+    res.json(requests);
+  } catch (err) { next(err); }
+});
+
+// GET /api/employees/gov-id-requests  — HR: list PENDING gov ID change requests
+router.get('/gov-id-requests', requireRole('HR_MANAGER', 'HR_STAFF', 'SUPER_ADMIN'), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requests = await (prisma as any).govIdChangeRequest.findMany({
+      where: { status: 'PENDING' },
+      include: {
+        employee: {
+          select: {
+            id: true, firstName: true, lastName: true, position: true,
+            avatarColor: true, sssNo: true, philhealthNo: true, pagibigNo: true, tinNo: true,
+          },
+        },
+      },
+      orderBy: { submittedAt: 'asc' },
+    });
+    res.json(requests);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/employees/gov-id-requests/:id/approve  — HR: apply and approve
+router.put('/gov-id-requests/:id/approve', requireRole('HR_MANAGER', 'HR_STAFF', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const request = await (prisma as any).govIdChangeRequest.findUnique({ where: { id: req.params.id } });
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+    if (request.status !== 'PENDING') return res.status(422).json({ error: 'Request is not pending' });
+
+    const updates: Record<string, string> = {};
+    if (request.sssNo) updates.sssNo = request.sssNo;
+    if (request.philhealthNo) updates.philhealthNo = request.philhealthNo;
+    if (request.pagibigNo) updates.pagibigNo = request.pagibigNo;
+    if (request.tinNo) updates.tinNo = request.tinNo;
+
+    await prisma.employee.update({ where: { id: request.employeeId }, data: updates });
+
+    const updated = await (prisma as any).govIdChangeRequest.update({
+      where: { id: req.params.id },
+      data: { status: 'APPROVED', reviewedById: req.user!.userId, reviewedAt: new Date() },
+      include: { employee: { select: { firstName: true, lastName: true } } },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/employees/gov-id-requests/:id/reject  — HR: reject with note
+router.put('/gov-id-requests/:id/reject', requireRole('HR_MANAGER', 'HR_STAFF', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { rejectionNote } = z.object({ rejectionNote: z.string().optional() }).parse(req.body);
+    const request = await (prisma as any).govIdChangeRequest.findUnique({ where: { id: req.params.id } });
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+    if (request.status !== 'PENDING') return res.status(422).json({ error: 'Request is not pending' });
+
+    const updated = await (prisma as any).govIdChangeRequest.update({
+      where: { id: req.params.id },
+      data: {
+        status: 'REJECTED',
+        reviewedById: req.user!.userId,
+        reviewedAt: new Date(),
+        rejectionNote: rejectionNote ?? null,
+      },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// ── Standard employee CRUD ────────────────────────────────────────────────────
 
 // GET /api/employees/:id
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
