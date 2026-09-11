@@ -77,7 +77,7 @@ export interface Employee {
   bankAccountNo?: string | null;
   bankAccountName?: string | null;
   createdAt: string;
-  user?: { id: string; email: string; isActive: boolean } | null;
+  user?: { id: string; email: string; role?: UserRole; isActive: boolean } | null;
 }
 
 export type EmployeeFormData = Omit<Employee, 'id' | 'department' | 'manager' | 'subordinates' | 'createdAt' | 'employeeNo'> & {

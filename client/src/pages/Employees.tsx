@@ -5,9 +5,9 @@ import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { ClientCombobox } from '@/components/ClientCombobox';
-import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest, GovIdChangeRequest } from '@/types';
+import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest, GovIdChangeRequest, UserRole } from '@/types';
 import { useAuth } from '@/context/AuthContext';
-import { canWrite } from '@/lib/permissions';
+import { canWrite, ROLE_LABELS } from '@/lib/permissions';
 
 // Resolve photo URL — strips stored origin and uses VITE_API_URL so photos work even if
 // SERVER_URL was misconfigured (e.g. fell back to localhost) at upload time.
@@ -390,11 +390,14 @@ function EmployeeModal({
   const [accountInfo, setAccountInfo] = useState<{ email: string; tempPassword: string } | null>(null);
   const [accountAction, setAccountAction] = useState<'idle' | 'loading' | 'done'>('idle');
   const [accountError, setAccountError] = useState('');
+  const { user: authUser } = useAuth();
+  const canEditRole = canWrite(authUser?.role, 'employees');
+  const [userRole, setUserRole] = useState<UserRole>(initial?.user?.role ?? 'EMPLOYEE');
 
   const handleCreateAccount = async () => {
     setAccountAction('loading'); setAccountError('');
     try {
-      const res = await api.post(`/employees/${initial!.id}/create-account`);
+      const res = await api.post(`/employees/${initial!.id}/create-account`, { role: userRole });
       setAccountInfo(res.data);
       setAccountAction('done');
       toast('success', 'Account created');
@@ -430,7 +433,7 @@ function EmployeeModal({
     setError('');
     try {
       if (isEdit) {
-        await api.put(`/employees/${initial!.id}`, form);
+        await api.put(`/employees/${initial!.id}`, { ...form, userRole });
         toast('success', 'Employee saved');
         onSaved();
       } else {
@@ -801,6 +804,24 @@ function EmployeeModal({
             {/* ── Tab: Account (edit only) ── */}
             {activeTab === 'Account' && isEdit && (
               <>
+                {/* Role selector — always visible */}
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>System Role</label>
+                  <select
+                    className="form-control"
+                    value={userRole}
+                    onChange={e => setUserRole(e.target.value as UserRole)}
+                    disabled={!canEditRole}
+                  >
+                    {(Object.entries(ROLE_LABELS) as [UserRole, string][]).map(([val, lbl]) => (
+                      <option key={val} value={val}>{lbl}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                    Controls what this user can access in the system. Saved with the main form.
+                  </div>
+                </div>
+
                 {accountAction === 'done' && accountInfo ? (
                   <div style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '12px 16px' }}>
                     <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 2 }}>New temporary password set</div>

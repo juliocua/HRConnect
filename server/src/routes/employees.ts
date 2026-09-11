@@ -82,7 +82,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       include: {
         department: true,
         manager: { select: { firstName: true, lastName: true } },
-        user: { select: { id: true, email: true, isActive: true } },
+        user: { select: { id: true, email: true, role: true, isActive: true } },
         client: { select: { id: true, name: true } },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
@@ -425,14 +425,35 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 // PUT /api/employees/:id
 router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const body = EmployeeSchema.partial().parse(req.body);
+    const { userRole, ...rest } = req.body;
+    const body = EmployeeSchema.partial().parse(rest);
     if ('managerId' in body && !body.managerId) body.managerId = null;
 
     const employee = await prisma.employee.update({
       where: { id: req.params.id },
       data: body as any,
-      include: { department: true },
+      include: {
+        department: true,
+        user: { select: { id: true, email: true, role: true, isActive: true } },
+      },
     });
+
+    // Update linked user's role if provided
+    if (userRole && employee.user) {
+      const validRoles = [
+        'SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF', 'EMPLOYEE',
+        'EMPLOYEE_RELATIONS', 'ACCOUNTS_MANAGEMENT', 'BILLING_COLLECTION', 'ACCOUNTING',
+      ];
+      if (validRoles.includes(userRole)) {
+        const updatedUser = await prisma.user.update({
+          where: { id: employee.user.id },
+          data: { role: userRole as any },
+          select: { id: true, email: true, role: true, isActive: true },
+        });
+        return res.json({ ...employee, user: updatedUser });
+      }
+    }
+
     res.json(employee);
   } catch (err) {
     next(err);
@@ -450,19 +471,28 @@ router.post('/:id/create-account', async (req: Request, res: Response, next: Nex
     if (employee.user) return res.status(422).json({ error: 'Employee already has a login account' });
 
     const empNo = employee.employeeNo ?? employee.id.slice(-4).toUpperCase();
+    const { role: requestedRole } = z.object({
+      role: z.enum(['SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF', 'EMPLOYEE',
+        'EMPLOYEE_RELATIONS', 'ACCOUNTS_MANAGEMENT', 'BILLING_COLLECTION', 'ACCOUNTING'])
+        .optional().default('EMPLOYEE'),
+    }).parse(req.body);
+
     const tempPassword = `Welcome@${empNo}`;
     const hashed = await bcrypt.hash(tempPassword, 12);
 
     const existingUser = await prisma.user.findUnique({ where: { email: employee.email } });
     if (existingUser) {
-      await prisma.user.update({ where: { id: existingUser.id }, data: { employeeId: employee.id } });
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: { employeeId: employee.id, role: requestedRole as any },
+      });
     } else {
       await prisma.user.create({
         data: {
           name: `${employee.firstName} ${employee.lastName}`,
           email: employee.email,
           password: hashed,
-          role: 'EMPLOYEE',
+          role: requestedRole as any,
           employeeId: employee.id,
         },
       });
