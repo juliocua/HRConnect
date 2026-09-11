@@ -577,11 +577,12 @@ function EmployeeModal({
                   </div>
                 </div>
 
-                <div className="form-grid form-grid-3">
-                  <div className="form-group">
-                    <label>Email *</label>
-                    <input type="email" className="form-control" required value={form.email} onChange={e => set('email', e.target.value)} />
-                  </div>
+                <div className="form-group">
+                  <label>Email *</label>
+                  <input type="email" className="form-control" required value={form.email} onChange={e => set('email', e.target.value)} />
+                </div>
+
+                <div className="form-grid form-grid-2">
                   <div className="form-group">
                     <label>Phone</label>
                     <input className="form-control" placeholder="+63 9XX XXX XXXX" value={form.phone ?? ''} onChange={e => set('phone', e.target.value)} />
@@ -610,16 +611,17 @@ function EmployeeModal({
                   </div>
                 </div>
 
-                <div className="form-grid form-grid-3">
-                  <div className="form-group">
-                    <label>Direct Manager</label>
-                    <select className="form-control" value={form.managerId ?? ''} onChange={e => set('managerId', e.target.value || undefined)}>
-                      <option value="">— None —</option>
-                      {managers.map(m => (
-                        <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="form-group">
+                  <label>Direct Manager</label>
+                  <select className="form-control" value={form.managerId ?? ''} onChange={e => set('managerId', e.target.value || undefined)}>
+                    <option value="">— None —</option>
+                    {managers.map(m => (
+                      <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-grid form-grid-2">
                   <div className="form-group">
                     <label>Status</label>
                     <select className="form-control" value={form.status} onChange={e => set('status', e.target.value)}>
@@ -1253,21 +1255,6 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                 : <>{e.firstName[0]}{e.lastName[0]}</>
               }
             </div>
-            <div style={{ display: 'flex', gap: 4, marginTop: 8, width: 200 }}>
-              <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }}
-                onChange={ev => ev.target.files?.[0] && handlePhotoUpload(ev.target.files[0])} />
-              <button type="button" className="btn btn-ghost btn-sm"
-                style={{ fontSize: 11, padding: '3px 8px', flex: 1 }}
-                disabled={photoUploading} onClick={() => photoInputRef.current?.click()}>
-                {photoUploading ? '…' : e.photoUrl ? '📷 Change' : '📷 Add Photo'}
-              </button>
-              {e.photoUrl && !photoUploading && (
-                <button type="button" className="btn btn-ghost btn-sm"
-                  style={{ fontSize: 11, padding: '3px 8px', color: 'var(--color-danger)' }}
-                  onClick={handleRemovePhoto}>✕</button>
-              )}
-            </div>
-            {photoError && <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 4, textAlign: 'center' }}>{photoError}</div>}
             <div style={{ marginTop: 16, width: '100%', textAlign: 'center' }}>
               <div style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.2 }}>{e.firstName} {e.lastName}</div>
               <div style={{ color: 'var(--color-text-secondary)', marginTop: 4, fontSize: 13 }}>{e.position}</div>

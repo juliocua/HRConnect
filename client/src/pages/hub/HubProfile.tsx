@@ -93,10 +93,10 @@ export default function HubProfile() {
           <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Profile Photo</div>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
             <div style={{
-              width: 80, height: 100, borderRadius: 10,
+              width: 200, height: 250, borderRadius: 10,
               background: employee.avatarColor, overflow: 'hidden',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 24, fontWeight: 800, color: '#fff', flexShrink: 0,
+              fontSize: 48, fontWeight: 800, color: '#fff', flexShrink: 0,
             }}>
               {employee.photoUrl
                 ? <img src={resolvePhotoUrl(employee.photoUrl)} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
