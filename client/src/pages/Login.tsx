@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 
 export default function Login() {
-  const navigate = useNavigate();
+  const { setTokenAndFetchUser } = useAuth();
 
   // Step 1: credential entry
   const [identifier, setIdentifier] = useState('');
@@ -18,10 +18,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const storeAndRedirect = (token: string) => {
-    localStorage.setItem('hrc_token', token);
-    navigate('/', { replace: true });
-  };
+  const storeAndRedirect = (token: string) => setTokenAndFetchUser(token);
 
   // ── Step 1: submit credentials ─────────────────────────────────────────────
   const handleCredentials = async (e: React.FormEvent) => {
