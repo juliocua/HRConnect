@@ -70,7 +70,7 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 // Accepts email OR employee code (e.g. EMP-0000000001) as the identifier.
-// Employees get a 2-step OTP flow; HR/admin roles get a JWT immediately.
+// Employees get a 2-step OTP flow via SMS; HR/admin roles get a JWT immediately.
 router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const raw = z.object({
@@ -140,11 +140,17 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       create: { userId: user.id, code, expiresAt },
     });
 
+    // Always log to server console — visible in Railway logs for testing
+    console.log(`[OTP] Code for ${phone}: ${code}`);
+
     try {
       await sendOtpSms(phone, code);
     } catch (smsErr: any) {
       console.error('OTP SMS failed:', smsErr?.message ?? smsErr);
-      return res.status(500).json({ error: 'Failed to send OTP SMS. Please try again or contact HR.' });
+      // If OTP_CONSOLE_ONLY=true, continue — code is in the Railway logs
+      if (process.env.OTP_CONSOLE_ONLY !== 'true') {
+        return res.status(500).json({ error: 'Failed to send OTP SMS. Please try again or contact HR.' });
+      }
     }
 
     return res.json({ requiresOtp: true, userId: user.id, maskedPhone: maskPhone(phone) });
