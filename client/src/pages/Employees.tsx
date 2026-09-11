@@ -464,7 +464,7 @@ function EmployeeModal({
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh, 860px)' }}>
+      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh, 860px)', maxWidth: 960 }}>
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2 className="modal-title">{isEdit ? 'Edit Employee' : 'Add Employee'}</h2>
           <button className="icon-btn" onClick={onClose}>✕</button>
@@ -493,73 +493,60 @@ function EmployeeModal({
           </>
         ) : (
         <form onSubmit={handleSubmit} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Pinned profile header — same layout as view modal, never scrolls */}
-          <div style={{ padding: '20px 24px 16px', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
-              <div style={{ flexShrink: 0 }}>
-                <div style={{
-                  width: 240, height: 300, borderRadius: 12,
-                  background: isEdit ? initial!.avatarColor : form.avatarColor,
-                  overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 64, fontWeight: 800, color: '#fff',
-                }}>
-                  {(isEdit ? photoUrl : null)
-                    ? <img src={resolvePhotoUrl(photoUrl!)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
-                    : <>
-                        {(isEdit ? initial!.firstName : form.firstName)[0] ?? '?'}
-                        {(isEdit ? initial!.lastName : form.lastName)[0] ?? '?'}
-                      </>
-                  }
-                </div>
-                {isEdit && (
-                  <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-                    <input
-                      ref={photoInputRef}
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={ev => ev.target.files?.[0] && handlePhotoUpload(ev.target.files[0])}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      style={{ fontSize: 11, padding: '3px 8px', flex: 1 }}
-                      disabled={photoUploading}
-                      onClick={() => photoInputRef.current?.click()}
-                    >
-                      {photoUploading ? '…' : photoUrl ? '📷 Change Photo' : '📷 Add Photo'}
-                    </button>
-                    {photoUrl && !photoUploading && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        style={{ fontSize: 11, padding: '3px 8px', color: 'var(--color-danger)' }}
-                        onClick={handleRemovePhoto}
-                      >✕</button>
-                    )}
-                  </div>
-                )}
-                {photoError && <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 4 }}>{photoError}</div>}
+          {/* ── Two-column layout ── */}
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            {/* LEFT COLUMN — photo + summary */}
+            <div style={{ width: 264, flexShrink: 0, overflowY: 'auto', padding: '20px 16px 20px 24px', borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{
+                width: 200, height: 250, borderRadius: 12,
+                background: isEdit ? initial!.avatarColor : form.avatarColor,
+                overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 52, fontWeight: 800, color: '#fff',
+              }}>
+                {(isEdit ? photoUrl : null)
+                  ? <img src={resolvePhotoUrl(photoUrl!)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                  : <>
+                      {(isEdit ? initial!.firstName : form.firstName)[0] ?? '?'}
+                      {(isEdit ? initial!.lastName : form.lastName)[0] ?? '?'}
+                    </>
+                }
               </div>
-              <div style={{ flex: 1, paddingTop: 4 }}>
-                <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>
+              {isEdit && (
+                <div style={{ display: 'flex', gap: 4, marginTop: 8, width: 200 }}>
+                  <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+                    onChange={ev => ev.target.files?.[0] && handlePhotoUpload(ev.target.files[0])} />
+                  <button type="button" className="btn btn-ghost btn-sm"
+                    style={{ fontSize: 11, padding: '3px 8px', flex: 1 }}
+                    disabled={photoUploading} onClick={() => photoInputRef.current?.click()}>
+                    {photoUploading ? '…' : photoUrl ? '📷 Change' : '📷 Add Photo'}
+                  </button>
+                  {photoUrl && !photoUploading && (
+                    <button type="button" className="btn btn-ghost btn-sm"
+                      style={{ fontSize: 11, padding: '3px 8px', color: 'var(--color-danger)' }}
+                      onClick={handleRemovePhoto}>✕</button>
+                  )}
+                </div>
+              )}
+              {photoError && <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 4, textAlign: 'center' }}>{photoError}</div>}
+              <div style={{ marginTop: 16, width: '100%', textAlign: 'center' }}>
+                <div style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.2 }}>
                   {isEdit
                     ? `${initial!.firstName} ${initial!.lastName}`
                     : (form.firstName || form.lastName ? `${form.firstName} ${form.lastName}`.trim() : 'New Employee')}
                 </div>
-                <div style={{ color: 'var(--color-text-secondary)', marginTop: 4, fontSize: 14 }}>
+                <div style={{ color: 'var(--color-text-secondary)', marginTop: 4, fontSize: 13 }}>
                   {isEdit ? initial!.position : (form.position || 'New Position')}
                 </div>
                 {isEdit && (
                   <>
-                    <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{initial!.department.name}</div>
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: 12.5 }}>{initial!.department.name}</div>
                     <span className={`badge ${STATUS_COLORS[form.status]}`} style={{ marginTop: 10, display: 'inline-block' }}>{STATUS_LABELS[form.status]}</span>
                     {initial!.client && (
-                      <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>
                         Deployed to <strong style={{ color: 'var(--color-text)' }}>{initial!.client.name}</strong>
                       </div>
                     )}
-                    <div style={{ marginTop: 14 }}>
+                    <div style={{ marginTop: 14, textAlign: 'left' }}>
                       <InfoRow label="Emp. No." value={initial!.employeeNo} mono />
                       <InfoRow label="Hire Date" value={formatDate(initial!.hireDate)} />
                       <InfoRow label="Basic Salary" value={`₱${initial!.basicSalary.toLocaleString('en-PH')}`} />
@@ -568,13 +555,12 @@ function EmployeeModal({
                 )}
               </div>
             </div>
-          </div>
-          {/* Pinned tab bar — never scrolls */}
-          <div style={{ padding: '0 24px', flexShrink: 0 }}>
-            <TabBar tabs={EDIT_TABS} active={activeTab} onChange={setActiveTab} />
-          </div>
-          {/* Scrollable tab content */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 16px' }}>
+            {/* RIGHT COLUMN — tabs */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 24px 0', flexShrink: 0 }}>
+                <TabBar tabs={EDIT_TABS} active={activeTab} onChange={setActiveTab} />
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 16px' }}>
             {error && <div className="error-msg" style={{ marginTop: 16 }}>{error}</div>}
 
             {/* ── Tab: Profile ── */}
@@ -866,6 +852,8 @@ function EmployeeModal({
                 {accountError && <div className="error-msg" style={{ marginTop: 8 }}>{accountError}</div>}
               </>
             )}
+              </div>
+            </div>
           </div>
           <div className="modal-footer" style={{ flexShrink: 0 }}>
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -1242,7 +1230,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
 
   return (
     <div className="modal-overlay" onClick={ev => ev.target === ev.currentTarget && onClose()}>
-      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh, 860px)' }}>
+      <div className="modal modal-lg" style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh, 860px)', maxWidth: 960 }}>
         <div className="modal-header" style={{ flexShrink: 0 }}>
           <h2 className="modal-title">Employee Profile</h2>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1250,50 +1238,59 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
             <button className="icon-btn" onClick={onClose}>✕</button>
           </div>
         </div>
-        {/* Pinned profile header — never scrolls */}
-        <div style={{ padding: '20px 24px 16px', flexShrink: 0 }}>
-          {/* Profile header — large photo + name, always visible across all tabs */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
-            {/* Large portrait photo */}
-            <div style={{ flexShrink: 0 }}>
-              <div style={{
-                width: 240, height: 300, borderRadius: 12,
-                background: e.avatarColor, overflow: 'hidden',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 64, fontWeight: 800, color: '#fff',
-              }}>
-                {e.photoUrl
-                  ? <img src={resolvePhotoUrl(e.photoUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
-                  : <>{e.firstName[0]}{e.lastName[0]}</>
-                }
-              </div>
+        {/* ── Two-column layout ── */}
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          {/* LEFT COLUMN — photo + summary */}
+          <div style={{ width: 264, flexShrink: 0, overflowY: 'auto', padding: '20px 16px 20px 24px', borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{
+              width: 200, height: 250, borderRadius: 12,
+              background: e.avatarColor, overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 52, fontWeight: 800, color: '#fff',
+            }}>
+              {e.photoUrl
+                ? <img src={resolvePhotoUrl(e.photoUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                : <>{e.firstName[0]}{e.lastName[0]}</>
+              }
             </div>
-
-            {/* Name / meta column */}
-            <div style={{ flex: 1, paddingTop: 4 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>{e.firstName} {e.lastName}</div>
-              <div style={{ color: 'var(--color-text-secondary)', marginTop: 4, fontSize: 14 }}>{e.position}</div>
-              <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{e.department.name}</div>
+            <div style={{ display: 'flex', gap: 4, marginTop: 8, width: 200 }}>
+              <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={ev => ev.target.files?.[0] && handlePhotoUpload(ev.target.files[0])} />
+              <button type="button" className="btn btn-ghost btn-sm"
+                style={{ fontSize: 11, padding: '3px 8px', flex: 1 }}
+                disabled={photoUploading} onClick={() => photoInputRef.current?.click()}>
+                {photoUploading ? '…' : e.photoUrl ? '📷 Change' : '📷 Add Photo'}
+              </button>
+              {e.photoUrl && !photoUploading && (
+                <button type="button" className="btn btn-ghost btn-sm"
+                  style={{ fontSize: 11, padding: '3px 8px', color: 'var(--color-danger)' }}
+                  onClick={handleRemovePhoto}>✕</button>
+              )}
+            </div>
+            {photoError && <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 4, textAlign: 'center' }}>{photoError}</div>}
+            <div style={{ marginTop: 16, width: '100%', textAlign: 'center' }}>
+              <div style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.2 }}>{e.firstName} {e.lastName}</div>
+              <div style={{ color: 'var(--color-text-secondary)', marginTop: 4, fontSize: 13 }}>{e.position}</div>
+              <div style={{ color: 'var(--color-text-muted)', fontSize: 12.5 }}>{e.department.name}</div>
               <span className={`badge ${STATUS_COLORS[e.status]}`} style={{ marginTop: 10, display: 'inline-block' }}>{STATUS_LABELS[e.status]}</span>
               {e.client && (
-                <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-text-muted)' }}>
                   Deployed to <strong style={{ color: 'var(--color-text)' }}>{e.client.name}</strong>
                 </div>
               )}
-              <div style={{ marginTop: 14 }}>
+              <div style={{ marginTop: 14, textAlign: 'left' }}>
                 <InfoRow label="Emp. No." value={e.employeeNo} mono />
                 <InfoRow label="Hire Date" value={formatDate(e.hireDate)} />
                 <InfoRow label="Basic Salary" value={`₱${e.basicSalary.toLocaleString('en-PH')}`} />
               </div>
             </div>
           </div>
-        </div>
-        {/* Pinned tab bar — never scrolls */}
-        <div style={{ padding: '0 24px', flexShrink: 0 }}>
-          <TabBar tabs={VIEW_TABS} active={activeTab} onChange={setActiveTab} />
-        </div>
-        {/* Scrollable tab content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px 24px' }}>
+          {/* RIGHT COLUMN — tabs */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 24px 0', flexShrink: 0 }}>
+              <TabBar tabs={VIEW_TABS} active={activeTab} onChange={setActiveTab} />
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px 24px' }}>
           {/* ── Profile tab ── */}
           {activeTab === 'Profile' && (
             <>
@@ -1386,6 +1383,8 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
               )}
             </>
           )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
