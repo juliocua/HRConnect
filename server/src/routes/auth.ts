@@ -135,7 +135,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     }
 
     // Return masked phone for UI display
-    const masked = phone.replace(/(\+?\d{2,3})\d+(\d{2})$/, (_, prefix: string, last: string) =>
+    const masked = phone.replace(/(\+?\d{2,3})\d+(\d{2})$/, (_: string, prefix: string, last: string) =>
       `${prefix}${'•'.repeat(phone.length - prefix.length - last.length)}${last}`
     );
 
