@@ -6,6 +6,8 @@ import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { ClientCombobox } from '@/components/ClientCombobox';
 import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest, GovIdChangeRequest } from '@/types';
+import { useAuth } from '@/context/AuthContext';
+import { canWrite } from '@/lib/permissions';
 
 // Resolve photo URL — strips stored origin and uses VITE_API_URL so photos work even if
 // SERVER_URL was misconfigured (e.g. fell back to localhost) at upload time.
@@ -37,6 +39,8 @@ export default function Employees() {
   const toast = useToast();
   const [clientFilter, setClientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const { user } = useAuth();
+  const canEdit = canWrite(user?.role, 'employees');
   const [showModal, setShowModal] = useState(false);
   const [editTarget, setEditTarget] = useState<Employee | null>(null);
   const [viewTarget, setViewTarget] = useState<Employee | null>(null);
@@ -138,7 +142,7 @@ export default function Employees() {
       id: 'actions',
       header: '',
       enableSorting: false,
-      cell: ({ row: { original: e } }) => (
+      cell: ({ row: { original: e } }) => canEdit ? (
         <div style={{ display: 'flex', gap: 6 }}>
           <button className="btn btn-secondary btn-sm" onClick={ev => { ev.stopPropagation(); openEdit(e); }}>Edit</button>
           {e.status !== 'TERMINATED' && (
@@ -147,7 +151,7 @@ export default function Employees() {
             </button>
           )}
         </div>
-      ),
+      ) : null,
     },
   ], [deleteMutation]);
 
@@ -159,12 +163,14 @@ export default function Employees() {
           <h1 className="page-title">Employees</h1>
           <p className="page-desc">{employees.length} team member{employees.length !== 1 ? 's' : ''}</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <a href="/import?type=employee" className="btn btn-ghost">⬆ Import CSV</a>
-          <button className="btn btn-primary" onClick={openAdd}>
-            <span>＋</span> Add Employee
-          </button>
-        </div>
+        {canEdit && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <a href="/import?type=employee" className="btn btn-ghost">⬆ Import CSV</a>
+            <button className="btn btn-primary" onClick={openAdd}>
+              <span>＋</span> Add Employee
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filters */}

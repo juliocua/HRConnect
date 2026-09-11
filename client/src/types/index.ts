@@ -1,5 +1,14 @@
 // ── Auth ──────────────────────────────────────────────────────────────────────
-export type UserRole = 'SUPER_ADMIN' | 'HR_MANAGER' | 'HR_STAFF' | 'EMPLOYEE';
+export type UserRole =
+  | 'SUPER_ADMIN'
+  | 'HR_MANAGER'
+  | 'HR_STAFF'
+  | 'EMPLOYEE'
+  | 'EMPLOYEE_RELATIONS'
+  | 'ACCOUNTS_MANAGEMENT'
+  | 'BILLING_COLLECTION'
+  | 'ACCOUNTING';
+
 export type AuthProvider = 'LOCAL' | 'GOOGLE' | 'MICROSOFT';
 
 export interface AuthUser {

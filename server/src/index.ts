@@ -8,6 +8,8 @@ import path from 'path';
 
 import { setupPassport } from './lib/passport';
 import { errorHandler } from './middleware/errorHandler';
+import { authenticate } from './middleware/authenticate';
+import { rbacGuard } from './middleware/rbac';
 import authRoutes from './routes/auth';
 import employeeRoutes from './routes/employees';
 import attendanceRoutes from './routes/attendance';
@@ -55,17 +57,21 @@ app.use('/uploads', (_req, res, next) => {
   next();
 }, express.static(uploadsBase));
 
-// ── API routes ────────────────────────────────────────────────────────────────
+// ── Auth routes (no RBAC — login, register, OTP, /me) ────────────────────────
 app.use('/api/auth', authRoutes);
-app.use('/api/employees', employeeRoutes);
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/leave', leaveRoutes);
-app.use('/api/payroll', payrollRoutes);
-app.use('/api/clients', clientRoutes);
-app.use('/api/billing', billingRoutes);
-app.use('/api/import', importRoutes);
-app.use('/api/overtime', overtimeRoutes);
-app.use('/api/companies', companiesRoutes);
+
+// ── Protected API routes (authenticate → RBAC → route handler) ───────────────
+// authenticate verifies the JWT and sets req.user; rbacGuard checks module access.
+// Individual route handlers may call authenticate again internally — that is harmless.
+app.use('/api/employees', authenticate, rbacGuard('employees'), employeeRoutes);
+app.use('/api/attendance', authenticate, rbacGuard('attendance'), attendanceRoutes);
+app.use('/api/leave',      authenticate, rbacGuard('leave'),      leaveRoutes);
+app.use('/api/payroll',    authenticate, rbacGuard('payroll'),    payrollRoutes);
+app.use('/api/clients',    authenticate, rbacGuard('clients'),    clientRoutes);
+app.use('/api/billing',    authenticate, rbacGuard('billing'),    billingRoutes);
+app.use('/api/import',     authenticate, rbacGuard('import'),     importRoutes);
+app.use('/api/overtime',   authenticate, rbacGuard('overtime'),   overtimeRoutes);
+app.use('/api/companies',  authenticate, rbacGuard('companies'),  companiesRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/lib/toast';
+import { canAccess, type Module } from '@/lib/permissions';
 import Layout from '@/components/Layout';
 import EmployeeHubLayout from '@/components/EmployeeHubLayout';
 import Login from '@/pages/Login';
@@ -47,6 +48,7 @@ function OAuthCallback() {
   );
 }
 
+/** Redirects to /login if not authenticated. */
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -57,6 +59,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+/**
+ * Redirects to "/" (which then auto-redirects to the first accessible page)
+ * if the user's role does not have access to the given module.
+ */
+function ModuleRoute({ module, children }: { module: Module; children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (!canAccess(user?.role, module)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -88,7 +100,7 @@ function AppRoutes() {
         <Route path="profile" element={<HubProfile />} />
       </Route>
 
-      {/* HR Portal — for HR_STAFF, HR_MANAGER, SUPER_ADMIN */}
+      {/* HR Portal — for all non-EMPLOYEE roles */}
       <Route
         path="/"
         element={
@@ -98,17 +110,51 @@ function AppRoutes() {
         }
       >
         <Route index element={<Dashboard />} />
-        <Route path="employees" element={<Employees />} />
-        <Route path="attendance" element={<Attendance />} />
-        <Route path="leave" element={<Leave />} />
-        <Route path="payroll" element={<Payroll />} />
-        <Route path="clients" element={<Clients />} />
-        <Route path="clients/:id" element={<ClientDetail />} />
-        <Route path="billing" element={<ClientBilling />} />
-        <Route path="reports" element={<Reports />} />
-        <Route path="import" element={<BulkImport />} />
-        <Route path="leave-setup" element={<LeaveSetup />} />
-        <Route path="overtime" element={<Overtime />} />
+
+        <Route
+          path="employees"
+          element={<ModuleRoute module="employees"><Employees /></ModuleRoute>}
+        />
+        <Route
+          path="attendance"
+          element={<ModuleRoute module="attendance"><Attendance /></ModuleRoute>}
+        />
+        <Route
+          path="leave"
+          element={<ModuleRoute module="leave"><Leave /></ModuleRoute>}
+        />
+        <Route
+          path="payroll"
+          element={<ModuleRoute module="payroll"><Payroll /></ModuleRoute>}
+        />
+        <Route
+          path="clients"
+          element={<ModuleRoute module="clients"><Clients /></ModuleRoute>}
+        />
+        <Route
+          path="clients/:id"
+          element={<ModuleRoute module="clients"><ClientDetail /></ModuleRoute>}
+        />
+        <Route
+          path="billing"
+          element={<ModuleRoute module="billing"><ClientBilling /></ModuleRoute>}
+        />
+        <Route
+          path="reports"
+          element={<ModuleRoute module="reports"><Reports /></ModuleRoute>}
+        />
+        <Route
+          path="import"
+          element={<ModuleRoute module="import"><BulkImport /></ModuleRoute>}
+        />
+        <Route
+          path="leave-setup"
+          element={<ModuleRoute module="leaveSetup"><LeaveSetup /></ModuleRoute>}
+        />
+        <Route
+          path="overtime"
+          element={<ModuleRoute module="overtime"><Overtime /></ModuleRoute>}
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,46 +1,53 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { canAccess, ROLE_LABELS, type Module } from '@/lib/permissions';
 
-const NAV_ITEMS = [
+// ── Nav structure ─────────────────────────────────────────────────────────────
+// Each link declares which `module` controls its visibility.
+// The Sidebar filters links using canAccess(user.role, module).
+const NAV_ITEMS: Array<{
+  section: string;
+  links: Array<{ to: string; label: string; icon: () => JSX.Element; exact?: boolean; module: Module }>;
+}> = [
   {
     section: 'Overview',
     links: [
-      { to: '/', label: 'Dashboard', icon: IconDashboard, exact: true },
+      { to: '/', label: 'Dashboard', icon: IconDashboard, exact: true, module: 'dashboard' },
     ],
   },
   {
     section: 'People & Time',
     links: [
-      { to: '/employees', label: 'Employees', icon: IconEmployees },
-      { to: '/attendance', label: 'Attendance', icon: IconAttendance },
-      { to: '/leave', label: 'Leave', icon: IconLeave },
-      { to: '/overtime', label: 'Overtime', icon: IconOvertime },
+      { to: '/employees', label: 'Employees',  icon: IconEmployees,  module: 'employees'  },
+      { to: '/attendance', label: 'Attendance', icon: IconAttendance, module: 'attendance' },
+      { to: '/leave',      label: 'Leave',      icon: IconLeave,      module: 'leave'      },
+      { to: '/overtime',   label: 'Overtime',   icon: IconOvertime,   module: 'overtime'   },
     ],
   },
   {
     section: 'Finance',
     links: [
-      { to: '/payroll', label: 'Payroll', icon: IconPayroll },
-      { to: '/billing', label: 'Client Billing', icon: IconBilling },
+      { to: '/payroll',  label: 'Payroll',         icon: IconPayroll,  module: 'payroll'  },
+      { to: '/billing',  label: 'Client Billing',  icon: IconBilling,  module: 'billing'  },
     ],
   },
   {
     section: 'Clients',
     links: [
-      { to: '/clients', label: 'Client Records', icon: IconClients },
+      { to: '/clients', label: 'Client Records', icon: IconClients, module: 'clients' },
     ],
   },
   {
     section: 'Analytics',
     links: [
-      { to: '/reports', label: 'Reports', icon: IconReports },
+      { to: '/reports', label: 'Reports', icon: IconReports, module: 'reports' },
     ],
   },
   {
     section: 'Tools',
     links: [
-      { to: '/import', label: 'Bulk Import', icon: IconImport },
-      { to: '/leave-setup', label: 'Leave Setup', icon: IconLeaveSetup },
+      { to: '/import',      label: 'Bulk Import', icon: IconImport,     module: 'import'     },
+      { to: '/leave-setup', label: 'Leave Setup',  icon: IconLeaveSetup, module: 'leaveSetup' },
     ],
   },
 ];
@@ -48,6 +55,14 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const location = useLocation();
+
+  // Filter sections and links to only those the user's role can access
+  const visibleSections = NAV_ITEMS
+    .map(section => ({
+      ...section,
+      links: section.links.filter(link => canAccess(user?.role, link.module)),
+    }))
+    .filter(section => section.links.length > 0);
 
   return (
     <aside className="sidebar">
@@ -62,7 +77,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="sidebar-nav">
-        {NAV_ITEMS.map((section) => (
+        {visibleSections.map((section) => (
           <div key={section.section} className="sidebar-section">
             <div className="sidebar-section-label">{section.section}</div>
             {section.links.map((link) => {
@@ -94,7 +109,9 @@ export default function Sidebar() {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{roleLabel(user?.role)}</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user?.role ? (ROLE_LABELS[user.role] ?? user.role) : ''}
+            </div>
           </div>
         </div>
         <button className="sidebar-link" onClick={logout} style={{ width: '100%' }}>
@@ -110,10 +127,7 @@ function initials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-function roleLabel(role?: string) {
-  if (!role) return '';
-  return { SUPER_ADMIN: 'Super Admin', HR_MANAGER: 'HR Manager', HR_STAFF: 'HR Staff' }[role] ?? role;
-}
+// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function IconDashboard() {
   return (
@@ -157,8 +171,9 @@ function IconLeave() {
 
 function IconPayroll() {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
-      <text x="12" y="17" fontSize="15" fontWeight="700" textAnchor="middle" fontFamily="sans-serif">₱</text>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="1" x2="12" y2="23"/>
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
     </svg>
   );
 }
