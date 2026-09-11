@@ -9,34 +9,38 @@ const router = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Normalise a PH mobile number to E.164 (+63XXXXXXXXX). */
-function toE164PH(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('63') && digits.length === 12) return `+${digits}`;
-  if (digits.startsWith('0') && digits.length === 11) return `+63${digits.slice(1)}`;
-  if (digits.length === 10) return `+63${digits}`; // already stripped leading 0
-  return phone; // unknown format — pass through unchanged
-}
-
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-async function sendOtpSms(to: string, code: string): Promise<void> {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_FROM_NUMBER;
-  if (!sid || !token || !from) throw new Error('SMS service not configured');
+function maskPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  const last4 = digits.slice(-4);
+  return `•••• ••• ${last4}`;
+}
 
-  // Lazy-require twilio so the server still starts without the env vars
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const twilio = require('twilio');
-  const client = twilio(sid, token);
-  await client.messages.create({
-    body: `Your HRConnect OTP is: ${code}. It expires in 5 minutes.`,
-    from,
-    to,
+async function sendOtpSms(to: string, code: string): Promise<void> {
+  const apiKey = process.env.SEMAPHORE_API_KEY;
+  if (!apiKey) throw new Error('SEMAPHORE_API_KEY not configured');
+
+  // Normalize: +639XXXXXXXXX → 09XXXXXXXXX (Semaphore accepts PH format)
+  const number = to.startsWith('+63') ? '0' + to.slice(3) : to;
+
+  const res = await fetch('https://api.semaphore.co/api/v4/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apikey: apiKey,
+      number,
+      message: `Your HRConnect login code is: ${code}. It expires in 5 minutes. Do not share this with anyone.`,
+      sendername: process.env.SEMAPHORE_SENDER_NAME ?? 'SEMAPHORE',
+    }),
   });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Semaphore SMS failed (${res.status}): ${text}`);
+  }
 }
 
 // ── Register ──────────────────────────────────────────────────────────────────
@@ -121,12 +125,11 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       });
     }
 
-    // EMPLOYEE role: 2-step OTP
-    const rawPhone = (user as any).employee?.phone;
-    if (!rawPhone) {
-      return res.status(422).json({ error: 'No phone number on file. Contact HR to update your profile.' });
+    // EMPLOYEE role: 2-step OTP via SMS (Semaphore)
+    const phone = (user as any).employee?.phone;
+    if (!phone) {
+      return res.status(422).json({ error: 'No mobile number on file. Contact HR to update your employee record.' });
     }
-    const phone = toE164PH(rawPhone);
 
     const code = generateOtp();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
@@ -140,16 +143,11 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     try {
       await sendOtpSms(phone, code);
     } catch (smsErr: any) {
-      console.error('SMS send failed:', smsErr?.message ?? smsErr);
-      return res.status(500).json({ error: 'Failed to send OTP. Please try again or contact HR.' });
+      console.error('OTP SMS failed:', smsErr?.message ?? smsErr);
+      return res.status(500).json({ error: 'Failed to send OTP SMS. Please try again or contact HR.' });
     }
 
-    // Return masked phone for UI display
-    const masked = phone.replace(/(\+?\d{2,3})\d+(\d{2})$/, (_: string, prefix: string, last: string) =>
-      `${prefix}${'•'.repeat(phone.length - prefix.length - last.length)}${last}`
-    );
-
-    return res.json({ requiresOtp: true, userId: user.id, maskedPhone: masked });
+    return res.json({ requiresOtp: true, userId: user.id, maskedPhone: maskPhone(phone) });
   } catch (err) {
     next(err);
   }

@@ -128,7 +128,7 @@ export default function Login() {
           <>
             <h1 className="login-heading">Verify your identity</h1>
             <p className="login-sub" style={{ marginBottom: 6 }}>
-              A 6-digit code was sent to
+              A 6-digit code was sent to your mobile number
             </p>
             <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)', marginBottom: 20, textAlign: 'center' }}>
               {maskedPhone}
@@ -175,7 +175,7 @@ export default function Login() {
             </button>
 
             <p style={{ marginTop: 14, textAlign: 'center', fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Code expires in 5 minutes. Check your registered phone number.
+              Code expires in 5 minutes. Check your registered mobile number.
             </p>
           </>
         )}
