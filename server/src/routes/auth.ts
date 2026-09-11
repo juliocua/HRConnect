@@ -9,6 +9,15 @@ const router = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Normalise a PH mobile number to E.164 (+63XXXXXXXXX). */
+function toE164PH(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('63') && digits.length === 12) return `+${digits}`;
+  if (digits.startsWith('0') && digits.length === 11) return `+63${digits.slice(1)}`;
+  if (digits.length === 10) return `+63${digits}`; // already stripped leading 0
+  return phone; // unknown format — pass through unchanged
+}
+
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -113,10 +122,11 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     }
 
     // EMPLOYEE role: 2-step OTP
-    const phone = (user as any).employee?.phone;
-    if (!phone) {
+    const rawPhone = (user as any).employee?.phone;
+    if (!rawPhone) {
       return res.status(422).json({ error: 'No phone number on file. Contact HR to update your profile.' });
     }
+    const phone = toE164PH(rawPhone);
 
     const code = generateOtp();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
