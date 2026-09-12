@@ -76,13 +76,6 @@ app.use('/api/companies',  authenticate, rbacGuard('companies'),  companiesRoute
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));
 
-// ── Serve React in production ─────────────────────────────────────────────────
-if (isProd) {
-  const clientDist = path.join(__dirname, '../../client/dist');
-  app.use(express.static(clientDist));
-  app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
-}
-
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use(errorHandler);
 
