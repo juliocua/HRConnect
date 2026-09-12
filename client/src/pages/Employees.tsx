@@ -1284,7 +1284,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
-      toast.error('Failed to download payslip PDF');
+      toast('error', 'Failed to download payslip PDF');
     }
   };
 
