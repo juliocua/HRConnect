@@ -1259,19 +1259,19 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
 
   const VIEW_TABS = ['Profile', 'Emergency Contact', 'IDs & Bank', 'Organization', '201 Docs', 'Payslips', 'Attendance'];
 
-  const { data: documents = [], refetch: refetchDocs } = useQuery<any[]>({
+  const { data: documents = [], refetch: refetchDocs, isFetching: docsFetching } = useQuery<any[]>({
     queryKey: ['employee-docs', e.id],
     queryFn: () => api.get(`/employees/${e.id}/documents`).then(r => r.data),
     enabled: activeTab === '201 Docs',
   });
 
-  const { data: payslips = [] } = useQuery<any[]>({
+  const { data: payslips = [], isFetching: payslipsFetching } = useQuery<any[]>({
     queryKey: ['employee-payslips', e.id],
     queryFn: () => api.get(`/employees/${e.id}/payslips`).then(r => r.data),
     enabled: activeTab === 'Payslips',
   });
 
-  const { data: attendance = [] } = useQuery<any[]>({
+  const { data: attendance = [], isFetching: attendanceFetching } = useQuery<any[]>({
     queryKey: ['employee-attendance', e.id, attYear, attMonth],
     queryFn: () => api.get(`/employees/${e.id}/attendance?year=${attYear}&month=${attMonth}`).then(r => r.data),
     enabled: activeTab === 'Attendance',
@@ -1529,7 +1529,12 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                 </button>
               </div>
 
-              {documents.length === 0 ? (
+              {docsFetching ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                  <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                  Loading documents…
+                </div>
+              ) : documents.length === 0 ? (
                 <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
                   No documents uploaded yet
                 </div>
@@ -1556,7 +1561,12 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
           {/* ── Payslips tab ── */}
           {activeTab === 'Payslips' && (
             <div>
-              {payslips.length === 0 ? (
+              {payslipsFetching ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                  <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                  Loading payslips…
+                </div>
+              ) : payslips.length === 0 ? (
                 <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
                   No payslip records found
                 </div>
@@ -1604,7 +1614,12 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                 </select>
               </div>
 
-              {attendance.length === 0 ? (
+              {attendanceFetching ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                  <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                  Loading attendance…
+                </div>
+              ) : attendance.length === 0 ? (
                 <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '16px 0', textAlign: 'center' }}>
                   No attendance records for this period
                 </div>
