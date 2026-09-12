@@ -1,8 +1,7 @@
 import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/lib/toast';
-import { canAccess, type Module } from '@/lib/permissions';
 import Layout from '@/components/Layout';
 import EmployeeHubLayout from '@/components/EmployeeHubLayout';
 import Login from '@/pages/Login';
@@ -62,19 +61,57 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/**
- * Redirects to "/" (which then auto-redirects to the first accessible page)
- * if the user's role does not have access to the given module.
- */
-function ModuleRoute({ module, children }: { module: Module; children: React.ReactNode }) {
-  const { user } = useAuth();
-  if (!canAccess(user?.role, module)) return <Navigate to="/" replace />;
-  return <>{children}</>;
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 768px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return mobile;
+}
+
+function NonEmployeeMobileFallback() {
+  const { user, logout } = useAuth();
+  const handleLogout = () => { logout(); window.location.href = '/login'; };
+  return (
+    <div style={{
+      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      background: 'var(--color-bg)', padding: '32px 24px', textAlign: 'center',
+    }}>
+      <div style={{
+        width: 48, height: 48, borderRadius: 12, background: '#0F2744',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 20,
+      }}>HR</div>
+      <div style={{ fontWeight: 700, fontSize: 18, color: 'var(--color-text-primary)', marginBottom: 8 }}>
+        Desktop Required
+      </div>
+      <div style={{ fontSize: 14, color: 'var(--color-text-muted)', maxWidth: 280, lineHeight: 1.6, marginBottom: 32 }}>
+        The HRConnect admin portal is designed for desktop use. Please open it on a desktop browser.
+      </div>
+      {user && (
+        <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 24 }}>
+          Signed in as <strong>{user.name}</strong>
+        </div>
+      )}
+      <button
+        onClick={handleLogout}
+        className="btn btn-secondary"
+        style={{ fontSize: 14 }}
+      >
+        Sign Out
+      </button>
+    </div>
+  );
 }
 
 function AppRoutes() {
   const { user } = useAuth();
   const isEmployee = user?.role === 'EMPLOYEE';
+  const isMobile = useIsMobile();
 
   return (
     <Routes>
@@ -105,56 +142,22 @@ function AppRoutes() {
         path="/"
         element={
           <ProtectedRoute>
-            {isEmployee ? <Navigate to="/hub" replace /> : <Layout />}
+            {isEmployee ? <Navigate to="/hub" replace /> : isMobile ? <NonEmployeeMobileFallback /> : <Layout />}
           </ProtectedRoute>
         }
       >
         <Route index element={<Dashboard />} />
-
-        <Route
-          path="employees"
-          element={<ModuleRoute module="employees"><Employees /></ModuleRoute>}
-        />
-        <Route
-          path="attendance"
-          element={<ModuleRoute module="attendance"><Attendance /></ModuleRoute>}
-        />
-        <Route
-          path="leave"
-          element={<ModuleRoute module="leave"><Leave /></ModuleRoute>}
-        />
-        <Route
-          path="payroll"
-          element={<ModuleRoute module="payroll"><Payroll /></ModuleRoute>}
-        />
-        <Route
-          path="clients"
-          element={<ModuleRoute module="clients"><Clients /></ModuleRoute>}
-        />
-        <Route
-          path="clients/:id"
-          element={<ModuleRoute module="clients"><ClientDetail /></ModuleRoute>}
-        />
-        <Route
-          path="billing"
-          element={<ModuleRoute module="billing"><ClientBilling /></ModuleRoute>}
-        />
-        <Route
-          path="reports"
-          element={<ModuleRoute module="reports"><Reports /></ModuleRoute>}
-        />
-        <Route
-          path="import"
-          element={<ModuleRoute module="import"><BulkImport /></ModuleRoute>}
-        />
-        <Route
-          path="leave-setup"
-          element={<ModuleRoute module="leaveSetup"><LeaveSetup /></ModuleRoute>}
-        />
-        <Route
-          path="overtime"
-          element={<ModuleRoute module="overtime"><Overtime /></ModuleRoute>}
-        />
+        <Route path="employees" element={<Employees />} />
+        <Route path="attendance" element={<Attendance />} />
+        <Route path="leave" element={<Leave />} />
+        <Route path="payroll" element={<Payroll />} />
+        <Route path="clients" element={<Clients />} />
+        <Route path="clients/:id" element={<ClientDetail />} />
+        <Route path="billing" element={<ClientBilling />} />
+        <Route path="reports" element={<Reports />} />
+        <Route path="import" element={<BulkImport />} />
+        <Route path="leave-setup" element={<LeaveSetup />} />
+        <Route path="overtime" element={<Overtime />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
