@@ -42,6 +42,7 @@ export default function Employees() {
   const { user } = useAuth();
   const canEdit = canWrite(user?.role, 'employees');
   const [showModal, setShowModal] = useState(false);
+  const [showImport201, setShowImport201] = useState(false);
   const [editTarget, setEditTarget] = useState<Employee | null>(null);
   const [viewTarget, setViewTarget] = useState<Employee | null>(null);
 
@@ -166,6 +167,7 @@ export default function Employees() {
         {canEdit && (
           <div style={{ display: 'flex', gap: 8 }}>
             <a href="/import?type=employee" className="btn btn-ghost">⬆ Import CSV</a>
+            <button className="btn btn-ghost" onClick={() => setShowImport201(true)}>⬆ Import 201 Docs</button>
             <button className="btn btn-primary" onClick={openAdd}>
               <span>＋</span> Add Employee
             </button>
@@ -231,6 +233,13 @@ export default function Employees() {
           employee={viewTarget}
           onClose={() => setViewTarget(null)}
           onEdit={() => { setViewTarget(null); openEdit(viewTarget); }}
+        />
+      )}
+
+      {showImport201 && (
+        <Import201Modal
+          employees={employees}
+          onClose={() => setShowImport201(false)}
         />
       )}
     </div>
@@ -1193,8 +1202,61 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const [activeTab, setActiveTab] = useState('Profile');
+  const [attYear, setAttYear] = useState(new Date().getFullYear());
+  const [attMonth, setAttMonth] = useState(new Date().getMonth() + 1);
+  const [docUploading, setDocUploading] = useState(false);
+  const [docCategory, setDocCategory] = useState('');
+  const docInputRef = useRef<HTMLInputElement>(null);
 
-  const VIEW_TABS = ['Profile', 'Emergency Contact', 'IDs & Bank', 'Organization'];
+  const VIEW_TABS = ['Profile', 'Emergency Contact', 'IDs & Bank', 'Organization', '201 Docs', 'Payslips', 'Attendance'];
+
+  const { data: documents = [], refetch: refetchDocs } = useQuery<any[]>({
+    queryKey: ['employee-docs', e.id],
+    queryFn: () => api.get(`/employees/${e.id}/documents`).then(r => r.data),
+    enabled: activeTab === '201 Docs',
+  });
+
+  const { data: payslips = [] } = useQuery<any[]>({
+    queryKey: ['employee-payslips', e.id],
+    queryFn: () => api.get(`/employees/${e.id}/payslips`).then(r => r.data),
+    enabled: activeTab === 'Payslips',
+  });
+
+  const { data: attendance = [] } = useQuery<any[]>({
+    queryKey: ['employee-attendance', e.id, attYear, attMonth],
+    queryFn: () => api.get(`/employees/${e.id}/attendance?year=${attYear}&month=${attMonth}`).then(r => r.data),
+    enabled: activeTab === 'Attendance',
+  });
+
+  const handleDocUpload = async (file: File) => {
+    setDocUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (docCategory) formData.append('category', docCategory);
+      await api.post(`/employees/${e.id}/documents`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      refetchDocs();
+      toast('success', 'Document uploaded');
+      setDocCategory('');
+    } catch (err: any) {
+      toast('error', err?.response?.data?.error ?? 'Upload failed');
+    } finally {
+      setDocUploading(false);
+    }
+  };
+
+  const handleDeleteDoc = async (docId: string) => {
+    if (!confirm('Delete this document?')) return;
+    try {
+      await api.delete(`/employees/documents/${docId}`);
+      refetchDocs();
+      toast('success', 'Document deleted');
+    } catch {
+      toast('error', 'Failed to delete document');
+    }
+  };
 
   const handlePhotoUpload = async (file: File) => {
     setPhotoError('');
@@ -1370,6 +1432,151 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
               )}
             </>
           )}
+
+          {/* ── 201 Docs tab ── */}
+          {activeTab === '201 Docs' && (
+            <div>
+              {/* Upload strip */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  className="form-control"
+                  style={{ width: 160, fontSize: 13 }}
+                  value={docCategory}
+                  onChange={e2 => setDocCategory(e2.target.value)}
+                >
+                  <option value="">Category (optional)</option>
+                  <option value="resume">Resume / CV</option>
+                  <option value="contract">Contract</option>
+                  <option value="certificate">Certificate / Training</option>
+                  <option value="id">Government ID</option>
+                  <option value="medical">Medical / Health</option>
+                  <option value="disciplinary">Disciplinary</option>
+                  <option value="other">Other</option>
+                </select>
+                <input
+                  ref={docInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                  style={{ display: 'none' }}
+                  onChange={ev => { if (ev.target.files?.[0]) handleDocUpload(ev.target.files[0]); ev.target.value = ''; }}
+                />
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => docInputRef.current?.click()}
+                  disabled={docUploading}
+                >
+                  {docUploading ? 'Uploading…' : '⬆ Upload Document'}
+                </button>
+              </div>
+
+              {documents.length === 0 ? (
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
+                  No documents uploaded yet
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {documents.map((doc: any) => (
+                    <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)' }}>
+                      <span style={{ fontSize: 18 }}>{doc.mimeType === 'application/pdf' ? '📄' : doc.mimeType.startsWith('image/') ? '🖼️' : '📝'}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.originalName}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                          {doc.category ? `${doc.category} · ` : ''}{(doc.size / 1024).toFixed(0)} KB · {new Date(doc.createdAt).toLocaleDateString('en-PH')}
+                        </div>
+                      </div>
+                      <a href={doc.url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: 12 }}>View</a>
+                      <button className="btn btn-ghost btn-sm" style={{ fontSize: 12, color: 'var(--color-danger)' }} onClick={() => handleDeleteDoc(doc.id)}>Delete</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Payslips tab ── */}
+          {activeTab === 'Payslips' && (
+            <div>
+              {payslips.length === 0 ? (
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
+                  No payslip records found
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {payslips.map((rec: any) => (
+                    <div key={rec.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', border: '1px solid var(--color-border)', borderRadius: 8, gap: 12, background: 'var(--color-surface-2)' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{rec.payrollRun?.period ?? `${rec.payrollRun?.month}/${rec.payrollRun?.year}`}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                          {rec.payrollRun?.periodStart ? new Date(rec.payrollRun.periodStart).toLocaleDateString('en-PH') : ''} – {rec.payrollRun?.periodEnd ? new Date(rec.payrollRun.periodEnd).toLocaleDateString('en-PH') : ''}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>₱{rec.netPay.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+                        <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{rec.daysWorked}d worked</div>
+                      </div>
+                      <a
+                        href={`${import.meta.env.VITE_API_URL}/payroll/record/${rec.id}/pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 12 }}
+                      >⬇ PDF</a>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Attendance tab ── */}
+          {activeTab === 'Attendance' && (
+            <div>
+              {/* Month/Year filter */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+                <select className="form-control" style={{ width: 130, fontSize: 13 }} value={attMonth} onChange={ev => setAttMonth(+ev.target.value)}>
+                  {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+                    <option key={m} value={i + 1}>{m}</option>
+                  ))}
+                </select>
+                <select className="form-control" style={{ width: 90, fontSize: 13 }} value={attYear} onChange={ev => setAttYear(+ev.target.value)}>
+                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+
+              {attendance.length === 0 ? (
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '16px 0', textAlign: 'center' }}>
+                  No attendance records for this period
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {attendance.map((rec: any) => {
+                    const statusColors: Record<string, string> = {
+                      PRESENT: 'badge-green', LATE: 'badge-yellow', ABSENT: 'badge-red',
+                      HALF_DAY: 'badge-yellow', ON_LEAVE: 'badge-blue', HOLIDAY: 'badge-purple', WEEKEND: 'badge-gray',
+                    };
+                    const statusLabels: Record<string, string> = {
+                      PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent',
+                      HALF_DAY: 'Half Day', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEKEND: 'Weekend',
+                    };
+                    return (
+                      <div key={rec.id} style={{ display: 'flex', alignItems: 'center', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, gap: 10, fontSize: 13 }}>
+                        <span style={{ width: 80, color: 'var(--color-text-muted)', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                          {new Date(rec.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                        </span>
+                        <span className={`badge ${statusColors[rec.status] ?? 'badge-gray'}`} style={{ fontSize: 11 }}>{statusLabels[rec.status] ?? rec.status}</span>
+                        <span style={{ flex: 1 }} />
+                        {rec.timeIn && <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: 'var(--color-text-muted)' }}>IN {new Date(rec.timeIn).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</span>}
+                        {rec.timeOut && <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: 'var(--color-text-muted)' }}>OUT {new Date(rec.timeOut).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</span>}
+                        {rec.overtimeHrs > 0 && <span style={{ fontSize: 11, color: 'var(--color-primary)', fontWeight: 600 }}>+{rec.overtimeHrs}h OT</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
             </div>
           </div>
         </div>
@@ -1389,4 +1596,147 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+// ── Mass 201 Import Modal ──────────────────────────────────────────────────
+type DocEntry = { file: File; employeeId: string; category: string; status: 'pending' | 'uploading' | 'done' | 'error'; error?: string };
+
+function Import201Modal({ employees, onClose }: { employees: Employee[]; onClose: () => void }) {
+  const toast = useToast();
+  const [entries, setEntries] = useState<DocEntry[]>([]);
+  const [busy, setBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const CATEGORIES = ['', 'resume', 'contract', 'certificate', 'id', 'medical', 'disciplinary', 'other'];
+  const CAT_LABELS: Record<string, string> = { '': 'No category', resume: 'Resume / CV', contract: 'Contract', certificate: 'Certificate / Training', id: 'Government ID', medical: 'Medical / Health', disciplinary: 'Disciplinary', other: 'Other' };
+
+  const addFiles = (files: FileList | null) => {
+    if (!files) return;
+    const newEntries: DocEntry[] = Array.from(files).map(f => ({
+      file: f,
+      employeeId: '',
+      category: '',
+      status: 'pending',
+    }));
+    setEntries(prev => [...prev, ...newEntries]);
+  };
+
+  const removeEntry = (i: number) => setEntries(prev => prev.filter((_, idx) => idx !== i));
+  const updateEntry = (i: number, patch: Partial<DocEntry>) => setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, ...patch } : e));
+
+  const handleDrop = (ev: React.DragEvent) => {
+    ev.preventDefault();
+    addFiles(ev.dataTransfer.files);
+  };
+
+  const canUpload = entries.length > 0 && entries.every(en => en.employeeId);
+
+  const uploadAll = async () => {
+    setBusy(true);
+    for (let i = 0; i < entries.length; i++) {
+      const en = entries[i];
+      if (en.status === 'done') continue;
+      updateEntry(i, { status: 'uploading' });
+      try {
+        const formData = new FormData();
+        formData.append('file', en.file);
+        if (en.category) formData.append('category', en.category);
+        await api.post(`/employees/${en.employeeId}/documents`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        updateEntry(i, { status: 'done' });
+      } catch (err: any) {
+        updateEntry(i, { status: 'error', error: err?.response?.data?.error ?? 'Upload failed' });
+      }
+    }
+    setBusy(false);
+    toast('success', 'Import complete');
+  };
+
+  return (
+    <div className="modal-overlay" onClick={ev => ev.target === ev.currentTarget && !busy && onClose()}>
+      <div className="modal modal-lg" style={{ maxWidth: 780, display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+        <div className="modal-header" style={{ flexShrink: 0 }}>
+          <h2 className="modal-title">Import 201 Documents</h2>
+          <button className="icon-btn" onClick={onClose} disabled={busy}>✕</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          {/* Drop zone */}
+          <div
+            onDrop={handleDrop}
+            onDragOver={ev => ev.preventDefault()}
+            onClick={() => fileInputRef.current?.click()}
+            style={{ border: '2px dashed var(--color-border)', borderRadius: 10, padding: '32px 16px', textAlign: 'center', cursor: 'pointer', color: 'var(--color-text-muted)', marginBottom: 20, transition: 'border-color 0.15s' }}
+          >
+            <div style={{ fontSize: 28, marginBottom: 8 }}>📁</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Drop files here or click to browse</div>
+            <div style={{ fontSize: 12.5, marginTop: 4 }}>PDF, images, Word docs · up to 20 MB each</div>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+            style={{ display: 'none' }}
+            onChange={ev => { addFiles(ev.target.files); ev.target.value = ''; }}
+          />
+
+          {entries.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {entries.map((en, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: '1px solid var(--color-border)', borderRadius: 8, background: en.status === 'done' ? 'color-mix(in srgb, var(--color-success, #16a34a) 8%, var(--color-surface-2))' : en.status === 'error' ? 'color-mix(in srgb, var(--color-danger) 8%, var(--color-surface-2))' : 'var(--color-surface-2)' }}>
+                  <span style={{ fontSize: 16 }}>{en.file.name.endsWith('.pdf') ? '📄' : en.file.name.match(/\.(jpe?g|png|webp)$/i) ? '🖼️' : '📝'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{en.file.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{(en.file.size / 1024).toFixed(0)} KB</div>
+                  </div>
+
+                  {/* Employee picker */}
+                  <select
+                    className="form-control"
+                    style={{ width: 200, fontSize: 12 }}
+                    value={en.employeeId}
+                    onChange={ev => updateEntry(i, { employeeId: ev.target.value })}
+                    disabled={en.status !== 'pending'}
+                  >
+                    <option value="">— Assign employee —</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName} ({emp.employeeNo})</option>
+                    ))}
+                  </select>
+
+                  {/* Category picker */}
+                  <select
+                    className="form-control"
+                    style={{ width: 140, fontSize: 12 }}
+                    value={en.category}
+                    onChange={ev => updateEntry(i, { category: ev.target.value })}
+                    disabled={en.status !== 'pending'}
+                  >
+                    {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABELS[c]}</option>)}
+                  </select>
+
+                  {/* Status indicator */}
+                  {en.status === 'uploading' && <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>⏳</span>}
+                  {en.status === 'done' && <span style={{ fontSize: 14, color: 'var(--color-success, #16a34a)' }}>✓</span>}
+                  {en.status === 'error' && <span style={{ fontSize: 11, color: 'var(--color-danger)' }} title={en.error}>✗</span>}
+                  {en.status === 'pending' && (
+                    <button className="icon-btn" style={{ fontSize: 12 }} onClick={() => removeEntry(i)}>✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer" style={{ flexShrink: 0 }}>
+          <button className="btn btn-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary" onClick={uploadAll} disabled={!canUpload || busy}>
+            {busy ? 'Uploading…' : `Upload ${entries.filter(e => e.status === 'pending').length} File(s)`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

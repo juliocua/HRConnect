@@ -30,6 +30,39 @@ const photoUpload = multer({
   },
 });
 
+// ── 201 Document upload config ────────────────────────────────────────────────
+const docsBaseDir = process.env.UPLOADS_DIR
+  ? path.join(process.env.UPLOADS_DIR, 'documents')
+  : path.join(process.cwd(), 'uploads', 'documents');
+if (!fs.existsSync(docsBaseDir)) fs.mkdirSync(docsBaseDir, { recursive: true });
+
+const docStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const empDir = path.join(docsBaseDir, req.params.id);
+    if (!fs.existsSync(empDir)) fs.mkdirSync(empDir, { recursive: true });
+    cb(null, empDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+
+const docUpload = multer({
+  storage: docStorage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'image/jpeg', 'image/png', 'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Only PDF, images, and Word documents are allowed'));
+  },
+});
+
 const router = Router();
 router.use(authenticate);
 
@@ -588,6 +621,100 @@ router.delete('/:id/photo', async (req: Request, res: Response, next: NextFuncti
       include: { department: true },
     });
     res.json(updated);
+  } catch (err) { next(err); }
+});
+
+// ── 201 Document routes ───────────────────────────────────────────────────────
+
+// GET /api/employees/:id/documents
+router.get('/:id/documents', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const docs = await prisma.employeeDocument.findMany({
+      where: { employeeId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    const baseUrl = process.env.SERVER_URL ?? '';
+    const result = docs.map(d => ({
+      ...d,
+      url: `${baseUrl}/uploads/documents/${d.employeeId}/${d.filename}`,
+    }));
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+// POST /api/employees/:id/documents  (multipart, field name "file")
+router.post('/:id/documents', docUpload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const employee = await prisma.employee.findUnique({ where: { id: req.params.id } });
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
+    const { category } = req.body as { category?: string };
+
+    const doc = await prisma.employeeDocument.create({
+      data: {
+        employeeId: req.params.id,
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+        category: category ?? null,
+        uploadedById: req.user!.userId,
+      },
+    });
+
+    const baseUrl = process.env.SERVER_URL ?? '';
+    res.status(201).json({
+      ...doc,
+      url: `${baseUrl}/uploads/documents/${doc.employeeId}/${doc.filename}`,
+    });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/employees/documents/:docId
+router.delete('/documents/:docId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const doc = await prisma.employeeDocument.findUnique({ where: { id: req.params.docId } });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    const filePath = path.join(docsBaseDir, doc.employeeId, doc.filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    await prisma.employeeDocument.delete({ where: { id: doc.id } });
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ── Payslips for HR view ──────────────────────────────────────────────────────
+
+// GET /api/employees/:id/payslips
+router.get('/:id/payslips', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const records = await prisma.payrollRecord.findMany({
+      where: { employeeId: req.params.id },
+      include: { payrollRun: true },
+      orderBy: { payrollRun: { periodStart: 'desc' } },
+    });
+    res.json(records);
+  } catch (err) { next(err); }
+});
+
+// ── Attendance for HR view ────────────────────────────────────────────────────
+
+// GET /api/employees/:id/attendance?year=&month=
+router.get('/:id/attendance', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+    const month = req.query.month ? parseInt(req.query.month as string) : new Date().getMonth() + 1;
+
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 0, 23, 59, 59);
+
+    const records = await prisma.attendance.findMany({
+      where: { employeeId: req.params.id, date: { gte: start, lte: end } },
+      orderBy: { date: 'asc' },
+    });
+    res.json(records);
   } catch (err) { next(err); }
 });
 

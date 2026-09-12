@@ -331,7 +331,10 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 // PUT /api/leave/:id/approve
 router.put('/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const request = await prisma.leaveRequest.findUnique({ where: { id: req.params.id } });
+    const request = await prisma.leaveRequest.findUnique({
+      where: { id: req.params.id },
+      include: { leaveType: true, employee: true },
+    });
     if (!request) return res.status(404).json({ error: 'Leave request not found' });
     if (request.status !== 'PENDING') return res.status(422).json({ error: 'Can only approve pending requests' });
 
@@ -351,6 +354,55 @@ router.put('/:id/approve', async (req: Request, res: Response, next: NextFunctio
         },
       }),
     ]);
+
+    // ── SIL billing hook ──────────────────────────────────────────────────────
+    // If this is a Service Incentive Leave and the employee belongs to a client,
+    // append a line item to the client's current PENDING billing record.
+    if (request.leaveType.code === 'SIL' && request.employee.clientId) {
+      try {
+        const employee = request.employee;
+        const dailyRate = employee.basicSalary / 26;
+        const silCharge = parseFloat((dailyRate * request.totalDays).toFixed(2));
+        const periodLabel = `SIL — ${employee.firstName} ${employee.lastName} (${request.startDate.toISOString().slice(0, 10)} to ${request.endDate.toISOString().slice(0, 10)}, ${request.totalDays}d)`;
+
+        // Find the current PENDING billing for this client, or create one
+        const now = new Date();
+        let billing = await prisma.billing.findFirst({
+          where: { clientId: employee.clientId!, status: 'PENDING' },
+          orderBy: { billingDate: 'desc' },
+        });
+
+        if (billing) {
+          const existing = (billing.lineItems as Array<{ label: string; amount: number }> | null) ?? [];
+          existing.push({ label: periodLabel, amount: silCharge });
+          await prisma.billing.update({
+            where: { id: billing.id },
+            data: {
+              lineItems: existing,
+              amount: billing.amount + silCharge,
+            },
+          });
+        } else {
+          // No pending billing — create one
+          const dueDate = new Date(now);
+          dueDate.setDate(dueDate.getDate() + 30);
+          await prisma.billing.create({
+            data: {
+              clientId: employee.clientId!,
+              billingDate: now,
+              dueDate,
+              amount: silCharge,
+              status: 'PENDING',
+              notes: 'Auto-generated for SIL consumption',
+              lineItems: [{ label: periodLabel, amount: silCharge }],
+            },
+          });
+        }
+      } catch (billingErr) {
+        // Non-fatal: log but don't fail the approval
+        console.error('[SIL billing] Failed to create billing line item:', billingErr);
+      }
+    }
 
     res.json(updated);
   } catch (err) {

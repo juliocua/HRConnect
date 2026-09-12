@@ -130,9 +130,27 @@ model Employee {
   profileChangeRequests   ProfileChangeRequest[]
   attendanceEditRequests  AttendanceEditRequest[]
   govIdChangeRequests     GovIdChangeRequest[]
+  documents               EmployeeDocument[]
   user                    User?
 
   @@map("employees")
+}
+
+// ── Employee Documents (201 File) ─────────────────────────────────────────────
+
+model EmployeeDocument {
+  id           String   @id @default(cuid())
+  employeeId   String
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  category     String?
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  @@map("employee_documents")
 }
 
 enum EmployeeStatus {
