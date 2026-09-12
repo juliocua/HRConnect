@@ -1277,6 +1277,17 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
     enabled: activeTab === 'Attendance',
   });
 
+  const downloadPayslipPdf = async (recId: number) => {
+    try {
+      const response = await api.get(`/payroll/record/${recId}/pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      toast.error('Failed to download payslip PDF');
+    }
+  };
+
   const handleDocUpload = async (file: File) => {
     setDocUploading(true);
     try {
@@ -1563,13 +1574,12 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                         <div style={{ fontWeight: 700, fontSize: 14 }}>₱{rec.netPay.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
                         <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{rec.daysWorked}d worked</div>
                       </div>
-                      <a
-                        href={`${API_ORIGIN}/api/payroll/record/${rec.id}/pdf`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
                         className="btn btn-ghost btn-sm"
                         style={{ fontSize: 12 }}
-                      >⬇ PDF</a>
+                        onClick={() => downloadPayslipPdf(rec.id)}
+                      >⬇ PDF</button>
                     </div>
                   ))}
                 </div>
