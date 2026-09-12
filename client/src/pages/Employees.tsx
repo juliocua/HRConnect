@@ -1564,7 +1564,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                         <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{rec.daysWorked}d worked</div>
                       </div>
                       <a
-                        href={`${import.meta.env.VITE_API_URL}/payroll/record/${rec.id}/pdf`}
+                        href={`${API_ORIGIN}/api/payroll/record/${rec.id}/pdf`}
                         target="_blank"
                         rel="noreferrer"
                         className="btn btn-ghost btn-sm"
