@@ -659,9 +659,78 @@ function EmployeeModal({
 
   const managers = employees.filter(e => e.id !== initial?.id && e.status === 'ACTIVE');
 
+  // ── 201 Docs state (edit only) ──
+  const [docCategory, setDocCategory] = useState('');
+  const [docUploading, setDocUploading] = useState(false);
+  const docInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: editDocuments = [], refetch: refetchEditDocs, isFetching: editDocsFetching } = useQuery<any[]>({
+    queryKey: ['employee-docs', initial?.id],
+    queryFn: () => api.get(`/employees/${initial!.id}/documents`).then(r => r.data),
+    enabled: isEdit && activeTab === '201 Docs',
+  });
+
+  const handleDocUpload = async (file: File) => {
+    if (!initial) return;
+    setDocUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (docCategory) formData.append('category', docCategory);
+      await api.post(`/employees/${initial.id}/documents`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      refetchEditDocs();
+      toast('success', 'Document uploaded');
+      setDocCategory('');
+    } catch (err: any) {
+      toast('error', err?.response?.data?.error ?? 'Upload failed');
+    } finally {
+      setDocUploading(false);
+    }
+  };
+
+  const handleDeleteDoc = async (docId: string) => {
+    if (!confirm('Delete this document?')) return;
+    try {
+      await api.delete(`/employees/documents/${docId}`);
+      refetchEditDocs();
+      toast('success', 'Document deleted');
+    } catch {
+      toast('error', 'Failed to delete document');
+    }
+  };
+
+  // ── Payslips & Attendance state (edit only) ──
+  const [attYear, setAttYear] = useState(new Date().getFullYear());
+  const [attMonth, setAttMonth] = useState(new Date().getMonth() + 1);
+
+  const { data: editPayslips = [], isFetching: editPayslipsFetching } = useQuery<any[]>({
+    queryKey: ['employee-payslips', initial?.id],
+    queryFn: () => api.get(`/employees/${initial!.id}/payslips`).then(r => r.data),
+    enabled: isEdit && activeTab === 'Payslips',
+  });
+
+  const { data: editAttendance = [], isFetching: editAttendanceFetching } = useQuery<any[]>({
+    queryKey: ['employee-attendance', initial?.id, attYear, attMonth],
+    queryFn: () => api.get(`/employees/${initial!.id}/attendance?year=${attYear}&month=${attMonth}`).then(r => r.data),
+    enabled: isEdit && activeTab === 'Attendance',
+  });
+
+  const downloadPayslipPdf = async (recId: number) => {
+    try {
+      const response = await api.get(`/payroll/record/${recId}/pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      toast('error', 'Failed to download payslip PDF');
+    }
+  };
+
   const EDIT_TABS = [
     'Profile', 'Emergency Contact', 'IDs & Bank', 'Organization',
-    ...(isEdit ? ['History', 'Account'] : []),
+    ...(isEdit ? ['History', '201 Docs', 'Payslips', 'Attendance', 'Account'] : []),
   ];
 
   return (
@@ -1022,6 +1091,157 @@ function EmployeeModal({
             {/* ── Tab: History (edit only) ── */}
             {activeTab === 'History' && isEdit && (
               <AssignmentHistoryTab employeeId={initial!.id} />
+            )}
+
+            {/* ── Tab: 201 Docs (edit only) ── */}
+            {activeTab === '201 Docs' && isEdit && (
+              <div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select
+                    className="form-control"
+                    style={{ width: 160, fontSize: 13 }}
+                    value={docCategory}
+                    onChange={ev => setDocCategory(ev.target.value)}
+                  >
+                    <option value="">Category (optional)</option>
+                    <option value="resume">Resume / CV</option>
+                    <option value="contract">Contract</option>
+                    <option value="certificate">Certificate / Training</option>
+                    <option value="id">Government ID</option>
+                    <option value="medical">Medical / Health</option>
+                    <option value="disciplinary">Disciplinary</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <input
+                    ref={docInputRef}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                    style={{ display: 'none' }}
+                    onChange={ev => { if (ev.target.files?.[0]) handleDocUpload(ev.target.files[0]); ev.target.value = ''; }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => docInputRef.current?.click()}
+                    disabled={docUploading}
+                  >
+                    {docUploading ? 'Uploading…' : '⬆ Upload Document'}
+                  </button>
+                </div>
+                {editDocsFetching ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                    <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                    Loading documents…
+                  </div>
+                ) : editDocuments.length === 0 ? (
+                  <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
+                    No documents uploaded yet
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {editDocuments.map((doc: any) => (
+                      <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)' }}>
+                        <span style={{ fontSize: 18 }}>{doc.mimeType === 'application/pdf' ? '📄' : doc.mimeType.startsWith('image/') ? '🖼️' : '📝'}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.originalName}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                            {doc.category ? `${doc.category} · ` : ''}{(doc.size / 1024).toFixed(0)} KB · {new Date(doc.createdAt).toLocaleDateString('en-PH')}
+                          </div>
+                        </div>
+                        <a href={doc.url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: 12 }}>View</a>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 12, color: 'var(--color-danger)' }} onClick={() => handleDeleteDoc(doc.id)}>Delete</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Tab: Payslips (edit only) ── */}
+            {activeTab === 'Payslips' && isEdit && (
+              <div>
+                {editPayslipsFetching ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                    <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                    Loading payslips…
+                  </div>
+                ) : editPayslips.length === 0 ? (
+                  <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>
+                    No payslip records found
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {editPayslips.map((rec: any) => (
+                      <div key={rec.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', border: '1px solid var(--color-border)', borderRadius: 8, gap: 12, background: 'var(--color-surface-2)' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{rec.payrollRun?.period ?? `${rec.payrollRun?.month}/${rec.payrollRun?.year}`}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)' }}>
+                            {rec.payrollRun?.periodStart ? new Date(rec.payrollRun.periodStart).toLocaleDateString('en-PH') : ''} – {rec.payrollRun?.periodEnd ? new Date(rec.payrollRun.periodEnd).toLocaleDateString('en-PH') : ''}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>₱{rec.netPay.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
+                          <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{rec.daysWorked}d worked</div>
+                        </div>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 12 }} onClick={() => downloadPayslipPdf(rec.id)}>⬇ PDF</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Tab: Attendance (edit only) ── */}
+            {activeTab === 'Attendance' && isEdit && (
+              <div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+                  <select className="form-control" style={{ width: 130, fontSize: 13 }} value={attMonth} onChange={ev => setAttMonth(+ev.target.value)}>
+                    {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => (
+                      <option key={m} value={i + 1}>{m}</option>
+                    ))}
+                  </select>
+                  <select className="form-control" style={{ width: 90, fontSize: 13 }} value={attYear} onChange={ev => setAttYear(+ev.target.value)}>
+                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+                {editAttendanceFetching ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                    <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                    Loading attendance…
+                  </div>
+                ) : editAttendance.length === 0 ? (
+                  <div style={{ color: 'var(--color-text-muted)', fontSize: 13, padding: '16px 0', textAlign: 'center' }}>
+                    No attendance records for this period
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {editAttendance.map((rec: any) => {
+                      const statusColors: Record<string, string> = {
+                        PRESENT: 'badge-green', LATE: 'badge-yellow', ABSENT: 'badge-red',
+                        HALF_DAY: 'badge-yellow', ON_LEAVE: 'badge-blue', HOLIDAY: 'badge-purple', WEEKEND: 'badge-gray',
+                      };
+                      const statusLabels: Record<string, string> = {
+                        PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent',
+                        HALF_DAY: 'Half Day', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEKEND: 'Weekend',
+                      };
+                      return (
+                        <div key={rec.id} style={{ display: 'flex', alignItems: 'center', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, gap: 10, fontSize: 13 }}>
+                          <span style={{ width: 80, color: 'var(--color-text-muted)', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                            {new Date(rec.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                          </span>
+                          <span className={`badge ${statusColors[rec.status] ?? 'badge-gray'}`} style={{ fontSize: 11 }}>{statusLabels[rec.status] ?? rec.status}</span>
+                          <span style={{ flex: 1 }} />
+                          {rec.timeIn && <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: 'var(--color-text-muted)' }}>IN {new Date(rec.timeIn).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</span>}
+                          {rec.timeOut && <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: 'var(--color-text-muted)' }}>OUT {new Date(rec.timeOut).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</span>}
+                          {rec.overtimeHrs > 0 && <span style={{ fontSize: 11, color: 'var(--color-primary)', fontWeight: 600 }}>+{rec.overtimeHrs}h OT</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* ── Tab: Account (edit only) ── */}
