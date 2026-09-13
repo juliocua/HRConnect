@@ -66,6 +66,10 @@ const docUpload = multer({
 const router = Router();
 router.use(authenticate);
 
+// Normalize a gov ID: strip all dashes and spaces
+const normalizeGovId = (v?: string | null): string | undefined =>
+  v ? v.replace(/[\s-]/g, '') : undefined;
+
 const EmployeeSchema = z.object({
   employeeNo: z.string().optional(),
   firstName: z.string().min(1),
@@ -292,6 +296,12 @@ router.post('/me/gov-id-request', async (req: Request, res: Response, next: Next
       return res.status(422).json({ error: 'Provide at least one ID to update' });
     }
 
+    // Normalize gov IDs before storing
+    if (body.sssNo) body.sssNo = normalizeGovId(body.sssNo);
+    if (body.philhealthNo) body.philhealthNo = normalizeGovId(body.philhealthNo);
+    if (body.pagibigNo) body.pagibigNo = normalizeGovId(body.pagibigNo);
+    if (body.tinNo) body.tinNo = normalizeGovId(body.tinNo);
+
     // Cancel any existing pending request from this employee
     await (prisma as any).govIdChangeRequest.updateMany({
       where: { employeeId, status: 'PENDING' },
@@ -349,10 +359,10 @@ router.put('/gov-id-requests/:id/approve', requireRole('HR_MANAGER', 'HR_STAFF',
     if (request.status !== 'PENDING') return res.status(422).json({ error: 'Request is not pending' });
 
     const updates: Record<string, string> = {};
-    if (request.sssNo) updates.sssNo = request.sssNo;
-    if (request.philhealthNo) updates.philhealthNo = request.philhealthNo;
-    if (request.pagibigNo) updates.pagibigNo = request.pagibigNo;
-    if (request.tinNo) updates.tinNo = request.tinNo;
+    if (request.sssNo) updates.sssNo = normalizeGovId(request.sssNo)!;
+    if (request.philhealthNo) updates.philhealthNo = normalizeGovId(request.philhealthNo)!;
+    if (request.pagibigNo) updates.pagibigNo = normalizeGovId(request.pagibigNo)!;
+    if (request.tinNo) updates.tinNo = normalizeGovId(request.tinNo)!;
 
     await prisma.employee.update({ where: { id: request.employeeId }, data: updates });
 
@@ -419,6 +429,12 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       return res.status(422).json({ error: 'Deployed Client is required when enrolling an employee.' });
     }
 
+    // Normalize gov IDs before storage and duplicate check
+    if (body.sssNo) body.sssNo = normalizeGovId(body.sssNo);
+    if (body.philhealthNo) body.philhealthNo = normalizeGovId(body.philhealthNo);
+    if (body.pagibigNo) body.pagibigNo = normalizeGovId(body.pagibigNo);
+    if (body.tinNo) body.tinNo = normalizeGovId(body.tinNo);
+
     // Gov ID duplicate check
     const govIdChecks = [
       body.sssNo ? { sssNo: body.sssNo } : null,
@@ -480,6 +496,12 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     const { userRole, ...rest } = req.body;
     const body = EmployeeSchema.partial().parse(rest);
     if ('managerId' in body && !body.managerId) body.managerId = null;
+
+    // Normalize gov IDs before storage and duplicate check
+    if (body.sssNo) body.sssNo = normalizeGovId(body.sssNo);
+    if (body.philhealthNo) body.philhealthNo = normalizeGovId(body.philhealthNo);
+    if (body.pagibigNo) body.pagibigNo = normalizeGovId(body.pagibigNo);
+    if (body.tinNo) body.tinNo = normalizeGovId(body.tinNo);
 
     // Gov ID duplicate check (exclude current employee)
     const govIdChecks = [
