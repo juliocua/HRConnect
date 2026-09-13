@@ -256,7 +256,7 @@ export default function HubClock() {
                   const rendered = computeRenderedHours(r.clockInAt, r.clockOutAt);
                   return (
                   <tr key={r.id}>
-                    <td className="text-sm">{fmtDate(r.date)}</td>
+                    <td className="text-sm" style={{ whiteSpace: 'nowrap', minWidth: 90 }}>{fmtDate(r.date)}</td>
                     <td className="text-sm">{r.employee?.client?.name ?? '—'}</td>
                     <td><span className={`badge ${STATUS_COLORS[r.status] ?? 'badge-gray'}`}>{r.status.replace('_', ' ')}</span></td>
                     <td className="td-mono text-sm">{formatTime(r.clockInAt)}</td>

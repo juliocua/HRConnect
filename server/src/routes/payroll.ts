@@ -76,7 +76,16 @@ router.get('/audit', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reque
       orderBy: { performedAt: 'desc' },
       take: parseInt(limit, 10),
     });
-    res.json(logs);
+
+    // Resolve user names for audit trail display
+    const userIds = [...new Set(logs.map((l: any) => l.performedById))] as string[];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    });
+    const userMap = Object.fromEntries(users.map(u => [u.id, u.name || u.email]));
+    const enriched = logs.map((l: any) => ({ ...l, performedByName: userMap[l.performedById] ?? l.performedById }));
+    res.json(enriched);
   } catch (err) {
     next(err);
   }

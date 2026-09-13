@@ -455,7 +455,7 @@ export default function Payroll() {
                           hour: '2-digit', minute: '2-digit',
                         })}
                       </span>
-                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>by {log.performedById}</span>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>by {log.performedByName ?? log.performedById}</span>
                     </div>
                   ))}
                 </div>
