@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
@@ -448,13 +450,11 @@ function exportPDF(
   dateRange: { start: string; end: string },
   clientName?: string,
 ) {
-  // Inline helpers — fully self-contained, no dependency on module-level functions
-  const pdfFmt = {
+  const fmt = {
     date: (iso: string) => {
       if (!iso) return '—';
-      try {
-        return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-      } catch { return iso; }
+      try { return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); }
+      catch { return iso; }
     },
     time: (t?: string | null) => {
       if (!t) return '—';
@@ -467,67 +467,70 @@ function exportPDF(
         const [h, m] = t.split(':');
         const hour = parseInt(h, 10);
         return `${hour % 12 || 12}:${m} ${hour < 12 ? 'AM' : 'PM'}`;
-      } catch { return t; }
+      } catch { return t ?? '—'; }
     },
-    hours: (timeIn?: string | null, timeOut?: string | null, altIn?: string | null, altOut?: string | null): string => {
+    hours: (timeIn?: string | null, timeOut?: string | null, altIn?: string | null, altOut?: string | null) => {
       const ti = timeIn || altIn;
       const to = timeOut || altOut;
       if (!ti || !to) return '—';
       try {
-        // Use full Date diff (ms) to handle cross-midnight and timezone-aware ISO strings correctly
-        const inMs = new Date(ti).getTime();
-        const outMs = new Date(to).getTime();
-        if (isNaN(inMs) || isNaN(outMs)) return '—';
-        const diffH = (outMs - inMs) / 3_600_000;
+        const diffH = (new Date(to).getTime() - new Date(ti).getTime()) / 3_600_000;
         return diffH > 0 ? `${(Math.round(diffH * 100) / 100).toFixed(2)}h` : '—';
       } catch { return '—'; }
     },
   };
 
-  const statusColors: Record<string, string> = {
-    PRESENT: '#16a34a', LATE: '#d97706', ABSENT: '#dc2626',
-    HALF_DAY: '#d97706', ON_LEAVE: '#2563eb', HOLIDAY: '#2563eb', WEEKEND: '#6b7280',
-  };
   const statusLabels: Record<string, string> = {
     PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent',
     HALF_DAY: 'Half Day', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEKEND: 'Weekend',
   };
-  const rows = records.map(r => {
-    const color = statusColors[r.status] ?? '#6b7280';
-    return `<tr>
-      <td>${pdfFmt.date(r.date)}</td>
-      <td>${r.employee.firstName} ${r.employee.lastName}<br><small>${r.employee.position}</small></td>
-      <td>${r.employee.client?.name ?? '—'}</td>
-      <td><span style="background:${color};color:#fff;padding:2px 7px;border-radius:4px;font-size:10px;white-space:nowrap">${statusLabels[r.status] ?? r.status}</span></td>
-      <td>${pdfFmt.time(r.timeIn)}</td>
-      <td>${pdfFmt.time(r.timeOut)}</td>
-      <td>${pdfFmt.hours(r.timeIn, r.timeOut, r.clockInAt, r.clockOutAt)}</td>
-      <td>${r.overtimeHrs > 0 ? r.overtimeHrs + 'h' : '—'}</td>
-    </tr>`;
-  }).join('');
-  const meta = `Period: ${dateRange.start} to ${dateRange.end}${clientName ? ' &nbsp;·&nbsp; Client: ' + clientName : ''} &nbsp;·&nbsp; ${records.length} record(s)`;
-  const html = `<!DOCTYPE html><html><head><title>${filename}</title><style>
-    body{font-family:Arial,sans-serif;font-size:11px;margin:24px}
-    h2{margin:0 0 4px;font-size:16px}
-    .meta{color:#666;margin-bottom:14px}
-    .print-btn{margin-bottom:14px;padding:6px 14px;cursor:pointer;font-size:12px}
-    table{width:100%;border-collapse:collapse}
-    th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;vertical-align:top}
-    th{background:#f0f0f0;font-weight:600}
-    tr:nth-child(even){background:#fafafa}
-    small{color:#666;font-size:10px}
-    @media print{.print-btn{display:none}}
-  </style></head><body>
-  <h2>Attendance Report</h2>
-  <div class="meta">${meta}</div>
-  <button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
-  <table><thead><tr>
-    <th>Date</th><th>Employee</th><th>Client</th><th>Status</th>
-    <th>Time In</th><th>Time Out</th><th>Rendered Hours</th><th>OT Hours</th>
-  </tr></thead><tbody>${rows}</tbody></table>
-  </body></html>`;
-  const win = window.open('', '_blank');
-  if (win) { win.document.write(html); win.document.close(); }
+
+  const doc = new jsPDF({ orientation: 'landscape' });
+
+  // Title
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Attendance Report', 14, 14);
+
+  // Meta line
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100);
+  const meta = `Period: ${dateRange.start} to ${dateRange.end}${clientName ? '  |  Client: ' + clientName : ''}  |  ${records.length} record(s)`;
+  doc.text(meta, 14, 21);
+  doc.setTextColor(0);
+
+  const body = records.map(r => [
+    fmt.date(r.date),
+    `${r.employee.firstName} ${r.employee.lastName}\n${r.employee.position}`,
+    r.employee.client?.name ?? '—',
+    statusLabels[r.status] ?? r.status,
+    fmt.time(r.timeIn),
+    fmt.time(r.timeOut),
+    fmt.hours(r.timeIn, r.timeOut, r.clockInAt, r.clockOutAt),
+    r.overtimeHrs > 0 ? `${r.overtimeHrs}h` : '—',
+  ]);
+
+  autoTable(doc, {
+    head: [['Date', 'Employee', 'Client', 'Status', 'Time In', 'Time Out', 'Rendered Hrs', 'OT Hrs']],
+    body,
+    startY: 26,
+    styles: { fontSize: 8, cellPadding: 3, valign: 'top' },
+    headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [249, 250, 251] },
+    columnStyles: {
+      0: { cellWidth: 24 },  // Date
+      1: { cellWidth: 38 },  // Employee
+      2: { cellWidth: 34 },  // Client
+      3: { cellWidth: 22 },  // Status
+      4: { cellWidth: 24 },  // Time In
+      5: { cellWidth: 24 },  // Time Out
+      6: { cellWidth: 24 },  // Rendered Hrs
+      7: { cellWidth: 18 },  // OT Hrs
+    },
+  });
+
+  doc.save(`${filename}.pdf`);
 }
 
 function formatTime(t: string) {
