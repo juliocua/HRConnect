@@ -13,6 +13,32 @@ import { useState, useCallback } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+/** Auto-format a raw cell value for export.
+ *  Detects ISO date/datetime strings and converts them to a readable format.
+ *  Other values are simply stringified. */
+function autoFmt(val: unknown): string {
+  if (val == null) return '';
+  const str = String(val);
+  // Plain date: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    try {
+      return new Date(str + 'T12:00:00').toLocaleDateString('en-PH', {
+        month: 'short', day: 'numeric', year: 'numeric',
+      });
+    } catch { return str; }
+  }
+  // ISO datetime: YYYY-MM-DDTHH:MM...
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(str)) {
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+    } catch { return str; }
+  }
+  return str;
+}
+
 interface DataTableProps<T> {
   data: T[];
   columns: ColumnDef<T, any>[];
@@ -61,8 +87,7 @@ export function DataTable<T>({
       table.getVisibleFlatColumns()
         .filter(c => c.id !== 'actions')
         .map(col => {
-          const val = row.getValue(col.id);
-          const str = val == null ? '' : String(val);
+          const str = autoFmt(row.getValue(col.id));
           return str.includes(',') || str.includes('"') || str.includes('\n')
             ? `"${str.replace(/"/g, '""')}"`
             : str;
@@ -86,10 +111,7 @@ export function DataTable<T>({
     const body = rows.map(row =>
       table.getVisibleFlatColumns()
         .filter(c => c.id !== 'actions')
-        .map(col => {
-          const val = row.getValue(col.id);
-          return val == null ? '' : String(val);
-        })
+        .map(col => autoFmt(row.getValue(col.id)))
     );
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFontSize(12);
