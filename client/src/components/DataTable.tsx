@@ -20,6 +20,7 @@ interface DataTableProps<T> {
   exportFilename?: string;
   pageSize?: number;
   onRowClick?: (row: T) => void;
+  onExportPDF?: () => void;
 }
 
 export function DataTable<T>({
@@ -29,6 +30,7 @@ export function DataTable<T>({
   exportFilename = 'export',
   pageSize = 20,
   onRowClick,
+  onExportPDF,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -119,7 +121,7 @@ export function DataTable<T>({
             </svg>
             CSV
           </button>
-          <button className="btn btn-sm btn-secondary" onClick={exportPDF} title="Export PDF">
+          <button className="btn btn-sm btn-secondary" onClick={onExportPDF ?? exportPDF} title="Export PDF">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14 }}>
               <polyline points="6 9 6 2 18 2 18 9"/>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>

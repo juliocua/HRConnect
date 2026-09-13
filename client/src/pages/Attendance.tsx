@@ -93,14 +93,18 @@ export default function Attendance() {
     {
       accessorKey: 'date',
       header: 'Date',
-      cell: ({ getValue }) => <span className="text-sm">{fmtShortDate(getValue() as string)}</span>,
+      cell: ({ getValue }) => (
+        <span className="text-sm td-mono" style={{ whiteSpace: 'nowrap', display: 'block', minWidth: 90 }}>
+          {fmtShortDate(getValue() as string)}
+        </span>
+      ),
     },
     {
       id: 'employee',
       accessorFn: row => `${row.employee.lastName} ${row.employee.firstName}`,
       header: 'Employee',
       cell: ({ row: { original: r } }) => (
-        <div className="emp-info">
+        <div className="emp-info" style={{ minWidth: 170 }}>
           <div className="emp-avatar" style={{ background: r.employee.avatarColor }}>
             {r.employee.firstName[0]}{r.employee.lastName[0]}
           </div>
@@ -115,7 +119,11 @@ export default function Attendance() {
       id: 'client',
       accessorFn: row => row.employee.client?.name ?? '',
       header: 'Client',
-      cell: ({ getValue }) => <span className="text-sm">{(getValue() as string) || <span className="text-muted">—</span>}</span>,
+      cell: ({ getValue }) => (
+        <span className="text-sm" style={{ minWidth: 150, display: 'block' }}>
+          {(getValue() as string) || <span className="text-muted">—</span>}
+        </span>
+      ),
     },
     {
       accessorKey: 'status',
@@ -182,17 +190,6 @@ export default function Attendance() {
           <p className="page-desc">Track daily time & attendance records</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="btn btn-ghost"
-            onClick={() => exportPDF(
-              records,
-              exportFilename,
-              { start: startDate, end: endDate },
-              clientFilter ? clients.find(c => c.id === clientFilter)?.name : undefined,
-            )}
-          >
-            📄 Export PDF
-          </button>
           <a href="/import?type=time" className="btn btn-ghost">⬆ Import CSV</a>
           <button className="btn btn-primary" onClick={() => { setEditTarget(null); setShowModal(true); }}>
             ＋ Log Attendance
@@ -266,6 +263,12 @@ export default function Attendance() {
             columns={columns}
             globalFilterPlaceholder="Search employees…"
             exportFilename={exportFilename}
+            onExportPDF={() => exportPDF(
+              records,
+              exportFilename,
+              { start: startDate, end: endDate },
+              clientFilter ? clients.find(c => c.id === clientFilter)?.name : undefined,
+            )}
           />
         </div>
       )}
@@ -430,16 +433,13 @@ function fmtShortDate(iso: string) {
 
 function computeRenderedHours(timeIn?: string | null, timeOut?: string | null): number | null {
   if (!timeIn || !timeOut) return null;
-  const toDecimal = (t: string) => {
-    if (t.includes('T') || t.length > 8) {
-      const d = new Date(t);
-      if (!isNaN(d.getTime())) return d.getHours() + d.getMinutes() / 60;
-    }
-    const [h, m] = t.split(':').map(Number);
-    return h + (isNaN(m) ? 0 : m) / 60;
-  };
-  const diff = toDecimal(timeOut) - toDecimal(timeIn);
-  return diff > 0 ? Math.round(diff * 100) / 100 : null;
+  try {
+    const inMs = new Date(timeIn).getTime();
+    const outMs = new Date(timeOut).getTime();
+    if (isNaN(inMs) || isNaN(outMs)) return null;
+    const diffH = (outMs - inMs) / 3_600_000;
+    return diffH > 0 ? Math.round(diffH * 100) / 100 : null;
+  } catch { return null; }
 }
 
 function exportPDF(
@@ -448,6 +448,42 @@ function exportPDF(
   dateRange: { start: string; end: string },
   clientName?: string,
 ) {
+  // Inline helpers — fully self-contained, no dependency on module-level functions
+  const pdfFmt = {
+    date: (iso: string) => {
+      if (!iso) return '—';
+      try {
+        return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch { return iso; }
+    },
+    time: (t?: string | null) => {
+      if (!t) return '—';
+      try {
+        if (t.includes('T') || t.length > 8) {
+          const d = new Date(t);
+          if (!isNaN(d.getTime()))
+            return d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+        }
+        const [h, m] = t.split(':');
+        const hour = parseInt(h, 10);
+        return `${hour % 12 || 12}:${m} ${hour < 12 ? 'AM' : 'PM'}`;
+      } catch { return t; }
+    },
+    hours: (timeIn?: string | null, timeOut?: string | null, altIn?: string | null, altOut?: string | null): string => {
+      const ti = timeIn || altIn;
+      const to = timeOut || altOut;
+      if (!ti || !to) return '—';
+      try {
+        // Use full Date diff (ms) to handle cross-midnight and timezone-aware ISO strings correctly
+        const inMs = new Date(ti).getTime();
+        const outMs = new Date(to).getTime();
+        if (isNaN(inMs) || isNaN(outMs)) return '—';
+        const diffH = (outMs - inMs) / 3_600_000;
+        return diffH > 0 ? `${(Math.round(diffH * 100) / 100).toFixed(2)}h` : '—';
+      } catch { return '—'; }
+    },
+  };
+
   const statusColors: Record<string, string> = {
     PRESENT: '#16a34a', LATE: '#d97706', ABSENT: '#dc2626',
     HALF_DAY: '#d97706', ON_LEAVE: '#2563eb', HOLIDAY: '#2563eb', WEEKEND: '#6b7280',
@@ -457,16 +493,15 @@ function exportPDF(
     HALF_DAY: 'Half Day', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEKEND: 'Weekend',
   };
   const rows = records.map(r => {
-    const hours = computeRenderedHours(r.timeIn, r.timeOut);
     const color = statusColors[r.status] ?? '#6b7280';
     return `<tr>
-      <td>${fmtShortDate(r.date)}</td>
+      <td>${pdfFmt.date(r.date)}</td>
       <td>${r.employee.firstName} ${r.employee.lastName}<br><small>${r.employee.position}</small></td>
       <td>${r.employee.client?.name ?? '—'}</td>
       <td><span style="background:${color};color:#fff;padding:2px 7px;border-radius:4px;font-size:10px;white-space:nowrap">${statusLabels[r.status] ?? r.status}</span></td>
-      <td>${r.timeIn ? formatTime(r.timeIn) : '—'}</td>
-      <td>${r.timeOut ? formatTime(r.timeOut) : '—'}</td>
-      <td>${hours != null ? hours.toFixed(2) + 'h' : '—'}</td>
+      <td>${pdfFmt.time(r.timeIn)}</td>
+      <td>${pdfFmt.time(r.timeOut)}</td>
+      <td>${pdfFmt.hours(r.timeIn, r.timeOut, r.clockInAt, r.clockOutAt)}</td>
       <td>${r.overtimeHrs > 0 ? r.overtimeHrs + 'h' : '—'}</td>
     </tr>`;
   }).join('');
