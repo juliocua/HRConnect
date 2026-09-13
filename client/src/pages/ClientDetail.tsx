@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -318,55 +318,77 @@ export default function ClientDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {client.billings!.map(b => (
-                    <tr key={b.id}>
-                      <td style={{ fontWeight: 600 }}>{fmtDate(b.billingDate)}</td>
-                      <td className="td-mono" style={{ fontWeight: 700 }}>{formatPHP(b.amount)}</td>
-                      <td>
-                        <span className={`badge ${b.status === 'PAID' ? 'badge-green' : b.status === 'CANCELLED' ? 'badge-gray' : 'badge-yellow'}`}>
-                          {b.status}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                        {b.paidAt ? fmtDate(b.paidAt) : '—'}
-                      </td>
-                      <td style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
-                        {b.paymentRef ?? '—'}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          {b.paymentLinkUrl && (
-                            <a
-                              href={b.paymentLinkUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="btn btn-ghost btn-sm"
-                              style={{ textDecoration: 'none' }}
-                            >
-                              🔗 Pay Link
-                            </a>
-                          )}
-                          {b.status === 'PENDING' && (
-                            <>
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                disabled={resendBill.isPending}
-                                onClick={() => resendBill.mutate(b.id)}
-                              >
-                                Resend
-                              </button>
-                              <button
-                                className="btn btn-success btn-sm"
-                                onClick={() => setMarkPaidBillingId(b.id)}
-                              >
-                                Mark Paid
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {client.billings!.map(b => {
+                    const items = (b.lineItems ?? []) as Array<{ label: string; amount: number }>;
+                    return (
+                      <React.Fragment key={b.id}>
+                        <tr>
+                          <td style={{ fontWeight: 600 }}>{fmtDate(b.billingDate)}</td>
+                          <td className="td-mono" style={{ fontWeight: 700 }}>{formatPHP(b.amount)}</td>
+                          <td>
+                            <span className={`badge ${b.status === 'PAID' ? 'badge-green' : b.status === 'CANCELLED' ? 'badge-gray' : 'badge-yellow'}`}>
+                              {b.status}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                            {b.paidAt ? fmtDate(b.paidAt) : '—'}
+                          </td>
+                          <td style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
+                            {b.paymentRef ?? '—'}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              {b.paymentLinkUrl && (
+                                <a
+                                  href={b.paymentLinkUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="btn btn-ghost btn-sm"
+                                  style={{ textDecoration: 'none' }}
+                                >
+                                  🔗 Pay Link
+                                </a>
+                              )}
+                              {b.status === 'PENDING' && (
+                                <>
+                                  <button
+                                    className="btn btn-ghost btn-sm"
+                                    disabled={resendBill.isPending}
+                                    onClick={() => resendBill.mutate(b.id)}
+                                  >
+                                    Resend
+                                  </button>
+                                  <button
+                                    className="btn btn-success btn-sm"
+                                    onClick={() => setMarkPaidBillingId(b.id)}
+                                  >
+                                    Mark Paid
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {items.length > 0 && (
+                          <tr>
+                            <td colSpan={6} style={{ padding: '0 16px 10px 32px', background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
+                              <div style={{ fontSize: 12, borderTop: '1px solid var(--color-border)', paddingTop: 6 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-text-muted)', marginBottom: 4 }}>
+                                  Line Items
+                                </div>
+                                {items.map((item, i) => (
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: 'var(--color-text-secondary)' }}>
+                                    <span>{item.label}</span>
+                                    <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{formatPHP(item.amount)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

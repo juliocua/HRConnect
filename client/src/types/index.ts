@@ -288,6 +288,21 @@ export interface OvertimeRequest {
   filedAt: string;
 }
 
+// ── Employee Assignments ──────────────────────────────────────────────────────
+export type AssignmentType = 'DEPLOYED' | 'RTA' | 'TRANSFERRED';
+
+export interface EmployeeAssignment {
+  id: string;
+  employeeId: string;
+  clientId?: string | null;
+  client?: { id: string; name: string } | null;
+  type: AssignmentType;
+  startDate: string;
+  endDate?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
 // ── Clients & Billing ─────────────────────────────────────────────────────────
 export type BillingCycle = 'WEEKLY' | 'EVERY_15TH' | 'EVERY_30TH' | 'MONTHLY';
 export type BillingStatus = 'PENDING' | 'PAID' | 'CANCELLED';
@@ -340,6 +355,7 @@ export interface Billing {
   paymentLinkId?: string;
   paymentLinkUrl?: string;
   notes?: string;
+  lineItems?: Array<{ label: string; amount: number }> | null;
   createdAt: string;
 }
 

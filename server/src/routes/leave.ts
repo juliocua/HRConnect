@@ -358,7 +358,7 @@ router.put('/:id/approve', async (req: Request, res: Response, next: NextFunctio
     // ── SIL billing hook ──────────────────────────────────────────────────────
     // If this is a Service Incentive Leave and the employee belongs to a client,
     // append a line item to the client's current PENDING billing record.
-    if (request.leaveType.code === 'SIL' && request.employee.clientId) {
+    if (request.leaveType.code === 'SIL' && request.employee.clientId && request.employee.basicSalary > 0) {
       try {
         const employee = request.employee;
         const dailyRate = employee.basicSalary / 26;

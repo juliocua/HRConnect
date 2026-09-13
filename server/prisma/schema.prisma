@@ -131,6 +131,7 @@ model Employee {
   attendanceEditRequests  AttendanceEditRequest[]
   govIdChangeRequests     GovIdChangeRequest[]
   documents               EmployeeDocument[]
+  assignments             EmployeeAssignment[]
   user                    User?
 
   @@map("employees")
@@ -247,9 +248,10 @@ model Client {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  policies  ClientPolicy[]
-  billings  Billing[]
-  employees Employee[]
+  policies            ClientPolicy[]
+  billings            Billing[]
+  employees           Employee[]
+  employeeAssignments EmployeeAssignment[]
 
   @@map("clients")
 }
@@ -300,6 +302,29 @@ enum BillingStatus {
   PENDING
   PAID
   CANCELLED
+}
+
+// ── Employee Assignment History ───────────────────────────────────────────────
+
+model EmployeeAssignment {
+  id         String         @id @default(cuid())
+  employeeId String
+  employee   Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  clientId   String?
+  client     Client?        @relation(fields: [clientId], references: [id])
+  type       AssignmentType
+  startDate  DateTime       @db.Date
+  endDate    DateTime?      @db.Date
+  notes      String?
+  createdAt  DateTime       @default(now())
+
+  @@map("employee_assignments")
+}
+
+enum AssignmentType {
+  DEPLOYED
+  RTA
+  TRANSFERRED
 }
 
 // ── Attendance ────────────────────────────────────────────────────────────────

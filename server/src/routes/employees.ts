@@ -414,6 +414,25 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
     if (!body.managerId) body.managerId = null;
 
+    // Require clientId on new employees
+    if (!body.clientId) {
+      return res.status(422).json({ error: 'Deployed Client is required when enrolling an employee.' });
+    }
+
+    // Gov ID duplicate check
+    const govIdChecks = [
+      body.sssNo ? { sssNo: body.sssNo } : null,
+      body.philhealthNo ? { philhealthNo: body.philhealthNo } : null,
+      body.pagibigNo ? { pagibigNo: body.pagibigNo } : null,
+      body.tinNo ? { tinNo: body.tinNo } : null,
+    ].filter(Boolean) as object[];
+    if (govIdChecks.length > 0) {
+      const dupe = await prisma.employee.findFirst({ where: { OR: govIdChecks } });
+      if (dupe) {
+        return res.status(422).json({ error: `Gov ID already registered to ${dupe.firstName} ${dupe.lastName} (${dupe.employeeNo}).` });
+      }
+    }
+
     if (!body.employeeNo) {
       const count = await prisma.employee.count();
       body.employeeNo = `EMP-${String(count + 1).padStart(10, '0')}`;
@@ -461,6 +480,22 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     const { userRole, ...rest } = req.body;
     const body = EmployeeSchema.partial().parse(rest);
     if ('managerId' in body && !body.managerId) body.managerId = null;
+
+    // Gov ID duplicate check (exclude current employee)
+    const govIdChecks = [
+      body.sssNo ? { sssNo: body.sssNo } : null,
+      body.philhealthNo ? { philhealthNo: body.philhealthNo } : null,
+      body.pagibigNo ? { pagibigNo: body.pagibigNo } : null,
+      body.tinNo ? { tinNo: body.tinNo } : null,
+    ].filter(Boolean) as object[];
+    if (govIdChecks.length > 0) {
+      const dupe = await prisma.employee.findFirst({
+        where: { AND: [{ OR: govIdChecks }, { id: { not: req.params.id } }] },
+      });
+      if (dupe) {
+        return res.status(422).json({ error: `Gov ID already registered to ${dupe.firstName} ${dupe.lastName} (${dupe.employeeNo}).` });
+      }
+    }
 
     const employee = await prisma.employee.update({
       where: { id: req.params.id },
@@ -737,6 +772,39 @@ router.post('/departments', async (req: Request, res: Response, next: NextFuncti
   } catch (err) {
     next(err);
   }
+});
+
+// ── Employment Assignment History ─────────────────────────────────────────────
+
+// GET /api/employees/:id/assignments
+router.get('/:id/assignments', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const assignments = await (prisma as any).employeeAssignment.findMany({
+      where: { employeeId: req.params.id },
+      include: { client: { select: { id: true, name: true } } },
+      orderBy: { startDate: 'desc' },
+    });
+    res.json(assignments);
+  } catch (err) { next(err); }
+});
+
+// POST /api/employees/:id/assignments
+router.post('/:id/assignments', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = z.object({
+      clientId: z.string().nullable().optional(),
+      type: z.enum(['DEPLOYED', 'RTA', 'TRANSFERRED']),
+      startDate: z.string().transform(d => new Date(d)),
+      endDate: z.string().transform(d => new Date(d)).nullable().optional(),
+      notes: z.string().optional(),
+    }).parse(req.body);
+
+    const assignment = await (prisma as any).employeeAssignment.create({
+      data: { employeeId: req.params.id, ...body },
+      include: { client: { select: { id: true, name: true } } },
+    });
+    res.status(201).json(assignment);
+  } catch (err) { next(err); }
 });
 
 export default router;

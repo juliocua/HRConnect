@@ -5,7 +5,7 @@ import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { ClientCombobox } from '@/components/ClientCombobox';
-import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest, GovIdChangeRequest, UserRole } from '@/types';
+import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest, GovIdChangeRequest, UserRole, EmployeeAssignment } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { canWrite, ROLE_LABELS } from '@/lib/permissions';
 
@@ -336,6 +336,129 @@ function TabBar({ tabs, active, onChange }: {
   );
 }
 
+// ── Assignment History Tab ─────────────────────────────────────────────────
+const ASSIGNMENT_LABELS: Record<string, string> = {
+  DEPLOYED: 'Deployed',
+  RTA: 'Ready to Assign',
+  TRANSFERRED: 'Transferred',
+};
+const ASSIGNMENT_COLORS: Record<string, string> = {
+  DEPLOYED: 'badge-green',
+  RTA: 'badge-yellow',
+  TRANSFERRED: 'badge-blue',
+};
+
+function AssignmentHistoryTab({ employeeId }: { employeeId: string }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const { data: clients = [] } = useQuery<Client[]>({ queryKey: ['clients'], queryFn: () => api.get('/clients').then(r => r.data) });
+  const { data: assignments = [], isLoading } = useQuery<EmployeeAssignment[]>({
+    queryKey: ['assignments', employeeId],
+    queryFn: () => api.get(`/employees/${employeeId}/assignments`).then(r => r.data),
+  });
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ clientId: '', type: 'DEPLOYED' as string, startDate: new Date().toISOString().slice(0, 10), endDate: '', notes: '' });
+  const [saving, setSaving] = useState(false);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.post(`/employees/${employeeId}/assignments`, {
+        ...form,
+        clientId: form.clientId || null,
+        endDate: form.endDate || null,
+      });
+      toast('success', 'Assignment recorded');
+      qc.invalidateQueries({ queryKey: ['assignments', employeeId] });
+      setShowForm(false);
+      setForm({ clientId: '', type: 'DEPLOYED', startDate: new Date().toISOString().slice(0, 10), endDate: '', notes: '' });
+    } catch (err: any) {
+      toast('error', err?.response?.data?.error ?? 'Failed to save assignment');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ paddingTop: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Deployment / Assignment History
+        </div>
+        {!showForm && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowForm(true)}>
+            + Add Entry
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleAdd} style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '14px 16px', marginBottom: 16 }}>
+          <div className="form-grid form-grid-2" style={{ marginBottom: 10 }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ fontSize: 12 }}>Type *</label>
+              <select className="form-control" required value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                <option value="DEPLOYED">Deployed</option>
+                <option value="RTA">Ready to Assign (RTA)</option>
+                <option value="TRANSFERRED">Transferred</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ fontSize: 12 }}>Client</label>
+              <select className="form-control" value={form.clientId} onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))}>
+                <option value="">— None / RTA —</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ fontSize: 12 }}>Start Date *</label>
+              <input type="date" className="form-control" required value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} />
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label style={{ fontSize: 12 }}>End Date</label>
+              <input type="date" className="form-control" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
+            </div>
+          </div>
+          <div className="form-group" style={{ margin: '0 0 10px' }}>
+            <label style={{ fontSize: 12 }}>Notes</label>
+            <input className="form-control" placeholder="Optional notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </form>
+      )}
+
+      {isLoading ? (
+        <div className="loading-center" style={{ padding: 32 }}><div className="spinner" /></div>
+      ) : assignments.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
+          No assignment history yet. Use "+ Add Entry" to record the first deployment.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {assignments.map(a => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 12px', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+              <span className={`badge ${ASSIGNMENT_COLORS[a.type] ?? 'badge-gray'}`} style={{ marginTop: 2, flexShrink: 0 }}>
+                {ASSIGNMENT_LABELS[a.type] ?? a.type}
+              </span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{a.client?.name ?? '— No client —'}</div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  {formatDate(a.startDate)}{a.endDate ? ` → ${formatDate(a.endDate)}` : ' → present'}
+                </div>
+                {a.notes && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{a.notes}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Employee Modal (Add / Edit) ─────────────────────────────────────────────
 function EmployeeModal({
   departments, employees, initial, onClose, onSaved,
@@ -489,6 +612,13 @@ function EmployeeModal({
     e.preventDefault();
     setSaving(true);
     setError('');
+    // Require a deployed client on new employees
+    if (!isEdit && !form.clientId) {
+      setError('Deployed Client is required. Please select a client in the Organization tab.');
+      setActiveTab('Organization');
+      setSaving(false);
+      return;
+    }
     try {
       if (isEdit) {
         await api.put(`/employees/${initial!.id}`, { ...form, userRole });
@@ -517,7 +647,7 @@ function EmployeeModal({
 
   const EDIT_TABS = [
     'Profile', 'Emergency Contact', 'IDs & Bank', 'Organization',
-    ...(isEdit ? ['Account'] : []),
+    ...(isEdit ? ['History', 'Account'] : []),
   ];
 
   return (
@@ -730,12 +860,12 @@ function EmployeeModal({
             {activeTab === 'Organization' && (
               <>
                 <div className="form-group">
-                  <label>Deployed To (Client)</label>
+                  <label>Deployed To (Client){!isEdit && <span style={{ color: 'var(--color-danger)', marginLeft: 2 }}>*</span>}</label>
                   <ClientCombobox
                     clients={clients.filter(c => c.activeContract)}
                     value={form.clientId ?? ''}
                     onChange={id => set('clientId', id || null)}
-                    placeholder="— Not deployed / On bench —"
+                    placeholder={isEdit ? '— Not deployed / On bench —' : '— Select client (required) —'}
                   />
                 </div>
                 <div className="form-grid form-grid-2">
@@ -845,6 +975,11 @@ function EmployeeModal({
                   </div>
                 </div>
               </>
+            )}
+
+            {/* ── Tab: History (edit only) ── */}
+            {activeTab === 'History' && isEdit && (
+              <AssignmentHistoryTab employeeId={initial!.id} />
             )}
 
             {/* ── Tab: Account (edit only) ── */}
