@@ -265,6 +265,7 @@ export default function Attendance() {
             columns={columns}
             globalFilterPlaceholder="Search employees…"
             exportFilename={exportFilename}
+            onExportCSV={() => exportCSV(records, exportFilename)}
             onExportPDF={() => exportPDF(
               records,
               exportFilename,
@@ -442,6 +443,65 @@ function computeRenderedHours(timeIn?: string | null, timeOut?: string | null): 
     const diffH = (outMs - inMs) / 3_600_000;
     return diffH > 0 ? Math.round(diffH * 100) / 100 : null;
   } catch { return null; }
+}
+
+function exportCSV(
+  records: AttendanceRecord[],
+  filename: string,
+) {
+  const statusLabels: Record<string, string> = {
+    PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent',
+    HALF_DAY: 'Half Day', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEKEND: 'Weekend',
+  };
+  const fmtDate = (iso: string) => {
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); }
+    catch { return iso; }
+  };
+  const fmtTime = (t?: string | null) => {
+    if (!t) return '';
+    try {
+      if (t.includes('T') || t.length > 8) {
+        const d = new Date(t);
+        if (!isNaN(d.getTime()))
+          return d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+      }
+      const [h, m] = t.split(':');
+      const hour = parseInt(h, 10);
+      return `${hour % 12 || 12}:${m} ${hour < 12 ? 'AM' : 'PM'}`;
+    } catch { return t ?? ''; }
+  };
+  const fmtHours = (timeIn?: string | null, timeOut?: string | null, altIn?: string | null, altOut?: string | null) => {
+    const ti = timeIn || altIn;
+    const to = timeOut || altOut;
+    if (!ti || !to) return '';
+    try {
+      const diffH = (new Date(to).getTime() - new Date(ti).getTime()) / 3_600_000;
+      return diffH > 0 ? (Math.round(diffH * 100) / 100).toFixed(2) : '';
+    } catch { return ''; }
+  };
+
+  const headers = ['Date', 'Employee', 'Client', 'Status', 'Time In', 'Time Out', 'Rendered Hours', 'OT Hours', 'Notes'];
+  const csvRows = records.map(r => [
+    fmtDate(r.date),
+    `${r.employee.firstName} ${r.employee.lastName}`,
+    r.employee.client?.name ?? '',
+    statusLabels[r.status] ?? r.status,
+    fmtTime(r.timeIn),
+    fmtTime(r.timeOut),
+    fmtHours(r.timeIn, r.timeOut, r.clockInAt, r.clockOutAt),
+    r.overtimeHrs > 0 ? String(r.overtimeHrs) : '',
+    r.notes ?? '',
+  ].map(v => v.includes(',') || v.includes('"') || v.includes('\n') ? `"${v.replace(/"/g, '""')}"` : v));
+
+  const csv = [headers.join(','), ...csvRows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function exportPDF(
