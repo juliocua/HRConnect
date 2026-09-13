@@ -520,6 +520,7 @@ model PayrollRecord {
   lateDeduction     Float      @default(0)
   holidayPay        Float      @default(0)
   nightDifferential Float      @default(0)
+  silPay            Float      @default(0)
 
   @@unique([payrollRunId, employeeId])
   @@map("payroll_records")

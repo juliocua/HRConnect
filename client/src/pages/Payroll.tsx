@@ -198,6 +198,14 @@ export default function Payroll() {
         },
       },
       {
+        accessorKey: 'silPay',
+        header: 'SIL Pay',
+        cell: ({ getValue }) => {
+          const v = (getValue() as number | undefined) ?? 0;
+          return <span className="td-mono">{v > 0 ? formatPHP(v) : '—'}</span>;
+        },
+      },
+      {
         id: 'holidayPay',
         accessorKey: 'holidayPay',
         header: 'Holiday',
@@ -851,6 +859,7 @@ function PayslipModal({ record: r, payPeriodType, runPeriod, onClose }: {
               {holidayPay > 0 && <div className="payslip-row"><span>Holiday Pay</span><span>{formatPHP(holidayPay)}</span></div>}
               {nightDiff > 0 && <div className="payslip-row"><span>Night Differential</span><span>{formatPHP(nightDiff)}</span></div>}
               {r.allowances > 0 && <div className="payslip-row"><span>Allowances</span><span>{formatPHP(r.allowances)}</span></div>}
+              {(r.silPay ?? 0) > 0 && <div className="payslip-row"><span>SIL Pay</span><span>{formatPHP(r.silPay ?? 0)}</span></div>}
               <div className="payslip-row" style={{ fontWeight: 700 }}><span>Gross Pay</span><span>{formatPHP(r.grossPay)}</span></div>
 
               <div className="divider" />

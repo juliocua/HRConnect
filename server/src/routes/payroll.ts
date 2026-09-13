@@ -221,6 +221,8 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
       if (holidayPay > 0) lineRow('Holiday Pay', phpFmt(holidayPay));
       if (nightDiff > 0) lineRow('Night Differential', phpFmt(nightDiff));
       if (record.allowances > 0) lineRow('Allowances', phpFmt(record.allowances));
+      const silPay = (record as any).silPay ?? 0;
+      if (silPay > 0) lineRow('SIL Pay', phpFmt(silPay));
       lineRow('Gross Pay', phpFmt(record.grossPay), true);
       separator(true);
       sectionLabel('Deductions');
@@ -556,13 +558,41 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         attendanceMap.set(att.employeeId, current + (att.status === 'HALF_DAY' ? 0.5 : 1));
       }
 
-      // Exclude employees with no attendance in this period
+      // SIL pay: approved SIL leave requests overlapping this period (separate payslip line)
+      const silRequests = await prisma.leaveRequest.findMany({
+        where: {
+          employeeId: { in: employees.map((e: any) => e.id) },
+          status: 'APPROVED',
+          leaveType: { code: 'SIL', isPaid: true },
+          startDate: { lte: periodEnd },
+          endDate: { gte: periodStart },
+        },
+        select: { employeeId: true, startDate: true, endDate: true },
+      });
+
+      const silDaysMap = new Map<string, number>();
+      for (const req of silRequests) {
+        const reqStart = new Date(Math.max(new Date(req.startDate).getTime(), periodStart.getTime()));
+        const reqEnd   = new Date(Math.min(new Date(req.endDate).getTime(),   periodEnd.getTime()));
+        let days = 0;
+        const cur = new Date(reqStart);
+        while (cur <= reqEnd) {
+          const dow = cur.getDay();
+          if (dow !== 0 && dow !== 6) days++; // skip weekends
+          cur.setDate(cur.getDate() + 1);
+        }
+        silDaysMap.set(req.employeeId, (silDaysMap.get(req.employeeId) ?? 0) + days);
+      }
+
+      // Include employees with attendance OR SIL leave in this period
       records = employees
-        .filter((emp: any) => (attendanceMap.get(emp.id) ?? 0) > 0)
+        .filter((emp: any) => (attendanceMap.get(emp.id) ?? 0) > 0 || (silDaysMap.get(emp.id) ?? 0) > 0)
         .map((emp: any) => {
-          const daysWorked = attendanceMap.get(emp.id)!;
-          // Gross = prorated daily rate × days actually worked
-          const grossPay = (emp.basicSalary / 22) * daysWorked;
+          const daysWorked = attendanceMap.get(emp.id) ?? 0;
+          const silDays    = silDaysMap.get(emp.id) ?? 0;
+          const silPay     = silDays > 0 ? (emp.basicSalary / 22) * silDays : 0;
+          // Gross = prorated daily rate × days actually worked + SIL pay (shown separately)
+          const grossPay = (emp.basicSalary / 22) * daysWorked + silPay;
           // Statutory contributions are based on full monthly salary bracket
           const sssContrib = computeSSS(emp.basicSalary);
           const philhealthContrib = computePhilHealth(emp.basicSalary);
@@ -577,6 +607,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
             basicSalary: emp.basicSalary,
             daysWorked,
             grossPay,
+            silPay,
             overtimePay: 0,
             allowances: 0,
             otherDeductions: 0,

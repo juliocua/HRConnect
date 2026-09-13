@@ -95,12 +95,12 @@ export async function generateInvoicePDF(billing: any): Promise<Buffer> {
     }
 
     // ── Additional charges (line items) ──────────────────────────────────────────
-    const lineItems: { description: string; amount: number }[] = (billing.lineItems as any) ?? [];
+    const lineItems: { label: string; amount: number }[] = (billing.lineItems as any) ?? [];
     if (lineItems.length > 0) {
       doc.font('Helvetica').fontSize(9).fillColor(muted).text('ADDITIONAL CHARGES', col1 + 8, rowY + 6);
       rowY += 24;
       for (const li of lineItems) {
-        doc.font('Helvetica').fontSize(10).fillColor(dark).text(li.description, col1 + 8, rowY + 8);
+        doc.font('Helvetica').fontSize(10).fillColor(dark).text(li.label, col1 + 8, rowY + 8);
         doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(fmt(li.amount), col3, rowY + 8, { width: rightEdge - col3, align: 'right' });
         rowY += 30;
         doc.moveTo(50, rowY).lineTo(rightEdge, rowY).strokeColor('#E5E7EB').lineWidth(0.5).stroke();

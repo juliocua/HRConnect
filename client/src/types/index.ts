@@ -245,6 +245,7 @@ export interface PayrollRecord {
   lateDeduction: number;
   holidayPay: number;
   nightDifferential: number;
+  silPay?: number;
 }
 
 export interface PayrollRun {
