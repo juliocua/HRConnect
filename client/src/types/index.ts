@@ -129,6 +129,7 @@ export interface AuditLog {
   entityId: string;
   action: string;
   performedById: string;
+  performedByName?: string;
   performedAt: string;
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
