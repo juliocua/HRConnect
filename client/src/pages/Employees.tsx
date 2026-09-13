@@ -223,8 +223,22 @@ export default function Employees() {
           departments={departments}
           employees={employees}
           initial={editTarget}
-          onClose={() => setShowModal(false)}
-          onSaved={() => { setShowModal(false); qc.invalidateQueries({ queryKey: ['employees'] }); }}
+          onClose={() => {
+            setShowModal(false);
+            if (editTarget) setViewTarget(editTarget);
+          }}
+          onSaved={async () => {
+            setShowModal(false);
+            qc.invalidateQueries({ queryKey: ['employees'] });
+            if (editTarget) {
+              try {
+                const res = await api.get(`/employees/${editTarget.id}`);
+                setViewTarget(res.data);
+              } catch {
+                // fallback: just refresh list without re-opening view
+              }
+            }
+          }}
         />
       )}
 
@@ -348,7 +362,7 @@ const ASSIGNMENT_COLORS: Record<string, string> = {
   TRANSFERRED: 'badge-blue',
 };
 
-function AssignmentHistoryTab({ employeeId }: { employeeId: string }) {
+function AssignmentHistoryTab({ employeeId, readOnly }: { employeeId: string; readOnly?: boolean }) {
   const toast = useToast();
   const qc = useQueryClient();
   const { data: clients = [] } = useQuery<Client[]>({ queryKey: ['clients'], queryFn: () => api.get('/clients').then(r => r.data) });
@@ -386,15 +400,15 @@ function AssignmentHistoryTab({ employeeId }: { employeeId: string }) {
         <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           Deployment / Assignment History
         </div>
-        {!showForm && (
+        {!showForm && !readOnly && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowForm(true)}>
             + Add Entry
           </button>
         )}
       </div>
 
-      {showForm && (
-        <form onSubmit={handleAdd} style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '14px 16px', marginBottom: 16 }}>
+      {showForm && !readOnly && (
+        <div style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '14px 16px', marginBottom: 16 }}>
           <div className="form-grid form-grid-2" style={{ marginBottom: 10 }}>
             <div className="form-group" style={{ margin: 0 }}>
               <label style={{ fontSize: 12 }}>Type *</label>
@@ -426,9 +440,9 @@ function AssignmentHistoryTab({ employeeId }: { employeeId: string }) {
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)}>Cancel</button>
-            <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={handleAdd}>{saving ? 'Saving…' : 'Save'}</button>
           </div>
-        </form>
+        </div>
       )}
 
       {isLoading ? (
@@ -859,6 +873,34 @@ function EmployeeModal({
             {/* ── Tab: Organization ── */}
             {activeTab === 'Organization' && (
               <>
+                <div className="form-group">
+                  <label>Direct Manager</label>
+                  <select className="form-control" value={form.managerId ?? ''} onChange={e => set('managerId', e.target.value || undefined)}>
+                    <option value="">— None —</option>
+                    {managers.map(m => (
+                      <option key={m.id} value={m.id}>{m.firstName} {m.lastName} · {m.position}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {isEdit && initial!.subordinates && initial!.subordinates.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                      Direct Reports ({initial!.subordinates.length})
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {initial!.subordinates.map(s => (
+                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)' }}>
+                          <div className="emp-avatar" style={{ width: 28, height: 28, fontSize: 11, background: 'var(--color-primary)', flexShrink: 0 }}>
+                            {s.firstName[0]}{s.lastName[0]}
+                          </div>
+                          <span style={{ fontSize: 13 }}>{s.firstName} {s.lastName} <span style={{ color: 'var(--color-text-muted)' }}>· {s.position}</span></span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-group">
                   <label>Deployed To (Client){!isEdit && <span style={{ color: 'var(--color-danger)', marginLeft: 2 }}>*</span>}</label>
                   <ClientCombobox
@@ -1392,7 +1434,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
   const [docCategory, setDocCategory] = useState('');
   const docInputRef = useRef<HTMLInputElement>(null);
 
-  const VIEW_TABS = ['Profile', 'Emergency Contact', 'IDs & Bank', 'Organization', '201 Docs', 'Payslips', 'Attendance'];
+  const VIEW_TABS = ['Profile', 'Emergency Contact', 'IDs & Bank', 'Organization', 'History', '201 Docs', 'Payslips', 'Attendance'];
 
   const { data: documents = [], refetch: refetchDocs, isFetching: docsFetching } = useQuery<any[]>({
     queryKey: ['employee-docs', e.id],
@@ -1553,6 +1595,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
           {/* ── Emergency Contact tab — always shown ── */}
           {activeTab === 'Emergency Contact' && (
             <>
+              <InfoRow label="Home Address" value={e.address ?? '—'} />
               <InfoRow label="Contact Name" value={e.emergencyContactName ?? '—'} />
               <InfoRow label="Contact Phone" value={e.emergencyContactPhone ?? '—'} />
             </>
@@ -1628,42 +1671,14 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
             </>
           )}
 
-          {/* ── 201 Docs tab ── */}
+          {/* ── History tab ── */}
+          {activeTab === 'History' && (
+            <AssignmentHistoryTab employeeId={e.id} readOnly />
+          )}
+
+          {/* ── 201 Docs tab — VIEW only (read-only) ── */}
           {activeTab === '201 Docs' && (
             <div>
-              {/* Upload strip */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-                <select
-                  className="form-control"
-                  style={{ width: 160, fontSize: 13 }}
-                  value={docCategory}
-                  onChange={e2 => setDocCategory(e2.target.value)}
-                >
-                  <option value="">Category (optional)</option>
-                  <option value="resume">Resume / CV</option>
-                  <option value="contract">Contract</option>
-                  <option value="certificate">Certificate / Training</option>
-                  <option value="id">Government ID</option>
-                  <option value="medical">Medical / Health</option>
-                  <option value="disciplinary">Disciplinary</option>
-                  <option value="other">Other</option>
-                </select>
-                <input
-                  ref={docInputRef}
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                  style={{ display: 'none' }}
-                  onChange={ev => { if (ev.target.files?.[0]) handleDocUpload(ev.target.files[0]); ev.target.value = ''; }}
-                />
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => docInputRef.current?.click()}
-                  disabled={docUploading}
-                >
-                  {docUploading ? 'Uploading…' : '⬆ Upload Document'}
-                </button>
-              </div>
-
               {docsFetching ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '24px 0', color: 'var(--color-text-muted)', fontSize: 13 }}>
                   <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
@@ -1685,7 +1700,6 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                         </div>
                       </div>
                       <a href={doc.url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: 12 }}>View</a>
-                      <button className="btn btn-ghost btn-sm" style={{ fontSize: 12, color: 'var(--color-danger)' }} onClick={() => handleDeleteDoc(doc.id)}>Delete</button>
                     </div>
                   ))}
                 </div>
