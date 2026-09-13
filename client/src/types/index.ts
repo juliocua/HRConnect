@@ -140,7 +140,9 @@ export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'HALF_DAY' | 'ON_
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
-  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
+    client?: { id: string; name: string } | null;
+  };
   date: string;
   timeIn?: string;
   timeOut?: string;

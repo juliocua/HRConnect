@@ -56,6 +56,14 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
     const records = await prisma.attendance.findMany({
       where: { employeeId, ...dateFilter },
       orderBy: { date: 'desc' },
+      include: {
+        employee: {
+          select: {
+            id: true, firstName: true, lastName: true, position: true, avatarColor: true,
+            client: { select: { id: true, name: true } },
+          },
+        },
+      },
     });
     res.json(records);
   } catch (err) {

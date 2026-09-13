@@ -91,6 +91,11 @@ export default function Attendance() {
 
   const columns = useMemo<ColumnDef<AttendanceRecord>[]>(() => [
     {
+      accessorKey: 'date',
+      header: 'Date',
+      cell: ({ getValue }) => <span className="text-sm">{fmtShortDate(getValue() as string)}</span>,
+    },
+    {
       id: 'employee',
       accessorFn: row => `${row.employee.lastName} ${row.employee.firstName}`,
       header: 'Employee',
@@ -105,6 +110,12 @@ export default function Attendance() {
           </div>
         </div>
       ),
+    },
+    {
+      id: 'client',
+      accessorFn: row => row.employee.client?.name ?? '',
+      header: 'Client',
+      cell: ({ getValue }) => <span className="text-sm">{(getValue() as string) || <span className="text-muted">—</span>}</span>,
     },
     {
       accessorKey: 'status',
@@ -123,6 +134,14 @@ export default function Attendance() {
       accessorKey: 'timeOut',
       header: 'Time Out',
       cell: ({ getValue }) => <span className="td-mono">{getValue() ? formatTime(getValue() as string) : '—'}</span>,
+    },
+    {
+      id: 'renderedHours',
+      header: 'Rendered Hours',
+      cell: ({ row: { original: r } }) => {
+        const h = computeRenderedHours(r.timeIn, r.timeOut);
+        return h != null ? <span className="td-mono">{h.toFixed(2)}h</span> : <span>—</span>;
+      },
     },
     {
       accessorKey: 'overtimeHrs',
@@ -163,6 +182,17 @@ export default function Attendance() {
           <p className="page-desc">Track daily time & attendance records</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => exportPDF(
+              records,
+              exportFilename,
+              { start: startDate, end: endDate },
+              clientFilter ? clients.find(c => c.id === clientFilter)?.name : undefined,
+            )}
+          >
+            📄 Export PDF
+          </button>
           <a href="/import?type=time" className="btn btn-ghost">⬆ Import CSV</a>
           <button className="btn btn-primary" onClick={() => { setEditTarget(null); setShowModal(true); }}>
             ＋ Log Attendance
@@ -392,6 +422,77 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function fmtShortDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function computeRenderedHours(timeIn?: string | null, timeOut?: string | null): number | null {
+  if (!timeIn || !timeOut) return null;
+  const toDecimal = (t: string) => {
+    if (t.includes('T') || t.length > 8) {
+      const d = new Date(t);
+      if (!isNaN(d.getTime())) return d.getHours() + d.getMinutes() / 60;
+    }
+    const [h, m] = t.split(':').map(Number);
+    return h + (isNaN(m) ? 0 : m) / 60;
+  };
+  const diff = toDecimal(timeOut) - toDecimal(timeIn);
+  return diff > 0 ? Math.round(diff * 100) / 100 : null;
+}
+
+function exportPDF(
+  records: AttendanceRecord[],
+  filename: string,
+  dateRange: { start: string; end: string },
+  clientName?: string,
+) {
+  const statusColors: Record<string, string> = {
+    PRESENT: '#16a34a', LATE: '#d97706', ABSENT: '#dc2626',
+    HALF_DAY: '#d97706', ON_LEAVE: '#2563eb', HOLIDAY: '#2563eb', WEEKEND: '#6b7280',
+  };
+  const statusLabels: Record<string, string> = {
+    PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent',
+    HALF_DAY: 'Half Day', ON_LEAVE: 'On Leave', HOLIDAY: 'Holiday', WEEKEND: 'Weekend',
+  };
+  const rows = records.map(r => {
+    const hours = computeRenderedHours(r.timeIn, r.timeOut);
+    const color = statusColors[r.status] ?? '#6b7280';
+    return `<tr>
+      <td>${fmtShortDate(r.date)}</td>
+      <td>${r.employee.firstName} ${r.employee.lastName}<br><small>${r.employee.position}</small></td>
+      <td>${r.employee.client?.name ?? '—'}</td>
+      <td><span style="background:${color};color:#fff;padding:2px 7px;border-radius:4px;font-size:10px;white-space:nowrap">${statusLabels[r.status] ?? r.status}</span></td>
+      <td>${r.timeIn ? formatTime(r.timeIn) : '—'}</td>
+      <td>${r.timeOut ? formatTime(r.timeOut) : '—'}</td>
+      <td>${hours != null ? hours.toFixed(2) + 'h' : '—'}</td>
+      <td>${r.overtimeHrs > 0 ? r.overtimeHrs + 'h' : '—'}</td>
+    </tr>`;
+  }).join('');
+  const meta = `Period: ${dateRange.start} to ${dateRange.end}${clientName ? ' &nbsp;·&nbsp; Client: ' + clientName : ''} &nbsp;·&nbsp; ${records.length} record(s)`;
+  const html = `<!DOCTYPE html><html><head><title>${filename}</title><style>
+    body{font-family:Arial,sans-serif;font-size:11px;margin:24px}
+    h2{margin:0 0 4px;font-size:16px}
+    .meta{color:#666;margin-bottom:14px}
+    .print-btn{margin-bottom:14px;padding:6px 14px;cursor:pointer;font-size:12px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;vertical-align:top}
+    th{background:#f0f0f0;font-weight:600}
+    tr:nth-child(even){background:#fafafa}
+    small{color:#666;font-size:10px}
+    @media print{.print-btn{display:none}}
+  </style></head><body>
+  <h2>Attendance Report</h2>
+  <div class="meta">${meta}</div>
+  <button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+  <table><thead><tr>
+    <th>Date</th><th>Employee</th><th>Client</th><th>Status</th>
+    <th>Time In</th><th>Time Out</th><th>Rendered Hours</th><th>OT Hours</th>
+  </tr></thead><tbody>${rows}</tbody></table>
+  </body></html>`;
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
 }
 
 function formatTime(t: string) {

@@ -20,6 +20,20 @@ function fmtDate(iso?: string) {
   return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function computeRenderedHours(timeIn?: string | null, timeOut?: string | null): number | null {
+  if (!timeIn || !timeOut) return null;
+  const toDecimal = (t: string) => {
+    if (t.includes('T') || t.length > 8) {
+      const d = new Date(t);
+      if (!isNaN(d.getTime())) return d.getHours() + d.getMinutes() / 60;
+    }
+    const [h, m] = t.split(':').map(Number);
+    return h + (isNaN(m) ? 0 : m) / 60;
+  };
+  const diff = toDecimal(timeOut) - toDecimal(timeIn);
+  return diff > 0 ? Math.round(diff * 100) / 100 : null;
+}
+
 function LiveClock() {
   const [time, setTime] = useState(new Date());
   useEffect(() => {
@@ -227,21 +241,27 @@ export default function HubClock() {
               <thead>
                 <tr>
                   <th>Date</th>
+                  <th>Client</th>
                   <th>Status</th>
                   <th>Clock In</th>
                   <th>Clock Out</th>
+                  <th>Rendered Hrs</th>
                   <th>OT</th>
                   <th>Entry</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {history.map(r => (
+                {history.map(r => {
+                  const rendered = computeRenderedHours(r.clockInAt, r.clockOutAt);
+                  return (
                   <tr key={r.id}>
                     <td className="text-sm">{fmtDate(r.date)}</td>
+                    <td className="text-sm">{r.employee?.client?.name ?? '—'}</td>
                     <td><span className={`badge ${STATUS_COLORS[r.status] ?? 'badge-gray'}`}>{r.status.replace('_', ' ')}</span></td>
                     <td className="td-mono text-sm">{formatTime(r.clockInAt)}</td>
                     <td className="td-mono text-sm">{formatTime(r.clockOutAt)}</td>
+                    <td className="td-mono text-sm">{rendered != null ? `${rendered.toFixed(2)}h` : '—'}</td>
                     <td className="text-sm">{r.overtimeHrs > 0 ? <span style={{ color: 'var(--color-warning)', fontWeight: 600 }}>{r.overtimeHrs}h</span> : '—'}</td>
                     <td>
                       {r.isManualEntry
@@ -261,7 +281,8 @@ export default function HubClock() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
