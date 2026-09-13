@@ -882,16 +882,6 @@ function EmployeeModal({
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label>Direct Manager</label>
-                  <select className="form-control" value={form.managerId ?? ''} onChange={e => set('managerId', e.target.value || undefined)}>
-                    <option value="">— None —</option>
-                    {managers.map(m => (
-                      <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
-                    ))}
-                  </select>
-                </div>
-
                 <div className="form-grid form-grid-2">
                   <div className="form-group">
                     <label>Status</label>
@@ -1809,6 +1799,14 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
               {e.manager && (
                 <InfoRow label="Reports To" value={`${e.manager.firstName} ${e.manager.lastName} · ${e.manager.position}`} />
               )}
+              <InfoRow label="Position" value={e.position ?? '—'} />
+              {e.department && (
+                <InfoRow label="Department" value={e.department.name} />
+              )}
+              <InfoRow label="Status" value={STATUS_LABELS[e.status as EmployeeStatus]} />
+              <InfoRow label="Hire Date" value={formatDate(e.hireDate)} />
+              <InfoRow label="Basic Salary" value={e.basicSalary != null ? `₱${Number(e.basicSalary).toLocaleString('en-PH')}` : '—'} />
+              <InfoRow label="Employee No." value={e.employeeNo ?? '—'} mono />
             </>
           )}
 
