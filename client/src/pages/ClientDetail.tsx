@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { useToast } from '@/lib/toast';
 import { formatPHP } from '@/lib/payroll';
 import type { Client, ClientPolicy, Billing, BillingCycle, Employee } from '@/types';
 
@@ -20,8 +19,14 @@ const POLICY_TYPES = [
   { value: 'DATA_PRIVACY', label: 'Data Privacy' },
   { value: 'TOOLS', label: 'Allowed Tools / Devices' },
   { value: 'REPORTING', label: 'Reporting Requirements' },
+  { value: 'SSS_DEDUCTION', label: 'SSS Deduction' },
+  { value: 'PHIC_DEDUCTION', label: 'PhilHealth Deduction' },
+  { value: 'HDMF_DEDUCTION', label: 'Pag-IBIG Deduction' },
+  { value: 'TAX_DEDUCTION', label: 'Withholding Tax Deduction' },
   { value: 'OTHER', label: 'Other' },
 ];
+
+const DEDUCTION_POLICY_TYPES = new Set(['SSS_DEDUCTION', 'PHIC_DEDUCTION', 'HDMF_DEDUCTION', 'TAX_DEDUCTION']);
 
 function parseShiftValue(value?: string | null): { shiftStart: string; shiftEnd: string } {
   try {
@@ -43,7 +48,6 @@ export default function ClientDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const toast = useToast();
   const [tab, setTab] = useState<Tab>('overview');
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPolicyModal, setShowPolicyModal] = useState(false);
@@ -60,14 +64,12 @@ export default function ClientDetail() {
 
   const resendBill = useMutation({
     mutationFn: (billingId: string) => api.post(`/billing/${billingId}/resend`),
-    onSuccess: () => { toast('success', 'Invoice resent'); qc.invalidateQueries({ queryKey: ['client', id] }); },
-    onError: () => toast('error', 'Failed to resend invoice'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['client', id] }),
   });
 
   const deletePolicy = useMutation({
     mutationFn: (policyId: string) => api.delete(`/clients/${id}/policies/${policyId}`),
-    onSuccess: () => { toast('success', 'Policy deleted'); qc.invalidateQueries({ queryKey: ['client', id] }); },
-    onError: () => toast('error', 'Failed to delete policy'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['client', id] }),
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['client', id] });
@@ -318,77 +320,55 @@ export default function ClientDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {client.billings!.map(b => {
-                    const items = (b.lineItems ?? []) as Array<{ label: string; amount: number }>;
-                    return (
-                      <React.Fragment key={b.id}>
-                        <tr>
-                          <td style={{ fontWeight: 600 }}>{fmtDate(b.billingDate)}</td>
-                          <td className="td-mono" style={{ fontWeight: 700 }}>{formatPHP(b.amount)}</td>
-                          <td>
-                            <span className={`badge ${b.status === 'PAID' ? 'badge-green' : b.status === 'CANCELLED' ? 'badge-gray' : 'badge-yellow'}`}>
-                              {b.status}
-                            </span>
-                          </td>
-                          <td style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                            {b.paidAt ? fmtDate(b.paidAt) : '—'}
-                          </td>
-                          <td style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
-                            {b.paymentRef ?? '—'}
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              {b.paymentLinkUrl && (
-                                <a
-                                  href={b.paymentLinkUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="btn btn-ghost btn-sm"
-                                  style={{ textDecoration: 'none' }}
-                                >
-                                  🔗 Pay Link
-                                </a>
-                              )}
-                              {b.status === 'PENDING' && (
-                                <>
-                                  <button
-                                    className="btn btn-ghost btn-sm"
-                                    disabled={resendBill.isPending}
-                                    onClick={() => resendBill.mutate(b.id)}
-                                  >
-                                    Resend
-                                  </button>
-                                  <button
-                                    className="btn btn-success btn-sm"
-                                    onClick={() => setMarkPaidBillingId(b.id)}
-                                  >
-                                    Mark Paid
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {items.length > 0 && (
-                          <tr>
-                            <td colSpan={6} style={{ padding: '0 16px 10px 32px', background: 'var(--color-surface-hover, rgba(0,0,0,0.03))' }}>
-                              <div style={{ fontSize: 12, borderTop: '1px solid var(--color-border)', paddingTop: 6 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-text-muted)', marginBottom: 4 }}>
-                                  Line Items
-                                </div>
-                                {items.map((item, i) => (
-                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: 'var(--color-text-secondary)' }}>
-                                    <span>{item.label}</span>
-                                    <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{formatPHP(item.amount)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+                  {client.billings!.map(b => (
+                    <tr key={b.id}>
+                      <td style={{ fontWeight: 600 }}>{fmtDate(b.billingDate)}</td>
+                      <td className="td-mono" style={{ fontWeight: 700 }}>{formatPHP(b.amount)}</td>
+                      <td>
+                        <span className={`badge ${b.status === 'PAID' ? 'badge-green' : b.status === 'CANCELLED' ? 'badge-gray' : 'badge-yellow'}`}>
+                          {b.status}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                        {b.paidAt ? fmtDate(b.paidAt) : '—'}
+                      </td>
+                      <td style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
+                        {b.paymentRef ?? '—'}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {b.paymentLinkUrl && (
+                            <a
+                              href={b.paymentLinkUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="btn btn-ghost btn-sm"
+                              style={{ textDecoration: 'none' }}
+                            >
+                              🔗 Pay Link
+                            </a>
+                          )}
+                          {b.status === 'PENDING' && (
+                            <>
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                disabled={resendBill.isPending}
+                                onClick={() => resendBill.mutate(b.id)}
+                              >
+                                Resend
+                              </button>
+                              <button
+                                className="btn btn-success btn-sm"
+                                onClick={() => setMarkPaidBillingId(b.id)}
+                              >
+                                Mark Paid
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -515,7 +495,6 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const toast = useToast();
   const [paymentRef, setPaymentRef] = useState('');
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -539,13 +518,10 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
         setUploading(false);
       }
       await api.put(`/billing/${billingId}/mark-paid`, { paymentRef: paymentRef.trim(), paymentScreenshotUrl });
-      toast('success', 'Payment recorded');
       onSaved();
     } catch (err: any) {
       setUploading(false);
-      const msg = err?.response?.data?.error ?? 'Failed to mark as paid';
-      setError(msg);
-      toast('error', 'Failed to mark as paid');
+      setError(err?.response?.data?.error ?? 'Failed to mark as paid');
     } finally {
       setSaving(false);
     }
@@ -607,7 +583,6 @@ function ShiftPolicyModal({ clientId, policy, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const toast = useToast();
   const existing = parseShiftValue(policy?.value);
   const [shiftStart, setShiftStart] = useState(existing.shiftStart);
   const [shiftEnd, setShiftEnd] = useState(existing.shiftEnd);
@@ -630,12 +605,9 @@ function ShiftPolicyModal({ clientId, policy, onClose, onSaved }: {
       } else {
         await api.post(`/clients/${clientId}/policies`, payload);
       }
-      toast('success', 'Shift policy saved');
       onSaved();
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? 'Failed to save';
-      setError(msg);
-      toast('error', 'Failed to save policy');
+      setError(err?.response?.data?.error ?? 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -700,7 +672,6 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const toast = useToast();
   const [form, setForm] = useState({
     type: policy?.type ?? 'EMPLOYEE_PAY_PERIOD',
     title: policy?.title ?? '',
@@ -710,23 +681,27 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const { data: cutOffPeriods = [] } = useQuery<any[]>({
+    queryKey: ['cutoff-periods'],
+    queryFn: () => api.get('/global-setup/cutoff-periods').then(r => r.data),
+    enabled: DEDUCTION_POLICY_TYPES.has(form.type),
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true); setError('');
     try {
       const payload: any = { ...form };
-      if (form.type !== 'EMPLOYEE_PAY_PERIOD') delete payload.value;
+      const keepValue = form.type === 'EMPLOYEE_PAY_PERIOD' || DEDUCTION_POLICY_TYPES.has(form.type);
+      if (!keepValue) delete payload.value;
       if (policy) {
         await api.put(`/clients/${clientId}/policies/${policy.id}`, payload);
       } else {
         await api.post(`/clients/${clientId}/policies`, payload);
       }
-      toast('success', 'Policy saved');
       onSaved();
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? 'Failed to save';
-      setError(msg);
-      toast('error', 'Failed to save policy');
+      setError(err?.response?.data?.error ?? 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -762,6 +737,24 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
                 </select>
                 <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
                   How frequently this client's employees are paid
+                </div>
+              </div>
+            )}
+            {DEDUCTION_POLICY_TYPES.has(form.type) && (
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label>Cut-Off Period</label>
+                <select
+                  className="form-control"
+                  value={form.value}
+                  onChange={e => setForm(f => ({ ...f, value: e.target.value }))}
+                >
+                  <option value="">— Use global default —</option>
+                  {cutOffPeriods.map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  Which cut-off period governs when this deduction is remitted
                 </div>
               </div>
             )}
@@ -808,7 +801,6 @@ function ClientModal({ client, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const toast = useToast();
   const [form, setForm] = useState<any>(client ?? { ...BLANK });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -823,12 +815,9 @@ function ClientModal({ client, onClose, onSaved }: {
       } else {
         await api.post('/clients', form);
       }
-      toast('success', 'Client saved');
       onSaved();
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? 'Failed to save';
-      setError(msg);
-      toast('error', 'Failed to save client');
+      setError(err?.response?.data?.error ?? 'Failed to save');
     } finally {
       setSaving(false);
     }

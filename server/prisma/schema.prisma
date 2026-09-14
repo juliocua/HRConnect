@@ -485,7 +485,6 @@ model PayrollRun {
   periodStart   DateTime      @db.Date
   periodEnd     DateTime      @db.Date
   status        PayrollStatus @default(DRAFT)
-  soaNo         String?
   runById       String
   runAt         DateTime      @default(now())
   records       PayrollRecord[]

@@ -1,0 +1,146 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
+import { prisma } from '../lib/prisma';
+import { requireRole } from '../middleware/authenticate';
+
+const router = Router();
+
+// ── Cut-Off Periods ───────────────────────────────────────────────────────────
+
+const CutOffPeriodSchema = z.object({
+  name: z.string().min(1),
+  cutOffFromDay: z.number().int().min(1).max(31),
+  cutOffFromIsPrevMonth: z.boolean().default(false),
+  cutOffToDay: z.number().int().min(1).max(31),
+  payDay: z.number().int().min(1).max(31),
+  payDayIsNextMonth: z.boolean().default(false),
+  sortOrder: z.number().int().default(0),
+  isActive: z.boolean().default(true),
+});
+
+// GET /api/global-setup/cutoff-periods
+router.get('/cutoff-periods', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const periods = await (prisma as any).cutOffPeriod.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+    res.json(periods);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/global-setup/cutoff-periods
+router.post('/cutoff-periods', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = CutOffPeriodSchema.parse(req.body);
+    const period = await (prisma as any).cutOffPeriod.create({ data });
+    res.status(201).json(period);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/global-setup/cutoff-periods/:id
+router.put('/cutoff-periods/:id', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = CutOffPeriodSchema.partial().parse(req.body);
+    const period = await (prisma as any).cutOffPeriod.update({
+      where: { id: req.params.id },
+      data,
+    });
+    res.json(period);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/global-setup/cutoff-periods/:id
+router.delete('/cutoff-periods/:id', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Check if in use by any GlobalPayrollPolicy
+    const inUse = await (prisma as any).globalPayrollPolicy.findFirst({
+      where: { cutOffPeriodId: req.params.id },
+    });
+    if (inUse) {
+      return res.status(422).json({ error: 'This cut-off period is in use by a global payroll policy and cannot be deleted.' });
+    }
+    await (prisma as any).cutOffPeriod.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Global Payroll Policies ───────────────────────────────────────────────────
+
+const POLICY_TYPES = ['SSS_DEDUCTION', 'PHIC_DEDUCTION', 'HDMF_DEDUCTION', 'TAX_DEDUCTION'] as const;
+
+// GET /api/global-setup/payroll-policies
+router.get('/payroll-policies', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const policies = await (prisma as any).globalPayrollPolicy.findMany({
+      include: { cutOffPeriod: true },
+    });
+    res.json(policies);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/global-setup/payroll-policies — upsert all 4 policy types
+router.put('/payroll-policies', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const schema = z.object({
+      type: z.enum(POLICY_TYPES),
+      cutOffPeriodId: z.string().nullable().optional(),
+    });
+    const payload = schema.parse(req.body);
+
+    const policy = await (prisma as any).globalPayrollPolicy.upsert({
+      where: { type: payload.type },
+      create: {
+        type: payload.type,
+        cutOffPeriodId: payload.cutOffPeriodId ?? null,
+      },
+      update: {
+        cutOffPeriodId: payload.cutOffPeriodId ?? null,
+      },
+      include: { cutOffPeriod: true },
+    });
+    res.json(policy);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/global-setup/current-period — auto-detect current cut-off period by today's date
+router.get('/current-period', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const periods = await (prisma as any).cutOffPeriod.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+
+    const today = new Date();
+    const todayDay = today.getDate();
+    const todayMonth = today.getMonth(); // 0-indexed
+    const todayYear = today.getFullYear();
+
+    // Find the period whose cutOff range includes today
+    const matched = periods.find((p: any) => {
+      // Build cutOff from date
+      const fromDate = p.cutOffFromIsPrevMonth
+        ? new Date(todayMonth === 0 ? todayYear - 1 : todayYear, todayMonth === 0 ? 11 : todayMonth - 1, p.cutOffFromDay)
+        : new Date(todayYear, todayMonth, p.cutOffFromDay);
+      const toDate = new Date(todayYear, todayMonth, p.cutOffToDay);
+      return today >= fromDate && today <= toDate;
+    });
+
+    res.json(matched ?? null);
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;

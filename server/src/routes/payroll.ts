@@ -1,7 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import PDFDocument from 'pdfkit';
-import * as XLSX from 'xlsx';
 import { prisma } from '../lib/prisma';
 import { computeSSS, computePhilHealth, computePagIBIG, computeWithholdingTax } from '../lib/payroll';
 import { authenticate, requireRole } from '../middleware/authenticate';
@@ -11,7 +10,7 @@ router.use(authenticate);
 
 // Shared employee select — includes client name for the payroll table column
 const EMPLOYEE_SELECT = {
-  id: true, employeeNo: true, firstName: true, lastName: true, position: true,
+  id: true, firstName: true, lastName: true, position: true,
   avatarColor: true,
   department: { select: { name: true } },
   client: { select: { id: true, name: true } },
@@ -326,106 +325,6 @@ router.get('/:runId/disbursement', requireRole('HR_MANAGER', 'SUPER_ADMIN'), asy
   } catch (err) {
     next(err);
   }
-});
-
-// GET /api/payroll/:runId/excel  — download full payroll register as Excel
-router.get('/:runId/excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const run = await prisma.payrollRun.findUnique({
-      where: { id: req.params.runId },
-      include: {
-        records: {
-          include: { employee: { select: EMPLOYEE_SELECT } },
-          orderBy: { employee: { lastName: 'asc' } },
-        },
-      },
-    });
-    if (!run) return res.status(404).json({ error: 'Payroll run not found' });
-
-    const rows = run.records.map((r: any) => {
-      const sssRegular = Math.min(r.sssContrib, 900);
-      const sssWisp = Math.max(0, r.sssContrib - 900);
-      return {
-        'Emp #': r.employee.employeeNo,
-        'Last Name': r.employee.lastName,
-        'First Name': r.employee.firstName,
-        'Client': r.employee.client?.name ?? '',
-        'Days': r.daysWorked,
-        'Basic Salary': r.basicSalary,
-        'OT Pay': r.overtimePay,
-        'Holiday Pay': r.holidayPay ?? 0,
-        'Night Diff': r.nightDifferential ?? 0,
-        'Allowance': r.allowances,
-        'SIL Pay': r.silPay ?? 0,
-        'Gross Pay': r.grossPay,
-        'SSS': sssRegular,
-        'WISP': sssWisp,
-        'PHIC': r.philhealthContrib,
-        'HDMF': r.pagibigContrib,
-        'Withholding Tax': r.withholdingTax,
-        'Late Deduction': r.lateDeduction ?? 0,
-        'Other Deductions': r.otherDeductions ?? 0,
-        'Total Deductions': r.totalDeductions + (r.otherDeductions ?? 0) + (r.lateDeduction ?? 0),
-        'Net Pay': r.netPay,
-      };
-    });
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Payroll Register');
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
-    const safePeriod = (run.period ?? req.params.runId).replace(/[^a-zA-Z0-9_\-]/g, '_');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="Payroll_${safePeriod}.xlsx"`);
-    res.send(buf);
-  } catch (err) { next(err); }
-});
-
-// GET /api/payroll/:runId/gov-report  — accumulated gov benefits for the month (Compenben)
-router.get('/:runId/gov-report', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const run = await prisma.payrollRun.findUnique({ where: { id: req.params.runId } });
-    if (!run) return res.status(404).json({ error: 'Payroll run not found' });
-
-    // Find all posted/paid runs in the same month/year
-    const allRuns = await prisma.payrollRun.findMany({
-      where: { year: run.year, month: run.month, status: { not: 'DRAFT' } },
-      select: { id: true },
-    });
-    const runIds = allRuns.map((r: any) => r.id);
-
-    const records = await prisma.payrollRecord.findMany({
-      where: { payrollRunId: { in: runIds } },
-      include: {
-        employee: { select: { id: true, employeeNo: true, firstName: true, lastName: true } },
-      },
-    });
-
-    const map = new Map<string, any>();
-    for (const r of records) {
-      const key = r.employeeId;
-      if (!map.has(key)) {
-        map.set(key, {
-          employeeNo: (r.employee as any).employeeNo,
-          name: `${r.employee.lastName}, ${r.employee.firstName}`,
-          sss: 0, wisp: 0, phic: 0, hdmf: 0, tax: 0,
-        });
-      }
-      const entry = map.get(key);
-      entry.sss += Math.min(r.sssContrib, 900);
-      entry.wisp += Math.max(0, r.sssContrib - 900);
-      entry.phic += r.philhealthContrib;
-      entry.hdmf += r.pagibigContrib;
-      entry.tax += r.withholdingTax;
-    }
-
-    res.json({
-      month: run.month,
-      year: run.year,
-      records: [...map.values()].sort((a: any, b: any) => a.name.localeCompare(b.name)),
-    });
-  } catch (err) { next(err); }
 });
 
 // GET /api/payroll/:runId  — single run with records (includes client column)
@@ -752,7 +651,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
   }
 });
 
-// PUT /api/payroll/:runId/post  — DRAFT → POSTED (with audit log + SOA# generation)
+// PUT /api/payroll/:runId/post  — DRAFT → POSTED (with audit log)
 router.put('/:runId/post', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const run = await prisma.payrollRun.findUnique({ where: { id: req.params.runId } });
@@ -761,17 +660,9 @@ router.put('/:runId/post', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req:
       return res.status(422).json({ error: `Cannot post a payroll run that is already ${run.status}` });
     }
 
-    // Generate sequential SOA # for this year: NCG-{YYYY}{MM}-{NNNN}
-    const existingPostedCount = await prisma.payrollRun.count({
-      where: { year: run.year, status: { in: ['POSTED', 'PAID'] }, id: { not: run.id } },
-    });
-    const seqNum = String(existingPostedCount + 1).padStart(4, '0');
-    const monthStr = String(run.month).padStart(2, '0');
-    const soaNo = `NCG-${run.year}${monthStr}-${seqNum}`;
-
     const updated = await prisma.payrollRun.update({
       where: { id: req.params.runId },
-      data: { status: 'POSTED', soaNo },
+      data: { status: 'POSTED' },
     });
 
     await (prisma as any).auditLog.create({
@@ -781,7 +672,7 @@ router.put('/:runId/post', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req:
         action: 'POST',
         performedById: req.user!.userId,
         before: { status: 'DRAFT' },
-        after: { status: 'POSTED', soaNo },
+        after: { status: 'POSTED' },
       },
     });
 

@@ -1,87 +1,372 @@
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import session from 'express-session';
-import passport from 'passport';
-import path from 'path';
+// ── Auth ──────────────────────────────────────────────────────────────────────
+export type UserRole =
+  | 'SUPER_ADMIN'
+  | 'HR_MANAGER'
+  | 'HR_STAFF'
+  | 'EMPLOYEE'
+  | 'EMPLOYEE_RELATIONS'
+  | 'ACCOUNTS_MANAGEMENT'
+  | 'BILLING_COLLECTION'
+  | 'ACCOUNTING';
 
-import { setupPassport } from './lib/passport';
-import { errorHandler } from './middleware/errorHandler';
-import { authenticate } from './middleware/authenticate';
-import { rbacGuard } from './middleware/rbac';
-import authRoutes from './routes/auth';
-import employeeRoutes from './routes/employees';
-import attendanceRoutes from './routes/attendance';
-import leaveRoutes from './routes/leave';
-import payrollRoutes from './routes/payroll';
-import clientRoutes from './routes/clients';
-import billingRoutes from './routes/billing';
-import importRoutes from './routes/import';
-import overtimeRoutes from './routes/overtime';
-import companiesRoutes from './routes/companies';
-import { startLeaveAccrualJob } from './jobs/leaveAccrual';
+export type AuthProvider = 'LOCAL' | 'GOOGLE' | 'MICROSOFT';
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
-const isProd = process.env.NODE_ENV === 'production';
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  avatarUrl?: string;
+  provider?: AuthProvider;
+  employeeId?: string;
+}
 
-// ── Security ──────────────────────────────────────────────────────────────────
-app.use(helmet({ contentSecurityPolicy: isProd }));
-app.use(cors({ origin: CLIENT_URL, credentials: true }));
+// ── Company ───────────────────────────────────────────────────────────────────
+export interface Company {
+  id: string;
+  name: string;
+  code: string;
+  address?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { users: number };
+}
 
-// ── Body parsing ──────────────────────────────────────────────────────────────
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// ── Department ────────────────────────────────────────────────────────────────
+export interface Department {
+  id: string;
+  name: string;
+}
 
-// ── Sessions (needed for OAuth redirect flow) ─────────────────────────────────
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: isProd, httpOnly: true, maxAge: 24 * 60 * 60 * 1000 },
-  })
-);
+// ── Employee ──────────────────────────────────────────────────────────────────
+export type EmployeeStatus = 'ACTIVE' | 'ON_LEAVE' | 'INACTIVE' | 'TERMINATED';
+export type EmployeeGender = 'MALE' | 'FEMALE' | 'OTHER';
 
-// ── Passport ──────────────────────────────────────────────────────────────────
-setupPassport();
-app.use(passport.initialize());
-app.use(passport.session());
+export interface Employee {
+  id: string;
+  employeeNo: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  position: string;
+  departmentId: string;
+  department: Department;
+  managerId?: string;
+  manager?: { id: string; firstName: string; lastName: string; position: string };
+  subordinates?: { id: string; firstName: string; lastName: string; position: string }[];
+  status: EmployeeStatus;
+  hireDate: string;
+  basicSalary: number;
+  resourceCost?: number | null;
+  payrollCost?: number | null;
+  clientId?: string | null;
+  client?: { id: string; name: string } | null;
+  sssNo?: string;
+  philhealthNo?: string;
+  pagibigNo?: string;
+  tinNo?: string;
+  gender?: EmployeeGender | null;
+  avatarColor: string;
+  photoUrl?: string | null;
+  address?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  bankName?: string | null;
+  bankAccountNo?: string | null;
+  bankAccountName?: string | null;
+  createdAt: string;
+  user?: { id: string; email: string; role?: UserRole; isActive: boolean } | null;
+}
 
-// ── Static: uploaded files ────────────────────────────────────────────────────
-const uploadsBase = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
-app.use('/uploads', (_req, res, next) => {
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  next();
-}, express.static(uploadsBase));
+export type EmployeeFormData = Omit<Employee, 'id' | 'department' | 'manager' | 'subordinates' | 'createdAt' | 'employeeNo'> & {
+  employeeNo?: string;
+};
 
-// ── Auth routes (no RBAC — login, register, OTP, /me) ────────────────────────
-app.use('/api/auth', authRoutes);
+// ── Profile Change Requests ───────────────────────────────────────────────────
+export type ProfileChangeStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
-// ── Protected API routes (authenticate → RBAC → route handler) ───────────────
-// authenticate verifies the JWT and sets req.user; rbacGuard checks module access.
-// Individual route handlers may call authenticate again internally — that is harmless.
-app.use('/api/employees', authenticate, rbacGuard('employees'), employeeRoutes);
-app.use('/api/attendance', authenticate, rbacGuard('attendance'), attendanceRoutes);
-app.use('/api/leave',      authenticate, rbacGuard('leave'),      leaveRoutes);
-app.use('/api/payroll',    authenticate, rbacGuard('payroll'),    payrollRoutes);
-app.use('/api/clients',    authenticate, rbacGuard('clients'),    clientRoutes);
-app.use('/api/billing',    authenticate, rbacGuard('billing'),    billingRoutes);
-app.use('/api/import',     authenticate, rbacGuard('import'),     importRoutes);
-app.use('/api/overtime',   authenticate, rbacGuard('overtime'),   overtimeRoutes);
-app.use('/api/companies',  authenticate, rbacGuard('companies'),  companiesRoutes);
+export interface ProfileChangeRequest {
+  id: string;
+  employeeId: string;
+  employee?: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor' | 'phone' | 'address' | 'emergencyContactName' | 'emergencyContactPhone'>;
+  changes: {
+    phone?: string;
+    address?: string;
+    emergencyContactName?: string;
+    emergencyContactPhone?: string;
+  };
+  status: ProfileChangeStatus;
+  reviewedById?: string | null;
+  reviewedAt?: string | null;
+  rejectionNote?: string | null;
+  submittedAt: string;
+  updatedAt: string;
+}
 
-// ── Health check ──────────────────────────────────────────────────────────────
-app.get('/api/health', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));
+// ── Gov ID Change Requests ────────────────────────────────────────────────────
+export interface GovIdChangeRequest {
+  id: string;
+  employeeId: string;
+  employee?: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor' | 'sssNo' | 'philhealthNo' | 'pagibigNo' | 'tinNo'>;
+  sssNo?: string | null;
+  philhealthNo?: string | null;
+  pagibigNo?: string | null;
+  tinNo?: string | null;
+  status: ProfileChangeStatus;
+  reviewedById?: string | null;
+  reviewedAt?: string | null;
+  rejectionNote?: string | null;
+  submittedAt: string;
+  updatedAt: string;
+}
 
-// ── Error handler ─────────────────────────────────────────────────────────────
-app.use(errorHandler);
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+export interface AuditLog {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  performedById: string;
+  performedByName?: string;
+  performedAt: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+}
 
-app.listen(PORT, () => {
-  console.log(`HRConnect server running on port ${PORT} [${process.env.NODE_ENV}]`);
-  startLeaveAccrualJob();
-});
+// ── Attendance ────────────────────────────────────────────────────────────────
+export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'HALF_DAY' | 'ON_LEAVE' | 'HOLIDAY' | 'WEEKEND';
 
-export default app;
+export interface AttendanceRecord {
+  id: string;
+  employeeId: string;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
+    client?: { id: string; name: string } | null;
+  };
+  date: string;
+  timeIn?: string;
+  timeOut?: string;
+  status: AttendanceStatus;
+  overtimeHrs: number;
+  notes?: string;
+  isManualEntry?: boolean;
+  manualReason?: string;
+  clockInAt?: string;
+  clockOutAt?: string;
+}
+
+export type AttendanceEditRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface AttendanceEditRequest {
+  id: string;
+  employeeId: string;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
+  attendanceDate: string;
+  requestedTimeIn?: string | null;
+  requestedTimeOut?: string | null;
+  requestedStatus?: string | null;
+  reason: string;
+  attachmentUrl?: string | null;
+  status: AttendanceEditRequestStatus;
+  reviewedById?: string | null;
+  reviewedAt?: string | null;
+  rejectionNote?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Leave ─────────────────────────────────────────────────────────────────────
+export interface LeaveType {
+  id: string;
+  code: string;
+  name: string;
+  daysPerYear: number;
+  isPaid: boolean;
+  legalBasis?: string | null;
+  applicableGender: 'ALL' | 'MALE' | 'FEMALE';
+  resetsAnnually: boolean;
+  accruesMonthly: boolean;
+  isManual: boolean;
+  isActive: boolean;
+}
+
+export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export interface LeaveRequest {
+  id: string;
+  employeeId: string;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
+  leaveTypeId: string;
+  leaveType: LeaveType;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  reason?: string;
+  status: LeaveStatus;
+  filedAt: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  rejectionNote?: string;
+}
+
+export interface LeaveBalance {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  leaveType: LeaveType;
+  year: number;
+  totalDays: number;
+  usedDays: number;
+  pendingDays: number;
+}
+
+// ── Payroll ───────────────────────────────────────────────────────────────────
+export type PayrollStatus = 'DRAFT' | 'POSTED' | 'PAID';
+
+export interface PayrollRecord {
+  id: string;
+  payrollRunId: string;
+  employeeId: string;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
+    department: Department;
+    client?: { id: string; name: string } | null;
+  };
+  basicSalary: number;
+  grossPay: number;
+  sssContrib: number;
+  philhealthContrib: number;
+  pagibigContrib: number;
+  taxableIncome: number;
+  withholdingTax: number;
+  totalDeductions: number;
+  otherDeductions: number;
+  netPay: number;
+  daysWorked: number;
+  overtimePay: number;
+  allowances: number;
+  lateDeduction: number;
+  holidayPay: number;
+  nightDifferential: number;
+  silPay?: number;
+}
+
+export interface PayrollRun {
+  id: string;
+  period: string;
+  year: number;
+  month: number;
+  payPeriodType: number;
+  description?: string;
+  periodStart: string;
+  periodEnd: string;
+  status: PayrollStatus;
+  runAt: string;
+  records: PayrollRecord[];
+}
+
+export interface MyPayrollRecord extends Omit<PayrollRecord, 'employee'> {
+  payrollRun: {
+    period: string; year: number; month: number; payPeriodType: number;
+    description?: string; periodStart?: string; periodEnd?: string;
+    runAt?: string; status: PayrollStatus;
+  };
+  employee?: { client?: { id: string; name: string } | null };
+}
+
+// ── Overtime ──────────────────────────────────────────────────────────────────
+export type OTStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface OvertimeRequest {
+  id: string;
+  employeeId: string;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
+  attendanceId?: string | null;
+  date: string;
+  hours: number;
+  reason?: string;
+  status: OTStatus;
+  approvedAt?: string;
+  rejectedAt?: string;
+  rejectionNote?: string;
+  filedAt: string;
+}
+
+// ── Employee Assignments ──────────────────────────────────────────────────────
+export type AssignmentType = 'DEPLOYED' | 'RTA' | 'TRANSFERRED';
+
+export interface EmployeeAssignment {
+  id: string;
+  employeeId: string;
+  clientId?: string | null;
+  client?: { id: string; name: string } | null;
+  type: AssignmentType;
+  startDate: string;
+  endDate?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+// ── Clients & Billing ─────────────────────────────────────────────────────────
+export type BillingCycle = 'WEEKLY' | 'EVERY_15TH' | 'EVERY_30TH' | 'MONTHLY';
+export type BillingStatus = 'PENDING' | 'PAID' | 'CANCELLED';
+
+export interface ClientPolicy {
+  id: string;
+  clientId: string;
+  type: string;
+  title: string;
+  value?: string | null;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  address?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  servicesOffered?: string;
+  specificRequest?: string;
+  billingCycle: BillingCycle;
+  billingDate?: number | null;
+  payPeriodType?: number | null;
+  adminFeeRate?: number | null;
+  isVatable?: boolean;
+  hasEwt?: boolean;
+  billingTerms?: string | null;
+  activeContract: boolean;
+  createdAt: string;
+  policies?: ClientPolicy[];
+  billings?: Billing[];
+  employees?: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor' | 'status' | 'resourceCost' | 'payrollCost'>[];
+  _count?: { employees: number; billings: number };
+}
+
+export interface Billing {
+  id: string;
+  clientId: string;
+  client?: { id: string; name: string; billingCycle: BillingCycle };
+  billingDate: string;
+  dueDate?: string;
+  amount: number;
+  status: BillingStatus;
+  paidAt?: string;
+  paymentRef?: string;
+  paymentLinkId?: string;
+  paymentLinkUrl?: string;
+  notes?: string;
+  lineItems?: Array<{ label: string; amount: number }> | null;
+  createdAt: string;
+}
+
+export interface BillingSummary {
+  pendingAmount: number;
+  pendingCount: number;
+  paidAmount: number;
+  paidCount: number;
+  dueSoon: (Billing & { client: { id: string; name: string } })[];
+}

@@ -19,7 +19,7 @@ import ClientDetail from '@/pages/ClientDetail';
 import ClientBilling from '@/pages/ClientBilling';
 import Reports from '@/pages/Reports';
 import BulkImport from '@/pages/BulkImport';
-import LeaveSetup from '@/pages/LeaveSetup';
+import GlobalSetup from '@/pages/GlobalSetup';
 import Overtime from '@/pages/Overtime';
 import HubOvertime from '@/pages/hub/HubOvertime';
 
@@ -156,7 +156,7 @@ function AppRoutes() {
         <Route path="billing" element={<ClientBilling />} />
         <Route path="reports" element={<Reports />} />
         <Route path="import" element={<BulkImport />} />
-        <Route path="leave-setup" element={<LeaveSetup />} />
+        <Route path="global-setup" element={<GlobalSetup />} />
         <Route path="overtime" element={<Overtime />} />
       </Route>
 

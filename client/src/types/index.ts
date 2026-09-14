@@ -129,7 +129,6 @@ export interface AuditLog {
   entityId: string;
   action: string;
   performedById: string;
-  performedByName?: string;
   performedAt: string;
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
@@ -141,9 +140,7 @@ export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'HALF_DAY' | 'ON_
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
-  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
-    client?: { id: string; name: string } | null;
-  };
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
   date: string;
   timeIn?: string;
   timeOut?: string;
@@ -229,7 +226,6 @@ export interface PayrollRecord {
   payrollRunId: string;
   employeeId: string;
   employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
-    employeeNo: string;
     department: Department;
     client?: { id: string; name: string } | null;
   };
@@ -250,6 +246,34 @@ export interface PayrollRecord {
   holidayPay: number;
   nightDifferential: number;
   silPay?: number;
+  priorPeriodDeduction?: number;
+  absenceCarryForward?: number;
+}
+
+// ── Global Setup ──────────────────────────────────────────────────────────────
+export interface CutOffPeriod {
+  id: string;
+  name: string;
+  cutOffFromDay: number;
+  cutOffFromIsPrevMonth: boolean;
+  cutOffToDay: number;
+  payDay: number;
+  payDayIsNextMonth: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type GlobalPolicyType = 'SSS_DEDUCTION' | 'PHIC_DEDUCTION' | 'HDMF_DEDUCTION' | 'TAX_DEDUCTION';
+
+export interface GlobalPayrollPolicy {
+  id: string;
+  type: GlobalPolicyType;
+  cutOffPeriodId: string | null;
+  cutOffPeriod: CutOffPeriod | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PayrollRun {
@@ -262,7 +286,6 @@ export interface PayrollRun {
   periodStart: string;
   periodEnd: string;
   status: PayrollStatus;
-  soaNo?: string;
   runAt: string;
   records: PayrollRecord[];
 }
@@ -292,6 +315,21 @@ export interface OvertimeRequest {
   rejectedAt?: string;
   rejectionNote?: string;
   filedAt: string;
+}
+
+// ── Employee Assignments ──────────────────────────────────────────────────────
+export type AssignmentType = 'DEPLOYED' | 'RTA' | 'TRANSFERRED';
+
+export interface EmployeeAssignment {
+  id: string;
+  employeeId: string;
+  clientId?: string | null;
+  client?: { id: string; name: string } | null;
+  type: AssignmentType;
+  startDate: string;
+  endDate?: string | null;
+  notes?: string | null;
+  createdAt: string;
 }
 
 // ── Clients & Billing ─────────────────────────────────────────────────────────
@@ -356,19 +394,4 @@ export interface BillingSummary {
   paidAmount: number;
   paidCount: number;
   dueSoon: (Billing & { client: { id: string; name: string } })[];
-}
-
-// ── Employee Assignments ──────────────────────────────────────────────────────
-export type AssignmentType = 'DEPLOYED' | 'RTA' | 'TRANSFERRED';
-
-export interface EmployeeAssignment {
-  id: string;
-  employeeId: string;
-  clientId?: string | null;
-  client?: { id: string; name: string } | null;
-  type: AssignmentType;
-  startDate: string;
-  endDate?: string | null;
-  notes?: string | null;
-  createdAt: string;
 }
