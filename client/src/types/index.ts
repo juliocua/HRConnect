@@ -129,7 +129,6 @@ export interface AuditLog {
   entityId: string;
   action: string;
   performedById: string;
-  performedByName?: string;
   performedAt: string;
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
@@ -141,9 +140,7 @@ export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'HALF_DAY' | 'ON_
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
-  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
-    client?: { id: string; name: string } | null;
-  };
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
   date: string;
   timeIn?: string;
   timeOut?: string;
@@ -229,6 +226,7 @@ export interface PayrollRecord {
   payrollRunId: string;
   employeeId: string;
   employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
+    employeeNo: string;
     department: Department;
     client?: { id: string; name: string } | null;
   };
@@ -261,6 +259,7 @@ export interface PayrollRun {
   periodStart: string;
   periodEnd: string;
   status: PayrollStatus;
+  soaNo?: string;
   runAt: string;
   records: PayrollRecord[];
 }
@@ -290,21 +289,6 @@ export interface OvertimeRequest {
   rejectedAt?: string;
   rejectionNote?: string;
   filedAt: string;
-}
-
-// ── Employee Assignments ──────────────────────────────────────────────────────
-export type AssignmentType = 'DEPLOYED' | 'RTA' | 'TRANSFERRED';
-
-export interface EmployeeAssignment {
-  id: string;
-  employeeId: string;
-  clientId?: string | null;
-  client?: { id: string; name: string } | null;
-  type: AssignmentType;
-  startDate: string;
-  endDate?: string | null;
-  notes?: string | null;
-  createdAt: string;
 }
 
 // ── Clients & Billing ─────────────────────────────────────────────────────────
@@ -359,7 +343,6 @@ export interface Billing {
   paymentLinkId?: string;
   paymentLinkUrl?: string;
   notes?: string;
-  lineItems?: Array<{ label: string; amount: number }> | null;
   createdAt: string;
 }
 
