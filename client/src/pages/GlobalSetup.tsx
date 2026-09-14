@@ -51,7 +51,7 @@ function TabBar({ tabs, active, onChange }: {
         border: '1px solid var(--color-border)', borderRadius: 6,
         cursor: enabled ? 'pointer' : 'default',
         color: enabled ? 'var(--color-text-secondary)' : 'var(--color-border)',
-        fontSize: 14, marginBottom: 20, transition: 'background 0.12s',
+        fontSize: 14, marginBottom: 0, transition: 'background 0.12s',
       }}
       tabIndex={-1}
     >
@@ -65,7 +65,7 @@ function TabBar({ tabs, active, onChange }: {
       <div
         ref={scrollRef}
         style={{
-          flex: 1, display: 'flex', gap: 2, marginBottom: 20,
+          flex: 1, display: 'flex', gap: 2, marginBottom: 0,
           overflowX: 'auto', scrollbarWidth: 'none' as any,
           msOverflowStyle: 'none' as any, padding: '0 2px',
         }}
@@ -244,10 +244,14 @@ function LeaveSetupContent() {
 
   return (
     <>
-      <TabBar tabs={['Leave Types', 'Manual Balances (SIL)']} active={tab} onChange={setTab} />
+      <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 16px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+          <TabBar tabs={['Leave Types', 'Manual Balances (SIL)']} active={tab} onChange={setTab} />
+        </div>
+        <div style={{ padding: 20 }}>
 
       {tab === 'Leave Types' && (
-        <div className="card">
+        <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Leave Types</h2>
             <button className="btn btn-primary btn-sm" onClick={openCreate}>+ Add Leave Type</button>
@@ -255,11 +259,11 @@ function LeaveSetupContent() {
           {isLoading ? <div className="loading-center"><div className="spinner" /></div> : (
             <DataTable data={types} columns={columns} globalFilterPlaceholder="Search leave types…" exportFilename="leave-types" />
           )}
-        </div>
+        </>
       )}
 
       {tab === 'Manual Balances (SIL)' && (
-        <div className="card">
+        <div>
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Set Manual Leave Balance</h2>
           <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 20 }}>
             Use this to manually set leave balances for leave types that do not accrue automatically (e.g. Service Incentive Leave).
@@ -301,6 +305,9 @@ function LeaveSetupContent() {
           )}
         </div>
       )}
+
+        </div>
+      </div>
 
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
@@ -593,11 +600,15 @@ export default function GlobalSetup() {
         </div>
       </div>
 
-      {/* Outer tabs */}
-      <TabBar tabs={['Leave', 'Payroll']} active={outerTab} onChange={setOuterTab} />
-
-      {outerTab === 'Leave' && <LeaveSetupContent />}
-      {outerTab === 'Payroll' && <PayrollSetupContent />}
+      <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
+        <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
+          <TabBar tabs={['Leave', 'Payroll']} active={outerTab} onChange={setOuterTab} />
+        </div>
+        <div style={{ padding: 24 }}>
+          {outerTab === 'Leave' && <LeaveSetupContent />}
+          {outerTab === 'Payroll' && <PayrollSetupContent />}
+        </div>
+      </div>
     </div>
   );
 }
