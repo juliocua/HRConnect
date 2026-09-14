@@ -33,10 +33,12 @@ export default function Dashboard() {
     queryFn: () => api.get('/leave?status=PENDING').then(r => r.data),
   });
 
-  const { data: currentPayroll } = useQuery<PayrollRun | null>({
-    queryKey: ['payroll', year, month],
-    queryFn: () => api.get(`/payroll?year=${year}&month=${month}`).then(r => r.data ?? null),
+  const { data: payrollHistory } = useQuery<PayrollRun[]>({
+    queryKey: ['payroll', 'history'],
+    queryFn: () => api.get('/payroll/history').then(r => r.data ?? []),
   });
+  // Pick the most recent run for the dashboard stat card
+  const currentPayroll = payrollHistory?.[0] ?? null;
 
   const { data: billingSummary } = useQuery<BillingSummary>({
     queryKey: ['billing-summary'],

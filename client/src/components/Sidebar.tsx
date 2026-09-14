@@ -47,7 +47,7 @@ const NAV_ITEMS: Array<{
     section: 'Tools',
     links: [
       { to: '/import',      label: 'Bulk Import', icon: IconImport,     module: 'import'     },
-      { to: '/leave-setup', label: 'Leave Setup',  icon: IconLeaveSetup, module: 'leaveSetup' },
+      { to: '/global-setup', label: 'Global Setup',  icon: IconLeaveSetup, module: 'leaveSetup' },
     ],
   },
 ];
