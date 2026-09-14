@@ -141,7 +141,9 @@ export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'HALF_DAY' | 'ON_
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
-  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
+    client?: { id: string; name: string } | null;
+  };
   date: string;
   timeIn?: string;
   timeOut?: string;
@@ -344,6 +346,7 @@ export interface Billing {
   paymentLinkId?: string;
   paymentLinkUrl?: string;
   notes?: string;
+  lineItems?: Array<{ label: string; amount: number }> | null;
   createdAt: string;
 }
 
@@ -353,4 +356,19 @@ export interface BillingSummary {
   paidAmount: number;
   paidCount: number;
   dueSoon: (Billing & { client: { id: string; name: string } })[];
+}
+
+// ── Employee Assignments ──────────────────────────────────────────────────────
+export type AssignmentType = 'DEPLOYED' | 'RTA' | 'TRANSFERRED';
+
+export interface EmployeeAssignment {
+  id: string;
+  employeeId: string;
+  clientId?: string | null;
+  client?: { id: string; name: string } | null;
+  type: AssignmentType;
+  startDate: string;
+  endDate?: string | null;
+  notes?: string | null;
+  createdAt: string;
 }
