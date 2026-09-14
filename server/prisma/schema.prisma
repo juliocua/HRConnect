@@ -525,3 +525,33 @@ model PayrollRecord {
   @@unique([payrollRunId, employeeId])
   @@map("payroll_records")
 }
+
+// ── Global Setup ──────────────────────────────────────────────────────────────
+
+model CutOffPeriod {
+  id                    String               @id @default(cuid())
+  name                  String
+  cutOffFromDay         Int
+  cutOffFromIsPrevMonth Boolean              @default(false)
+  cutOffToDay           Int
+  payDay                Int
+  payDayIsNextMonth     Boolean              @default(false)
+  sortOrder             Int                  @default(0)
+  isActive              Boolean              @default(true)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  globalPayrollPolicies GlobalPayrollPolicy[]
+
+  @@map("cut_off_periods")
+}
+
+model GlobalPayrollPolicy {
+  id              String       @id @default(cuid())
+  type            String       @unique
+  cutOffPeriodId  String?
+  cutOffPeriod    CutOffPeriod? @relation(fields: [cutOffPeriodId], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@map("global_payroll_policies")
+}
