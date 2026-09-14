@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
@@ -6,6 +6,96 @@ import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import type { LeaveType, Employee, LeaveBalance, CutOffPeriod, GlobalPayrollPolicy } from '@/types';
+
+// ── Tab Bar (same as Employee modal) ─────────────────────────────────────────
+function TabBar({ tabs, active, onChange }: {
+  tabs: string[];
+  active: string;
+  onChange: (t: string) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const rafId = requestAnimationFrame(checkScroll);
+    el.addEventListener('scroll', checkScroll);
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => { cancelAnimationFrame(rafId); el.removeEventListener('scroll', checkScroll); ro.disconnect(); };
+  }, [tabs]);
+
+  const scroll = (dir: 'left' | 'right') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir === 'left' ? -120 : 120, behavior: 'smooth' });
+  };
+
+  const arrowBtn = (dir: 'left' | 'right', enabled: boolean) => (
+    <button
+      type="button"
+      onClick={() => scroll(dir)}
+      style={{
+        flexShrink: 0, width: 26, height: 30,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: enabled ? 'var(--color-surface-2)' : 'transparent',
+        border: '1px solid var(--color-border)', borderRadius: 6,
+        cursor: enabled ? 'pointer' : 'default',
+        color: enabled ? 'var(--color-text-secondary)' : 'var(--color-border)',
+        fontSize: 14, marginBottom: 20, transition: 'background 0.12s',
+      }}
+      tabIndex={-1}
+    >
+      {dir === 'left' ? '‹' : '›'}
+    </button>
+  );
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+      {arrowBtn('left', canScrollLeft)}
+      <div
+        ref={scrollRef}
+        style={{
+          flex: 1, display: 'flex', gap: 2, marginBottom: 20,
+          overflowX: 'auto', scrollbarWidth: 'none' as any,
+          msOverflowStyle: 'none' as any, padding: '0 2px',
+        }}
+      >
+        {tabs.map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => onChange(t)}
+            style={{
+              background: active === t ? 'var(--color-primary)' : 'transparent',
+              border: active === t ? 'none' : '1px solid var(--color-border)',
+              borderRadius: '6px 6px 0 0',
+              padding: '7px 16px',
+              fontSize: 13,
+              fontWeight: active === t ? 700 : 500,
+              color: active === t ? '#fff' : 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'background 0.12s, color 0.12s',
+            }}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      {arrowBtn('right', canScrollRight)}
+    </div>
+  );
+}
 
 // ── Leave Setup sub-component (verbatim from LeaveSetup) ─────────────────────
 
@@ -25,7 +115,7 @@ const BLANK_LEAVE_FORM = {
 function LeaveSetupContent() {
   const qc = useQueryClient();
   const toast = useToast();
-  const [tab, setTab] = useState<'types' | 'balances'>('types');
+  const [tab, setTab] = useState('Leave Types');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<LeaveType | null>(null);
   const [form, setForm] = useState({ ...BLANK_LEAVE_FORM });
@@ -45,7 +135,7 @@ function LeaveSetupContent() {
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['employees'],
     queryFn: () => api.get('/employees').then(r => r.data),
-    enabled: tab === 'balances',
+    enabled: tab === 'Manual Balances (SIL)',
   });
   const { data: empBalances = [] } = useQuery<LeaveBalance[]>({
     queryKey: ['leave-balances', silEmployeeId, silYear],
@@ -154,12 +244,9 @@ function LeaveSetupContent() {
 
   return (
     <>
-      <div className="tab-bar" style={{ marginBottom: 24 }}>
-        <button className={`tab-btn${tab === 'types' ? ' active' : ''}`} onClick={() => setTab('types')}>Leave Types</button>
-        <button className={`tab-btn${tab === 'balances' ? ' active' : ''}`} onClick={() => setTab('balances')}>Manual Balances (SIL)</button>
-      </div>
+      <TabBar tabs={['Leave Types', 'Manual Balances (SIL)']} active={tab} onChange={setTab} />
 
-      {tab === 'types' && (
+      {tab === 'Leave Types' && (
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Leave Types</h2>
@@ -171,7 +258,7 @@ function LeaveSetupContent() {
         </div>
       )}
 
-      {tab === 'balances' && (
+      {tab === 'Manual Balances (SIL)' && (
         <div className="card">
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Set Manual Leave Balance</h2>
           <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 20 }}>
@@ -495,7 +582,7 @@ function PayrollSetupContent() {
 // ── Main GlobalSetup page ─────────────────────────────────────────────────────
 
 export default function GlobalSetup() {
-  const [outerTab, setOuterTab] = useState<'leave' | 'payroll'>('leave');
+  const [outerTab, setOuterTab] = useState('Leave');
 
   return (
     <div className="page-container">
@@ -507,13 +594,10 @@ export default function GlobalSetup() {
       </div>
 
       {/* Outer tabs */}
-      <div className="tab-bar" style={{ marginBottom: 24 }}>
-        <button className={`tab-btn${outerTab === 'leave' ? ' active' : ''}`} onClick={() => setOuterTab('leave')}>Leave</button>
-        <button className={`tab-btn${outerTab === 'payroll' ? ' active' : ''}`} onClick={() => setOuterTab('payroll')}>Payroll</button>
-      </div>
+      <TabBar tabs={['Leave', 'Payroll']} active={outerTab} onChange={setOuterTab} />
 
-      {outerTab === 'leave' && <LeaveSetupContent />}
-      {outerTab === 'payroll' && <PayrollSetupContent />}
+      {outerTab === 'Leave' && <LeaveSetupContent />}
+      {outerTab === 'Payroll' && <PayrollSetupContent />}
     </div>
   );
 }
