@@ -23,7 +23,6 @@ export default function Payroll() {
   const [showRunModal, setShowRunModal] = useState(false);
   const [viewRunId, setViewRunId] = useState<string | null>(null);
   const [showSlip, setShowSlip] = useState<PayrollRecord | null>(null);
-  const [downloadingExcel, setDownloadingExcel] = useState(false);
   const [downloadingGovReport, setDownloadingGovReport] = useState(false);
 
   const isManager = user?.role === 'HR_MANAGER' || user?.role === 'SUPER_ADMIN';
@@ -72,22 +71,6 @@ export default function Payroll() {
   const handleOtherDeductionsBlur = useCallback((recordId: string, value: number) => {
     updateRecordMutation.mutate({ recordId, otherDeductions: value });
   }, [updateRecordMutation]);
-
-  const handleDownloadExcel = async () => {
-    if (!viewRunId || !currentRun) return;
-    setDownloadingExcel(true);
-    try {
-      const resp = await api.get(`/payroll/${viewRunId}/excel`, { responseType: 'blob' });
-      const url = URL.createObjectURL(resp.data);
-      const a = document.createElement('a');
-      a.href = url;
-      const safePeriod = (currentRun.period ?? viewRunId).replace(/[^a-zA-Z0-9_\-]/g, '_');
-      a.download = `Payroll_${safePeriod}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch { console.error('Failed to generate Excel'); }
-    finally { setDownloadingExcel(false); }
-  };
 
   const handleDownloadGovReport = async () => {
     if (!viewRunId || !currentRun) return;
@@ -260,9 +243,6 @@ export default function Payroll() {
           )}
           {viewRunId && currentRun && isManager && (
             <>
-              <button className="btn btn-secondary btn-sm" disabled={downloadingExcel} onClick={handleDownloadExcel}>
-                {downloadingExcel ? 'Generating…' : '📊 Excel'}
-              </button>
               <button className="btn btn-secondary btn-sm" disabled={downloadingGovReport} onClick={handleDownloadGovReport}>
                 {downloadingGovReport ? 'Generating…' : '🏛 Gov Benefits'}
               </button>

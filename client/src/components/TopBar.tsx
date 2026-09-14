@@ -37,12 +37,7 @@ export default function TopBar() {
           {dark ? <IconSun /> : <IconMoon />}
         </button>
 
-        {/* User avatar */}
-        <div className="avatar" style={{ background: 'var(--color-primary)', cursor: 'default' }}>
-          {user?.avatarUrl
-            ? <img src={user.avatarUrl} alt={user.name} />
-            : initials(user?.name ?? '')}
-        </div>
+
       </div>
     </header>
   );

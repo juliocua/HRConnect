@@ -140,7 +140,9 @@ export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'HALF_DAY' | 'ON_
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
-  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'>;
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
+    client?: { id: string; name: string } | null;
+  };
   date: string;
   timeIn?: string;
   timeOut?: string;
@@ -225,7 +227,7 @@ export interface PayrollRecord {
   id: string;
   payrollRunId: string;
   employeeId: string;
-  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
+  employee: Pick<Employee, 'id' | 'employeeNo' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
     department: Department;
     client?: { id: string; name: string } | null;
   };
@@ -287,6 +289,7 @@ export interface PayrollRun {
   periodEnd: string;
   status: PayrollStatus;
   runAt: string;
+  soaNo?: string | null;
   records: PayrollRecord[];
 }
 
