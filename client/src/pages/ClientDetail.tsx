@@ -949,12 +949,14 @@ function ClientModal({ client, onClose, onSaved }: {
                 <label>Billing Terms</label>
                 <input className="form-control" placeholder="e.g. Net 30" value={form.billingTerms ?? ''} onChange={e => set('billingTerms', e.target.value || null)} />
               </div>
-              <div className="form-group" style={{ gridColumn: '1/-1', display: 'flex', gap: 24, alignItems: 'center', paddingTop: 4 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0, fontWeight: 500 }}>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 500, margin: 0 }}>
                   <input type="checkbox" checked={!!form.isVatable} onChange={e => set('isVatable', e.target.checked)} />
                   Subject to VAT
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0, fontWeight: 500 }}>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 500, margin: 0 }}>
                   <input type="checkbox" checked={!!form.hasEwt} onChange={e => set('hasEwt', e.target.checked)} />
                   Subject to EWT (Expanded Withholding Tax)
                 </label>
