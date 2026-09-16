@@ -122,29 +122,32 @@ export default function ClientDetail() {
         ))}
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 2, marginBottom: 24 }}>
-        {(['overview', 'policies', 'billing'] as Tab[]).map(t => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            style={{
-              background: tab === t ? 'var(--color-primary)' : 'transparent',
-              border: tab === t ? 'none' : '1px solid var(--color-border)',
-              borderRadius: '6px 6px 0 0',
-              padding: '7px 16px',
-              fontSize: 13,
-              fontWeight: tab === t ? 700 : 500,
-              color: tab === t ? '#fff' : 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {t === 'overview' ? 'Overview' : t === 'policies' ? `Policies (${client.policies?.length ?? 0})` : `Billing History (${client.billings?.length ?? 0})`}
-          </button>
-        ))}
-      </div>
+      {/* Tabs + Content Container */}
+      <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
+        <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 2 }}>
+          {(['overview', 'policies', 'billing'] as Tab[]).map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              style={{
+                background: tab === t ? 'var(--color-primary)' : 'transparent',
+                border: tab === t ? 'none' : '1px solid var(--color-border)',
+                borderRadius: '6px 6px 0 0',
+                padding: '7px 16px',
+                fontSize: 13,
+                fontWeight: tab === t ? 700 : 500,
+                color: tab === t ? '#fff' : 'var(--color-text-secondary)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'background 0.12s, color 0.12s',
+              }}
+            >
+              {t === 'overview' ? 'Overview' : t === 'policies' ? `Policies (${client.policies?.length ?? 0})` : `Billing History (${client.billings?.length ?? 0})`}
+            </button>
+          ))}
+        </div>
+        <div style={{ padding: 24 }}>
 
       {/* Tab: Overview */}
       {tab === 'overview' && (
@@ -218,6 +221,29 @@ export default function ClientDetail() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Billing Setup */}
+        <div className="card" style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 14 }}>Billing Setup</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px 24px' }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Admin Fee Rate</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{client.adminFeeRate != null ? `${client.adminFeeRate}%` : <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Not set</span>}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>Billing Terms</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{client.billingTerms ?? <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>Not set</span>}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>VAT</div>
+              <span className={`badge ${client.isVatable ? 'badge-green' : 'badge-gray'}`}>{client.isVatable ? '✓ Vatable' : '✗ Non-vatable'}</span>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>EWT</div>
+              <span className={`badge ${client.hasEwt ? 'badge-blue' : 'badge-gray'}`}>{client.hasEwt ? '✓ Subject to EWT' : '✗ Not applicable'}</span>
+            </div>
           </div>
         </div>
       )}
@@ -380,6 +406,9 @@ export default function ClientDetail() {
           )}
         </div>
       )}
+
+        </div>{/* end tab content */}
+      </div>{/* end tab container */}
 
       {showPolicyModal && (
         <PolicyModal
@@ -799,6 +828,7 @@ const BLANK: Partial<Client> = {
   name: '', address: '', contactName: '', contactEmail: '', contactPhone: '',
   servicesOffered: '', specificRequest: '', billingCycle: 'MONTHLY',
   billingDate: null, activeContract: true,
+  adminFeeRate: null, billingTerms: null, isVatable: false, hasEwt: false,
 };
 
 function ClientModal({ client, onClose, onSaved }: {
@@ -903,6 +933,29 @@ function ClientModal({ client, onClose, onSaved }: {
                   <option value="true">Active Contract</option>
                   <option value="false">Inactive / Ended</option>
                 </select>
+              </div>
+              <div className="form-group">
+                <label>Admin Fee Rate (%)</label>
+                <input
+                  type="number" className="form-control"
+                  placeholder="e.g. 15"
+                  value={form.adminFeeRate ?? ''}
+                  onChange={e => set('adminFeeRate', e.target.value ? parseFloat(e.target.value) : null)}
+                />
+              </div>
+              <div className="form-group">
+                <label>Billing Terms</label>
+                <input className="form-control" placeholder="e.g. Net 30" value={form.billingTerms ?? ''} onChange={e => set('billingTerms', e.target.value || null)} />
+              </div>
+              <div className="form-group" style={{ gridColumn: '1/-1', display: 'flex', gap: 24, alignItems: 'center', paddingTop: 4 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0, fontWeight: 500 }}>
+                  <input type="checkbox" checked={!!form.isVatable} onChange={e => set('isVatable', e.target.checked)} />
+                  Subject to VAT
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: 0, fontWeight: 500 }}>
+                  <input type="checkbox" checked={!!form.hasEwt} onChange={e => set('hasEwt', e.target.checked)} />
+                  Subject to EWT (Expanded Withholding Tax)
+                </label>
               </div>
             </div>
           </div>

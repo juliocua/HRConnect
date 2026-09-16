@@ -294,7 +294,18 @@ router.post(
 
         // Add any additional line item charges
         const lineItemTotal = (lineItems ?? []).reduce((sum: number, li: any) => sum + li.amount, 0);
-        const amount = resourceTotal + lineItemTotal;
+        const grossSubtotal = resourceTotal + lineItemTotal;
+
+        // Admin fee (if set on client)
+        const adminFeeRate = (client as any).adminFeeRate as number | null;
+        const adminFeeAmount = adminFeeRate ? grossSubtotal * adminFeeRate / 100 : 0;
+        const afterAdminFee = grossSubtotal + adminFeeAmount;
+
+        // VAT 12% (if client is vatable)
+        const isVatable = (client as any).isVatable as boolean;
+        const vatCalc = isVatable ? afterAdminFee * 0.12 : 0;
+
+        const amount = afterAdminFee + vatCalc;
 
         if (amount <= 0) {
           skipped.push({ clientId, name: client.name, reason: 'Total amount is ₱0 — set resource costs on deployed employees or add line charges' });

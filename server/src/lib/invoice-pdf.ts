@@ -152,13 +152,53 @@ export async function generateInvoicePDF(billing: any, company?: CompanyInfo): P
       }
     }
 
-    // ── Total row ─────────────────────────────────────────────────────────────────
+    // ── Subtotals & fee breakdown ─────────────────────────────────────────────────
     rowY += 8;
+
+    // Compute breakdown from employee resource costs + line items
+    const empTotal = employees.reduce((s: number, e: any) => s + (e.resourceCost ?? 0), 0);
+    const liTotal = lineItems.reduce((s: number, li: { label: string; amount: number }) => s + li.amount, 0);
+    const grossSubtotal = empTotal + liTotal;
+    const clientAdminFeeRate: number | null = billing.client?.adminFeeRate ?? null;
+    const adminFeeAmount = clientAdminFeeRate ? grossSubtotal * clientAdminFeeRate / 100 : 0;
+    const afterAdminFee = grossSubtotal + adminFeeAmount;
+    const clientIsVatable: boolean = !!billing.client?.isVatable;
+    const vatAmount = clientIsVatable ? afterAdminFee * 0.12 : 0;
+    const grandTotal = afterAdminFee + vatAmount;
+
+    const subtotalLabelX = col3 - 60;
+    const subtotalAmtWidth = rightEdge - col3 - 8;
+
+    // Show subtotal line only when there are fee additions
+    if (adminFeeAmount > 0 || vatAmount > 0) {
+      doc.font('Helvetica').fontSize(10).fillColor(muted)
+        .text('Subtotal', subtotalLabelX, rowY, { width: 60, align: 'right' })
+        .font('Helvetica').fillColor(dark).text(fmt(grossSubtotal), col3, rowY, { width: subtotalAmtWidth, align: 'right' });
+      rowY += 18;
+    }
+
+    if (adminFeeAmount > 0) {
+      doc.font('Helvetica').fontSize(10).fillColor(muted)
+        .text(`Admin Fee (${clientAdminFeeRate}%)`, subtotalLabelX - 60, rowY, { width: 120, align: 'right' })
+        .font('Helvetica').fillColor(dark).text(fmt(adminFeeAmount), col3, rowY, { width: subtotalAmtWidth, align: 'right' });
+      rowY += 18;
+    }
+
+    if (vatAmount > 0) {
+      doc.font('Helvetica').fontSize(10).fillColor(muted)
+        .text('VAT (12%)', subtotalLabelX, rowY, { width: 60, align: 'right' })
+        .font('Helvetica-Bold').fillColor('#0369A1').text(fmt(vatAmount), col3, rowY, { width: subtotalAmtWidth, align: 'right' });
+      rowY += 18;
+    }
+
+    rowY += 4;
+
+    // ── Total row ─────────────────────────────────────────────────────────────────
     doc.rect(col3 - 10, rowY, rightEdge - col3 + 10, 36).fill(primary);
     doc.font('Helvetica-Bold').fontSize(11).fillColor('#fff').text('TOTAL', col3, rowY + 12, { width: rightEdge - col3 - 8, align: 'right' });
     rowY += 36;
     doc.rect(col3 - 10, rowY, rightEdge - col3 + 10, 36).fill('#1D4ED8');
-    doc.font('Helvetica-Bold').fontSize(14).fillColor('#fff').text(fmt(billing.amount), col3, rowY + 11, { width: rightEdge - col3 - 8, align: 'right' });
+    doc.font('Helvetica-Bold').fontSize(14).fillColor('#fff').text(fmt(grandTotal), col3, rowY + 11, { width: rightEdge - col3 - 8, align: 'right' });
     rowY += 50;
 
     // ── Payment section ───────────────────────────────────────────────────────────
