@@ -151,6 +151,7 @@ export default function ClientDetail() {
 
       {/* Tab: Overview */}
       {tab === 'overview' && (
+        <>
         <div className="grid-2">
           {/* Contact */}
           <div className="card">
@@ -246,6 +247,7 @@ export default function ClientDetail() {
             </div>
           </div>
         </div>
+        </>
       )}
 
       {/* Tab: Policies */}
