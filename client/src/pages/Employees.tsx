@@ -1715,12 +1715,15 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
     enabled: activeTab === 'Attendance',
   });
 
-  const downloadPayslipPdf = async (recId: number) => {
+  const downloadPayslipPdf = async (recId: number, period?: string) => {
     try {
       const response = await api.get(`/payroll/record/${recId}/pdf`, { responseType: 'blob' });
       const url = URL.createObjectURL(response.data);
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Payslip_${e.lastName}_${period ? period.replace(/[^a-zA-Z0-9]/g, '_') : recId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch {
       toast('error', 'Failed to download payslip PDF');
     }
@@ -2020,7 +2023,7 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
                         type="button"
                         className="btn btn-ghost btn-sm"
                         style={{ fontSize: 12 }}
-                        onClick={() => downloadPayslipPdf(rec.id)}
+                        onClick={() => downloadPayslipPdf(rec.id, rec.payrollRun?.period)}
                       >⬇ PDF</button>
                     </div>
                   ))}

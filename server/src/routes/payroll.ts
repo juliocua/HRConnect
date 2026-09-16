@@ -202,20 +202,12 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
         .text(companyName.toUpperCase(), 120, logoY + 4, { width: 375, lineBreak: false });
       doc.fontSize(10).font('Helvetica').fillColor('#444444')
         .text('PAYSLIP', 120, doc.y + 2, { width: 375 });
-      if (companyAddress || companyContact) {
-        doc.fontSize(8.5).font('Helvetica').fillColor('#888888')
-          .text([companyAddress, companyContact].filter(Boolean).join('  ·  '), 120, doc.y, { width: 375 });
-      }
       doc.y = Math.max(doc.y, logoY + 62);
     } else {
       doc.fontSize(16).font('Helvetica-Bold').fillColor('#111111')
         .text(companyName.toUpperCase(), { align: 'center' });
       doc.fontSize(11).font('Helvetica').fillColor('#444444')
         .text('PAYSLIP', { align: 'center' });
-      if (companyAddress || companyContact) {
-        doc.fontSize(8.5).font('Helvetica').fillColor('#888888')
-          .text([companyAddress, companyContact].filter(Boolean).join('  ·  '), 50, doc.y, { align: 'center', width: 495 });
-      }
     }
     doc.fillColor('#111111');
     separator();
@@ -304,14 +296,15 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
       .text('NET PAY', 50, netY, { width: 340, lineBreak: false });
     doc.fontSize(13).font('Helvetica-Bold').fillColor('#1d4ed8')
       .text(phpFmt(record.netPay), 390, netY, { width: 155, align: 'right', lineBreak: false });
-    doc.fillColor('#111111').moveDown(2);
-    separator();
+    doc.fillColor('#111111');
 
-    // ── Footer ─────────────────────────────────────────────────────────────────
+    // ── Footer at bottom of page ───────────────────────────────────────────────
+    const footerY = doc.page.height - doc.page.margins.bottom - 24;
+    doc.moveTo(50, footerY - 10).lineTo(545, footerY - 10).stroke();
     doc.fontSize(8.5).font('Helvetica').fillColor('#888888')
       .text(
         `Generated on ${fmtDate(new Date())}  ·  This is a system-generated payslip. No signature required.`,
-        50, doc.y, { align: 'center', width: 495 }
+        50, footerY, { align: 'center', width: 495 }
       );
 
     doc.end();

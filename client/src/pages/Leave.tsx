@@ -174,29 +174,31 @@ export default function Leave() {
         </button>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 2, marginBottom: 20 }}>
-        {(['requests', 'balances'] as const).map(t => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setActiveTab(t)}
-            style={{
-              background: activeTab === t ? 'var(--color-primary)' : 'transparent',
-              border: activeTab === t ? 'none' : '1px solid var(--color-border)',
-              borderRadius: '6px 6px 0 0',
-              padding: '7px 16px',
-              fontSize: 13,
-              fontWeight: activeTab === t ? 700 : 500,
-              color: activeTab === t ? '#fff' : 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {t === 'requests' ? 'Requests' : 'Balances'}
-          </button>
-        ))}
-      </div>
+      {/* Tabs + Content Container */}
+      <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
+        <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 2 }}>
+          {(['requests', 'balances'] as const).map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setActiveTab(t)}
+              style={{
+                background: activeTab === t ? 'var(--color-primary)' : 'transparent',
+                border: activeTab === t ? 'none' : '1px solid var(--color-border)',
+                borderRadius: '6px 6px 0 0',
+                padding: '7px 16px',
+                fontSize: 13,
+                fontWeight: activeTab === t ? 700 : 500,
+                color: activeTab === t ? '#fff' : 'var(--color-text-secondary)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t === 'requests' ? 'Requests' : 'Balances'}
+            </button>
+          ))}
+        </div>
+        <div style={{ padding: 24 }}>
 
       {activeTab === 'requests' && (
         <>
@@ -318,6 +320,9 @@ export default function Leave() {
           )}
         </div>
       )}
+
+        </div>{/* end padding div */}
+      </div>{/* end tab container */}
 
       {showModal && (
         <LeaveModal

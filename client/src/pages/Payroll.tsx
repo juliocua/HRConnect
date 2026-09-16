@@ -726,25 +726,62 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
 
 function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: () => void }) {
   const otherDed = r.otherDeductions ?? 0;
+  const [downloading, setDownloading] = useState(false);
+
+  const { data: company } = useQuery<{ name?: string; logoUrl?: string | null }>({
+    queryKey: ['company-settings'],
+    queryFn: () => api.get('/global-setup/company').then(res => res.data),
+  });
+
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    try {
+      const resp = await api.get(`/payroll/record/${r.id}/pdf`, { responseType: 'blob' });
+      const url = URL.createObjectURL(resp.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Payslip_${r.employee.lastName}_${r.employee.firstName}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={ev => ev.target === ev.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <h2 className="modal-title">Payslip — {r.employee.firstName} {r.employee.lastName}</h2>
-          <button className="icon-btn" onClick={onClose}>✕</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={handleDownloadPdf} disabled={downloading}>
+              {downloading ? 'Generating…' : '⬇ PDF'}
+            </button>
+            <button className="icon-btn" onClick={onClose}>✕</button>
+          </div>
         </div>
         <div className="modal-body">
-          {/* Employee info */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-            <div className="emp-avatar" style={{ width: 48, height: 48, fontSize: 16, background: r.employee.avatarColor }}>
-              {r.employee.firstName[0]}{r.employee.lastName[0]}
-            </div>
-            <div>
-              <div style={{ fontWeight: 700 }}>{r.employee.firstName} {r.employee.lastName}</div>
-              <div className="text-muted text-sm">
-                {r.employee.position} · {r.employee.department.name}
-                {r.employee.client?.name && ` · ${r.employee.client.name}`}
+          {/* Company header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--color-border)' }}>
+            {company?.logoUrl ? (
+              <img src={company.logoUrl} alt="logo" style={{ width: 44, height: 44, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--color-border)' }} />
+            ) : (
+              <div style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: '#fff', fontWeight: 700, flexShrink: 0 }}>
+                {(company?.name ?? 'C')[0]}
               </div>
+            )}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{company?.name ?? ''}</div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Official Payslip</div>
+            </div>
+          </div>
+
+          {/* Employee info */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontWeight: 700 }}>{r.employee.firstName} {r.employee.lastName}</div>
+            <div className="text-muted text-sm">
+              {r.employee.position} · {r.employee.department.name}
+              {r.employee.client?.name && ` · ${r.employee.client.name}`}
             </div>
           </div>
 
