@@ -341,6 +341,7 @@ model Attendance {
   timeOut     DateTime?
   status      AttendanceStatus
   overtimeHrs     Float            @default(0)
+  lateMinutes     Float            @default(0)
   notes           String?
   isManualEntry   Boolean          @default(false)
   manualReason    String?

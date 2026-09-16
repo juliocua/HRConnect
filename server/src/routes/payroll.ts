@@ -640,49 +640,18 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           date: { gte: periodStart, lte: periodEnd },
           status: { in: ['PRESENT', 'LATE', 'HALF_DAY'] },
         },
-        select: { employeeId: true, status: true, timeIn: true, clockInAt: true },
+        select: { employeeId: true, status: true, overtimeHrs: true, lateMinutes: true },
       });
 
-      // Fetch client shift policies for all employees (to compute minutes late)
-      const allClientIds = [...new Set(
-        employees.filter((e: any) => e.clientId).map((e: any) => e.clientId as string)
-      )];
-      const shiftPolicies = allClientIds.length > 0
-        ? await prisma.clientPolicy.findMany({
-            where: { clientId: { in: allClientIds }, type: 'WORK_HOURS' },
-            select: { clientId: true, value: true },
-          })
-        : [];
-      const shiftMap = new Map<string, string>(); // clientId → "HH:MM"
-      for (const p of shiftPolicies) {
-        if (p.value) {
-          try {
-            const parsed = JSON.parse(p.value);
-            if (parsed.shiftStart) shiftMap.set(p.clientId, parsed.shiftStart);
-          } catch { /* ignore */ }
-        }
-      }
-
-      const empById = new Map<string, any>(employees.map((e: any) => [e.id, e]));
-
-      interface AttTotals { daysWorked: number; minutesLate: number; }
+      interface AttTotals { daysWorked: number; minutesLate: number; otHours: number; }
       const attendanceMap = new Map<string, AttTotals>();
       for (const att of allAttendance) {
-        const cur = attendanceMap.get(att.employeeId) ?? { daysWorked: 0, minutesLate: 0 };
+        const cur = attendanceMap.get(att.employeeId) ?? { daysWorked: 0, minutesLate: 0, otHours: 0 };
         cur.daysWorked += att.status === 'HALF_DAY' ? 0.5 : 1;
-        if (att.status === 'LATE') {
-          const emp = empById.get(att.employeeId);
-          const shiftStartStr = emp?.clientId ? (shiftMap.get(emp.clientId) ?? '08:00') : '08:00';
-          const [shiftHr, shiftMin] = shiftStartStr.split(':').map(Number);
-          const clockIn = att.clockInAt ?? att.timeIn;
-          if (clockIn) {
-            const clockInDate = new Date(clockIn);
-            const shiftDate = new Date(clockInDate);
-            shiftDate.setHours(shiftHr, shiftMin, 0, 0);
-            const lateMs = Math.max(0, clockInDate.getTime() - shiftDate.getTime());
-            cur.minutesLate += lateMs / 60_000;
-          }
-        }
+        // lateMinutes is stored on the attendance record by attendance.ts at the time of LATE detection
+        cur.minutesLate += (att as any).lateMinutes ?? 0;
+        // OT hours stored on the attendance record (HR-set or auto-computed from clock-out)
+        cur.otHours += (att as any).overtimeHrs ?? 0;
         attendanceMap.set(att.employeeId, cur);
       }
 
@@ -712,19 +681,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         silDaysMap.set(req.employeeId, (silDaysMap.get(req.employeeId) ?? 0) + days);
       }
 
-      // Fetch approved OT requests in the period
-      const otRequests = await prisma.overtimeRequest.findMany({
-        where: {
-          employeeId: { in: employees.map((e: any) => e.id) },
-          status: 'APPROVED',
-          date: { gte: periodStart, lte: periodEnd },
-        },
-        select: { employeeId: true, hours: true },
-      });
-      const otHoursMap = new Map<string, number>();
-      for (const ot of otRequests) {
-        otHoursMap.set(ot.employeeId, (otHoursMap.get(ot.employeeId) ?? 0) + ot.hours);
-      }
+      // OT hours are taken directly from attendance.overtimeHrs (HR-set or auto-computed from clock-out)
 
       // Include employees with attendance OR SIL leave in this period
       records = employees
@@ -738,7 +695,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           // Daily-rate employees: gross = dailyRate × daysWorked; monthly: basicSalary/22 × daysWorked
           const useDailyRate = emp.useDailyRate && emp.dailyRate > 0;
           const dailyEquiv   = useDailyRate ? (emp.dailyRate as number) : (emp.basicSalary / 22);
-          const otHours      = otHoursMap.get(emp.id) ?? 0;
+          const otHours      = totals.otHours;
           const overtimePay  = Math.round(otHours * (dailyEquiv / 8) * 1.25 * 100) / 100;
           const grossPay     = dailyEquiv * daysWorked + silPay + overtimePay;
           // Late deduction: (minutes late / 480) × daily equivalent rate

@@ -105,38 +105,18 @@ router.post('/clock-in', async (req: Request, res: Response, next: NextFunction)
       return res.status(409).json({ error: 'Already clocked in today' });
     }
 
-    // Determine late status based on employee's shift start from client policy (default 08:00)
-    const employee = await prisma.employee.findUnique({
-      where: { id: employeeId },
-      select: { clientId: true },
-    });
-    let shiftHour = 8, shiftMin = 0;
-    if (employee?.clientId) {
-      const shiftPolicy = await prisma.clientPolicy.findFirst({
-        where: { clientId: employee.clientId, type: 'WORK_HOURS' },
-        select: { value: true },
-      });
-      if (shiftPolicy?.value) {
-        try {
-          const parsed = JSON.parse(shiftPolicy.value);
-          if (parsed.shiftStart) {
-            [shiftHour, shiftMin] = (parsed.shiftStart as string).split(':').map(Number);
-          }
-        } catch { /* use defaults */ }
-      }
-    }
-    const cutoff = new Date(today);
-    cutoff.setHours(shiftHour, shiftMin, 0, 0);
-    const status = now > cutoff ? 'LATE' : 'PRESENT';
+    // Determine late status + lateMinutes from shift start policy (default 08:00 PHT)
+    const { status, lateMinutes } = await computeStatusFromTimeIn(employeeId, now, 'PRESENT');
 
     const record = await prisma.attendance.upsert({
       where: { employeeId_date: { employeeId, date: today } },
-      update: { clockInAt: now, status, isManualEntry: false },
+      update: { clockInAt: now, status, lateMinutes, isManualEntry: false },
       create: {
         employeeId,
         date: today,
         clockInAt: now,
         status,
+        lateMinutes,
         isManualEntry: false,
       },
     });
@@ -206,6 +186,12 @@ router.post('/manual', async (req: Request, res: Response, next: NextFunction) =
       ...(timeInDt ? { timeIn: timeInDt, clockInAt: timeInDt } : {}),
       ...(timeOutDt ? { timeOut: timeOutDt, clockOutAt: timeOutDt } : {}),
     };
+    // Auto-detect LATE and store lateMinutes when timeIn is provided
+    if (timeInDt && (data.status === 'PRESENT' || data.status === 'LATE')) {
+      const result = await computeStatusFromTimeIn(employeeId, timeInDt, data.status);
+      data.status = result.status;
+      data.lateMinutes = result.lateMinutes;
+    }
     // Auto-compute OT from shift policy if timeOut is provided
     if (timeOutDt) {
       data.overtimeHrs = await computeOvertimeHrs(employeeId, timeOutDt);
@@ -308,6 +294,15 @@ router.put('/edit-requests/:id/approve', requireRole('HR_MANAGER', 'HR_STAFF', '
     if (editReq.requestedStatus) updateData.status = editReq.requestedStatus;
     updateData.isManualEntry = true;
     updateData.manualReason = editReq.reason;
+    // Auto-detect LATE and store lateMinutes when timeIn is being applied
+    if (editReq.requestedTimeIn) {
+      const effectiveStatus = ((updateData.status as string | undefined) ?? 'PRESENT');
+      if (effectiveStatus === 'PRESENT' || effectiveStatus === 'LATE') {
+        const result = await computeStatusFromTimeIn(editReq.employeeId, new Date(editReq.requestedTimeIn), effectiveStatus);
+        updateData.status = result.status;
+        updateData.lateMinutes = result.lateMinutes;
+      }
+    }
     // Auto-compute OT from shift policy when timeOut is being applied
     if (editReq.requestedTimeOut) {
       updateData.overtimeHrs = await computeOvertimeHrs(editReq.employeeId, editReq.requestedTimeOut);
@@ -454,9 +449,12 @@ async function computeOvertimeHrs(employeeId: string, timeOut: Date): Promise<nu
 }
 
 /** Auto-determine PRESENT vs LATE from timeIn vs client shift start (WORK_HOURS policy, default 08:00 PHT).
- *  Leaves non-time statuses (ABSENT, HALF_DAY, ON_LEAVE, etc.) unchanged. */
-async function computeStatusFromTimeIn(employeeId: string, timeIn: Date, currentStatus: string): Promise<string> {
-  if (currentStatus !== 'PRESENT' && currentStatus !== 'LATE') return currentStatus;
+ *  Returns the computed status AND the lateMinutes so callers can store both in one shot.
+ *  Leaves non-time statuses (ABSENT, HALF_DAY, ON_LEAVE, etc.) unchanged (lateMinutes = 0). */
+async function computeStatusFromTimeIn(
+  employeeId: string, timeIn: Date, currentStatus: string,
+): Promise<{ status: string; lateMinutes: number }> {
+  if (currentStatus !== 'PRESENT' && currentStatus !== 'LATE') return { status: currentStatus, lateMinutes: 0 };
   try {
     const emp = await prisma.employee.findUnique({ where: { id: employeeId }, select: { clientId: true } });
     let shiftHour = 8, shiftMin = 0;
@@ -472,9 +470,12 @@ async function computeStatusFromTimeIn(employeeId: string, timeIn: Date, current
     }
     // Compare in PHT (UTC+8)
     const inDecimal = ((timeIn.getUTCHours() + 8) % 24) + timeIn.getUTCMinutes() / 60;
-    return inDecimal > shiftHour + shiftMin / 60 ? 'LATE' : 'PRESENT';
+    const shiftDecimal = shiftHour + shiftMin / 60;
+    const lateMinutes = Math.max(0, parseFloat(((inDecimal - shiftDecimal) * 60).toFixed(2)));
+    const status = inDecimal > shiftDecimal ? 'LATE' : 'PRESENT';
+    return { status, lateMinutes };
   } catch {
-    return currentStatus;
+    return { status: currentStatus, lateMinutes: 0 };
   }
 }
 
@@ -498,10 +499,12 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = AttendanceSchema.parse(req.body);
     const data = buildAttendanceData(body) as any;
-    // Auto-detect LATE vs PRESENT from timeIn vs shift start
+    // Auto-detect LATE vs PRESENT from timeIn vs shift start; store lateMinutes on the record
     if (body.timeIn && (body.status === 'PRESENT' || body.status === 'LATE')) {
       const timeInDt = toDateTime(body.date.slice(0, 10), body.timeIn);
-      data.status = await computeStatusFromTimeIn(body.employeeId, timeInDt, body.status);
+      const result = await computeStatusFromTimeIn(body.employeeId, timeInDt, body.status);
+      data.status = result.status;
+      data.lateMinutes = result.lateMinutes;
     }
     // Auto-compute OT from shift policy if timeOut is provided
     if (body.timeOut) {
@@ -538,13 +541,15 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
       ...(timeIn ? { timeIn, clockInAt: timeIn } : {}),
       ...(timeOut ? { timeOut, clockOutAt: timeOut } : {}),
     };
-    // Auto-detect LATE vs PRESENT if timeIn is being updated
+    // Auto-detect LATE vs PRESENT if timeIn is being updated; store lateMinutes on the record
     if (timeIn) {
       const empId = body.employeeId ?? existingRecord?.employeeId;
       if (empId) {
         const effectiveStatus = (data.status as string | undefined) ?? existingRecord?.status ?? 'PRESENT';
         if (effectiveStatus === 'PRESENT' || effectiveStatus === 'LATE') {
-          data.status = await computeStatusFromTimeIn(empId, timeIn, effectiveStatus);
+          const result = await computeStatusFromTimeIn(empId, timeIn, effectiveStatus);
+          data.status = result.status;
+          data.lateMinutes = result.lateMinutes;
         }
       }
     }
@@ -582,6 +587,12 @@ router.post('/bulk', async (req: Request, res: Response, next: NextFunction) => 
     const results = await Promise.all(
       records.map(async r => {
         const data = buildAttendanceData(r) as any;
+        if (r.timeIn && (r.status === 'PRESENT' || r.status === 'LATE')) {
+          const timeInDt = toDateTime(r.date.slice(0, 10), r.timeIn);
+          const result = await computeStatusFromTimeIn(r.employeeId, timeInDt, r.status);
+          data.status = result.status;
+          data.lateMinutes = result.lateMinutes;
+        }
         if (r.timeOut) {
           const timeOutDt = toDateTime(r.date.slice(0, 10), r.timeOut);
           data.overtimeHrs = await computeOvertimeHrs(r.employeeId, timeOutDt);
