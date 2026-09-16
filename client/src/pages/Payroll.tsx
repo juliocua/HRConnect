@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
@@ -420,6 +420,18 @@ function OtherDeductionsCell({ recordId, initialValue, onBlur, saving }: {
 }
 
 // ── Run Payroll Modal ──────────────────────────────────────────────────────────
+interface CutOffPeriod {
+  id: string;
+  name: string;
+  cutOffFromDay: number;
+  cutOffFromIsPrevMonth: boolean;
+  cutOffToDay: number;
+  payDay: number;
+  payDayIsNextMonth: boolean;
+  sortOrder: number;
+  isActive: boolean;
+}
+
 function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
   onClose: () => void;
   onSuccess: (runId: string) => void;
@@ -428,11 +440,57 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
 }) {
   const [year, setYear] = useState(defaultYear);
   const [month, setMonth] = useState(defaultMonth);
-  const [payPeriodType, setPayPeriodType] = useState<number>(1);
+  // selectedOption: 'co_<cutOffPeriodId>' | '7' | '9'
+  const [selectedOption, setSelectedOption] = useState<string>('');
   const [description, setDescription] = useState('');
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
   const [error, setError] = useState('');
+
+  const { data: cutOffPeriods = [] } = useQuery<CutOffPeriod[]>({
+    queryKey: ['cutoff-periods'],
+    queryFn: () => api.get('/global-setup/cutoff-periods').then(r => r.data),
+  });
+
+  // Auto-select first cut-off period (or '7' if none configured)
+  useEffect(() => {
+    if (selectedOption) return;
+    if (cutOffPeriods.length > 0) {
+      setSelectedOption(`co_${cutOffPeriods[0].id}`);
+    }
+  }, [cutOffPeriods, selectedOption]);
+
+  // Derive payPeriodType and cutOffPeriodId from the dropdown selection
+  const { payPeriodType, cutOffPeriodId } = useMemo(() => {
+    if (selectedOption === '7') return { payPeriodType: 7, cutOffPeriodId: undefined };
+    if (selectedOption === '9') return { payPeriodType: 9, cutOffPeriodId: undefined };
+    if (selectedOption.startsWith('co_')) {
+      const id = selectedOption.slice(3);
+      const idx = cutOffPeriods.findIndex(p => p.id === id);
+      // Map to Type 1 (1st period) or Type 2 (2nd+) for employee filtering
+      return { payPeriodType: idx <= 0 ? 1 : 2, cutOffPeriodId: id };
+    }
+    return { payPeriodType: 1, cutOffPeriodId: undefined };
+  }, [selectedOption, cutOffPeriods]);
+
+  // Compute actual date range from the selected cut-off period + month/year
+  const previewDates = useMemo((): { start: Date; end: Date } | null => {
+    if (!cutOffPeriodId) return null;
+    const period = cutOffPeriods.find(p => p.id === cutOffPeriodId);
+    if (!period) return null;
+    let fromYear = year;
+    let fromMonthIdx = month - 1; // 0-indexed
+    if (period.cutOffFromIsPrevMonth) {
+      if (month === 1) { fromYear = year - 1; fromMonthIdx = 11; }
+      else { fromMonthIdx = month - 2; }
+    }
+    return {
+      start: new Date(fromYear, fromMonthIdx, period.cutOffFromDay),
+      end: new Date(year, month - 1, period.cutOffToDay),
+    };
+  }, [cutOffPeriodId, cutOffPeriods, month, year]);
+
+  const isAdHoc = payPeriodType === 7 || payPeriodType === 9;
 
   const runMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.post('/payroll/run', body).then(r => r.data),
@@ -440,12 +498,13 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
     onError: (err: any) => setError(err?.response?.data?.error ?? 'Failed to run payroll'),
   });
 
-  const isAdHoc = payPeriodType === 7 || payPeriodType === 9;
+  const fmtDate = (d: Date) => d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     const body: Record<string, unknown> = { year, month, payPeriodType };
+    if (cutOffPeriodId) body.cutOffPeriodId = cutOffPeriodId;
     if (description) body.description = description;
     if (isAdHoc) {
       if (!periodStart || !periodEnd) { setError('Period start and end dates are required for this type'); return; }
@@ -482,22 +541,30 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                <label>Pay Period Type *</label>
-                <select className="form-control" value={payPeriodType} onChange={e => setPayPeriodType(Number(e.target.value))}>
-                  <option value={1}>Type 1 — Semi-monthly 1st half (run on 15th)</option>
-                  <option value={2}>Type 2 — Semi-monthly 2nd half (run end of month)</option>
-                  <option value={7}>Type 7 — Special pay (ad-hoc date)</option>
-                  <option value={9}>Type 9 — 13th month pay (ad-hoc date)</option>
+                <label>Pay Period *</label>
+                <select
+                  className="form-control"
+                  value={selectedOption}
+                  onChange={e => setSelectedOption(e.target.value)}
+                >
+                  {cutOffPeriods.length > 0 && (
+                    <optgroup label="Regular Cut-Off Periods">
+                      {cutOffPeriods.map(p => (
+                        <option key={p.id} value={`co_${p.id}`}>{p.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Special Runs">
+                    <option value="7">Special Pay (ad-hoc date)</option>
+                    <option value="9">13th Month Pay (full year)</option>
+                  </optgroup>
                 </select>
               </div>
 
-              {!isAdHoc && (
+              {!isAdHoc && previewDates && (
                 <div className="form-group" style={{ gridColumn: '1/-1' }}>
                   <div style={{ fontSize: 12.5, color: 'var(--color-text-muted)', background: 'var(--color-surface-2)', borderRadius: 8, padding: '8px 12px' }}>
-                    {payPeriodType === 1
-                      ? `Covers: ${MONTHS[month === 1 ? 11 : month - 2]} 26 → ${MONTHS[month - 1]} 10, ${year}`
-                      : `Covers: ${MONTHS[month - 1]} 11 → ${MONTHS[month - 1]} 25, ${year}`
-                    }
+                    Covers: <strong>{fmtDate(previewDates.start)}</strong> → <strong>{fmtDate(previewDates.end)}</strong>
                     <br />
                     Only employees assigned to clients with matching pay period type will be included.
                   </div>
@@ -535,7 +602,11 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={runMutation.isPending}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={runMutation.isPending || !selectedOption}
+            >
               {runMutation.isPending ? 'Processing…' : '▶ Run Payroll'}
             </button>
           </div>

@@ -13,24 +13,22 @@ const MONTHS = [
   'July','August','September','October','November','December',
 ];
 
-const PAY_PERIOD_LABELS: Record<number, string> = {
-  1: 'Semi-monthly (1st half)',
-  2: 'Semi-monthly (2nd half)',
-  7: 'Special Pay',
-  9: '13th Month Pay',
-};
+interface CutOffPeriod {
+  id: string; name: string; sortOrder: number;
+}
+
+function getPeriodTypeLabel(type: number, cutOffPeriods: CutOffPeriod[]): string {
+  if (type === 1) return cutOffPeriods[0]?.name ?? 'Semi-monthly (1st half)';
+  if (type === 2) return cutOffPeriods[1]?.name ?? 'Semi-monthly (2nd half)';
+  if (type === 7) return 'Special Pay';
+  if (type === 9) return '13th Month Pay';
+  return 'Payroll';
+}
 
 function fmtDate(iso?: string) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-
-const PAY_TYPE_OPTIONS: { value: number; label: string }[] = [
-  { value: 1, label: '1 — Semi-monthly (1st half)' },
-  { value: 2, label: '2 — Semi-monthly (2nd half)' },
-  { value: 7, label: '7 — Special Pay' },
-  { value: 9, label: '9 — 13th Month Pay' },
-];
 
 export default function HubPayslips() {
   const [showSlip, setShowSlip] = useState<MyPayrollRecord | null>(null);
@@ -41,6 +39,11 @@ export default function HubPayslips() {
   const { data: records = [], isLoading } = useQuery<MyPayrollRecord[]>({
     queryKey: ['hub-payslips'],
     queryFn: () => api.get('/payroll/me').then(r => r.data),
+  });
+
+  const { data: cutOffPeriods = [] } = useQuery<CutOffPeriod[]>({
+    queryKey: ['cutoff-periods'],
+    queryFn: () => api.get('/global-setup/cutoff-periods').then(r => r.data),
   });
 
   const yearOptions = useMemo(() =>
@@ -98,9 +101,9 @@ export default function HubPayslips() {
               onChange={e => setTypeFilter(e.target.value)}
             >
               <option value="">All Pay Types</option>
-              {PAY_TYPE_OPTIONS
-                .filter(o => typeOptions.includes(o.value))
-                .map(o => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+              {typeOptions.map(t => (
+                <option key={t} value={String(t)}>{getPeriodTypeLabel(t, cutOffPeriods)}</option>
+              ))}
             </select>
           </div>
         )}
@@ -129,7 +132,7 @@ export default function HubPayslips() {
                     {filtered[0].payrollRun.description || `${MONTHS[(filtered[0].payrollRun.month || 1) - 1]} ${filtered[0].payrollRun.year}`}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                    {PAY_PERIOD_LABELS[filtered[0].payrollRun.payPeriodType] ?? 'Payroll'}
+                    {getPeriodTypeLabel(filtered[0].payrollRun.payPeriodType, cutOffPeriods)}
                     {filtered[0].payrollRun.periodStart && (
                       <> · {fmtDate(filtered[0].payrollRun.periodStart)} – {fmtDate(filtered[0].payrollRun.periodEnd)}</>
                     )}
@@ -180,7 +183,7 @@ export default function HubPayslips() {
                         {r.payrollRun.description || `${MONTHS[(r.payrollRun.month || 1) - 1]} ${r.payrollRun.year}`}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                        {PAY_PERIOD_LABELS[r.payrollRun.payPeriodType] ?? ''}
+                        {getPeriodTypeLabel(r.payrollRun.payPeriodType, cutOffPeriods)}
                       </div>
                     </td>
                     <td style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
@@ -202,12 +205,12 @@ export default function HubPayslips() {
         </>
       )}
 
-      {showSlip && <PayslipModal record={showSlip} onClose={() => setShowSlip(null)} />}
+      {showSlip && <PayslipModal record={showSlip} cutOffPeriods={cutOffPeriods} onClose={() => setShowSlip(null)} />}
     </div>
   );
 }
 
-function PayslipModal({ record: r, onClose }: { record: MyPayrollRecord; onClose: () => void }) {
+function PayslipModal({ record: r, cutOffPeriods, onClose }: { record: MyPayrollRecord; cutOffPeriods: CutOffPeriod[]; onClose: () => void }) {
   const periodLabel = r.payrollRun.description || `${MONTHS[(r.payrollRun.month || 1) - 1]} ${r.payrollRun.year}`;
   const clientName = (r as any).employee?.client?.name;
   const [downloading, setDownloading] = useState(false);
@@ -251,7 +254,7 @@ function PayslipModal({ record: r, onClose }: { record: MyPayrollRecord; onClose
               <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Pay Period</div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{periodLabel}</div>
               <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                {PAY_PERIOD_LABELS[r.payrollRun.payPeriodType] ?? 'Payroll'}
+                {getPeriodTypeLabel(r.payrollRun.payPeriodType, cutOffPeriods)}
               </div>
             </div>
             <span className={`badge ${STATUS_COLORS[r.payrollRun.status]}`}>{r.payrollRun.status}</span>

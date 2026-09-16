@@ -350,13 +350,35 @@ router.get('/:runId', async (req: Request, res: Response, next: NextFunction) =>
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+interface CutOffPeriodData {
+  cutOffFromDay: number;
+  cutOffFromIsPrevMonth: boolean;
+  cutOffToDay: number;
+  name: string;
+}
+
 function computePeriodDates(
   year: number, month: number, payPeriodType: number,
-  periodStart?: string, periodEnd?: string
+  periodStart?: string, periodEnd?: string,
+  cutOffPeriod?: CutOffPeriodData
 ): { periodStart: Date; periodEnd: Date } {
   if (payPeriodType === 9) {
     return { periodStart: new Date(year, 0, 1), periodEnd: new Date(year, 11, 31) };
   }
+  // Use configured cut-off period dates if provided
+  if (cutOffPeriod && (payPeriodType === 1 || payPeriodType === 2)) {
+    let fromYear = year;
+    let fromMonthIdx = month - 1; // 0-indexed
+    if (cutOffPeriod.cutOffFromIsPrevMonth) {
+      if (month === 1) { fromYear = year - 1; fromMonthIdx = 11; }
+      else { fromMonthIdx = month - 2; }
+    }
+    return {
+      periodStart: new Date(fromYear, fromMonthIdx, cutOffPeriod.cutOffFromDay),
+      periodEnd: new Date(year, month - 1, cutOffPeriod.cutOffToDay),
+    };
+  }
+  // Fallback to hardcoded ranges (for runs not linked to a cut-off period)
   if (payPeriodType === 1) {
     return { periodStart: new Date(year, month - 2, 26), periodEnd: new Date(year, month - 1, 10) };
   }
@@ -370,10 +392,10 @@ function computePeriodDates(
 }
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function buildPeriodLabel(year: number, month: number, payPeriodType: number, description?: string): string {
+function buildPeriodLabel(year: number, month: number, payPeriodType: number, description?: string, cutOffName?: string): string {
   const monthStr = MONTH_NAMES[month - 1];
-  if (payPeriodType === 1) return `${monthStr} ${year} · Type 1 (1st Half)`;
-  if (payPeriodType === 2) return `${monthStr} ${year} · Type 2 (2nd Half)`;
+  if (payPeriodType === 1) return cutOffName ? `${monthStr} ${year} · ${cutOffName}` : `${monthStr} ${year} · Type 1 (1st Half)`;
+  if (payPeriodType === 2) return cutOffName ? `${monthStr} ${year} · ${cutOffName}` : `${monthStr} ${year} · Type 2 (2nd Half)`;
   if (payPeriodType === 7) return description || `Special Pay ${monthStr} ${year}`;
   if (payPeriodType === 9) return `13th Month Pay ${year}`;
   return `${monthStr} ${year}`;
@@ -418,6 +440,7 @@ const RunSchema = z.object({
   payPeriodType: z.number().int().refine(v => [1, 2, 7, 9].includes(v), {
     message: 'payPeriodType must be 1, 2, 7, or 9',
   }),
+  cutOffPeriodId: z.string().optional(), // links to GlobalSetup CutOffPeriod for date computation
   description: z.string().optional(),
   periodStart: z.string().optional(),
   periodEnd: z.string().optional(),
@@ -439,14 +462,22 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       }
     }
 
+    // Fetch cut-off period config from Global Setup if provided
+    let cutOffPeriodData: CutOffPeriodData | undefined;
+    if (body.cutOffPeriodId) {
+      const cop = await (prisma as any).cutOffPeriod.findUnique({ where: { id: body.cutOffPeriodId } });
+      if (!cop) return res.status(422).json({ error: 'Cut-off period not found' });
+      cutOffPeriodData = cop as CutOffPeriodData;
+    }
+
     let dates: { periodStart: Date; periodEnd: Date };
     try {
-      dates = computePeriodDates(year, month ?? 12, payPeriodType, body.periodStart, body.periodEnd);
+      dates = computePeriodDates(year, month ?? 12, payPeriodType, body.periodStart, body.periodEnd, cutOffPeriodData);
     } catch (e: any) {
       return res.status(422).json({ error: e.message });
     }
     const { periodStart, periodEnd } = dates;
-    const period = buildPeriodLabel(year, month ?? 12, payPeriodType, description);
+    const period = buildPeriodLabel(year, month ?? 12, payPeriodType, description, cutOffPeriodData?.name);
 
     const existing = await prisma.payrollRun.findFirst({
       where: { year, month: month ?? 12, payPeriodType },
