@@ -387,6 +387,14 @@ export interface Billing {
   status: BillingStatus;
   paidAt?: string;
   paymentRef?: string;
+  paymentScreenshotUrl?: string;
+  soaNo?: string;
+  grossBill?: number;
+  vatAmount?: number;
+  ewtAmount?: number;
+  totalNetBill?: number;
+  amountPaid?: number;
+  serviceInvoiceNo?: string;
   paymentLinkId?: string;
   paymentLinkUrl?: string;
   notes?: string;

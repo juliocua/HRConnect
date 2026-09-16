@@ -377,14 +377,33 @@ router.post('/:id/resend', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req:
 // PUT /api/billing/:id/mark-paid  — manually mark as paid
 router.put('/:id/mark-paid', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { paymentRef, paymentScreenshotUrl } = z.object({
-      paymentRef: z.string().min(1, 'Payment reference is required'),
+    const body = z.object({
+      paymentRef: z.string().optional().nullable(),
       paymentScreenshotUrl: z.string().optional().nullable(),
+      soaNo: z.string().optional().nullable(),
+      grossBill: z.number().optional().nullable(),
+      vatAmount: z.number().optional().nullable(),
+      ewtAmount: z.number().optional().nullable(),
+      totalNetBill: z.number().optional().nullable(),
+      amountPaid: z.number().optional().nullable(),
+      serviceInvoiceNo: z.string().optional().nullable(),
     }).parse(req.body);
 
     const billing = await prisma.billing.update({
       where: { id: req.params.id },
-      data: { status: 'PAID', paidAt: new Date(), paymentRef, paymentScreenshotUrl: paymentScreenshotUrl ?? undefined },
+      data: {
+        status: 'PAID',
+        paidAt: new Date(),
+        paymentRef: body.paymentRef ?? undefined,
+        paymentScreenshotUrl: body.paymentScreenshotUrl ?? undefined,
+        soaNo: body.soaNo ?? undefined,
+        grossBill: body.grossBill ?? undefined,
+        vatAmount: body.vatAmount ?? undefined,
+        ewtAmount: body.ewtAmount ?? undefined,
+        totalNetBill: body.totalNetBill ?? undefined,
+        amountPaid: body.amountPaid ?? undefined,
+        serviceInvoiceNo: body.serviceInvoiceNo ?? undefined,
+      },
     });
     res.json(billing);
   } catch (err) { next(err); }

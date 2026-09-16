@@ -291,6 +291,13 @@ model Billing {
   paidAt               DateTime?
   paymentRef           String?
   paymentScreenshotUrl String?
+  soaNo                String?
+  grossBill            Float?
+  vatAmount            Float?
+  ewtAmount            Float?
+  totalNetBill         Float?
+  amountPaid           Float?
+  serviceInvoiceNo     String?
   paymentLinkId        String?
   paymentLinkUrl       String?
   notes                String?

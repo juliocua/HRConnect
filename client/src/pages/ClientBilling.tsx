@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
@@ -24,7 +24,7 @@ export default function ClientBilling() {
   const [skipped, setSkipped] = useState<{ clientId: string; name: string; reason: string }[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [markPaidBillingId, setMarkPaidBillingId] = useState<string | null>(null);
+  const [markPaidBilling, setMarkPaidBilling] = useState<(Billing & { client: { id: string; name: string } }) | null>(null);
 
   type LineItem = { description: string; amount: number };
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
@@ -239,7 +239,7 @@ export default function ClientBilling() {
                 <button
                   className="btn btn-success btn-sm"
                   style={{ fontSize: 11 }}
-                  onClick={() => setMarkPaidBillingId(b.id)}
+                  onClick={() => setMarkPaidBilling(b)}
                 >
                   Paid
                 </button>
@@ -620,12 +620,12 @@ export default function ClientBilling() {
         </div>{/* end padding div */}
       </div>{/* end tab container */}
 
-      {markPaidBillingId && (
+      {markPaidBilling && (
         <MarkPaidModal
-          billingId={markPaidBillingId}
-          onClose={() => setMarkPaidBillingId(null)}
+          billing={markPaidBilling}
+          onClose={() => setMarkPaidBilling(null)}
           onSaved={() => {
-            setMarkPaidBillingId(null);
+            setMarkPaidBilling(null);
             qc.invalidateQueries({ queryKey: ['billing-all'] });
             qc.invalidateQueries({ queryKey: ['billing-summary'] });
           }}
@@ -672,10 +672,22 @@ function InvoiceDetail({ billing }: { billing: any }) {
             <div>{fmtDate(b.paidAt)}</div>
           </div>
         )}
+        {b.soaNo && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>SOA #</div>
+            <div style={{ fontWeight: 600 }}>{b.soaNo}</div>
+          </div>
+        )}
         {b.paymentRef && (
           <div>
-            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Ref No.</div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Ref / Cheque #</div>
             <div style={{ fontWeight: 600 }}>{b.paymentRef}</div>
+          </div>
+        )}
+        {b.serviceInvoiceNo && (
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Service Invoice / OR #</div>
+            <div style={{ fontWeight: 600 }}>{b.serviceInvoiceNo}</div>
           </div>
         )}
         {b.paymentScreenshotUrl && (
@@ -685,6 +697,40 @@ function InvoiceDetail({ billing }: { billing: any }) {
           </div>
         )}
       </div>
+      {(b.grossBill != null || b.vatAmount != null || b.ewtAmount != null || b.totalNetBill != null || b.amountPaid != null) && (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 12, padding: '10px 0', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>
+          {b.grossBill != null && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Gross Bill</div>
+              <div style={{ fontWeight: 600 }}>{formatPHP(b.grossBill)}</div>
+            </div>
+          )}
+          {b.vatAmount != null && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>VAT</div>
+              <div style={{ fontWeight: 600 }}>{formatPHP(b.vatAmount)}</div>
+            </div>
+          )}
+          {b.ewtAmount != null && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>EWT</div>
+              <div style={{ fontWeight: 600, color: 'var(--color-danger)' }}>−{formatPHP(b.ewtAmount)}</div>
+            </div>
+          )}
+          {b.totalNetBill != null && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Total Net Bill</div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{formatPHP(b.totalNetBill)}</div>
+            </div>
+          )}
+          {b.amountPaid != null && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Amount Paid</div>
+              <div style={{ fontWeight: 700, color: 'var(--color-success)' }}>{formatPHP(b.amountPaid)}</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {employees.length > 0 && (
         <div style={{ marginBottom: 10 }}>
@@ -738,25 +784,41 @@ function InvoiceDetail({ billing }: { billing: any }) {
 }
 
 // Mark Paid Modal
-function MarkPaidModal({ billingId, onClose, onSaved }: {
-  billingId: string;
+function MarkPaidModal({ billing, onClose, onSaved }: {
+  billing: Billing & { client: { id: string; name: string } };
   onClose: () => void;
   onSaved: () => void;
 }) {
   const toast = useToast();
+  const [soaNo, setSoaNo] = useState('');
+  const [grossBill, setGrossBill] = useState<string>(billing.amount ? String(billing.amount) : '');
+  const [vatAmount, setVatAmount] = useState('');
+  const [ewtAmount, setEwtAmount] = useState('');
+  const [totalNetBill, setTotalNetBill] = useState('');
+  const [amountPaid, setAmountPaid] = useState('');
   const [paymentRef, setPaymentRef] = useState('');
+  const [serviceInvoiceNo, setServiceInvoiceNo] = useState('');
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-calc total net bill = gross + vat - ewt
+  useEffect(() => {
+    const g = parseFloat(grossBill) || 0;
+    const v = parseFloat(vatAmount) || 0;
+    const e = parseFloat(ewtAmount) || 0;
+    if (g || v || e) {
+      setTotalNetBill(String((g + v - e).toFixed(2)));
+    }
+  }, [grossBill, vatAmount, ewtAmount]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     setScreenshotFile(file);
     if (file) {
-      const url = URL.createObjectURL(file);
-      setScreenshotPreview(url);
+      setScreenshotPreview(URL.createObjectURL(file));
     } else {
       setScreenshotPreview(null);
     }
@@ -764,7 +826,6 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!paymentRef.trim()) { setError('Payment reference is required.'); return; }
     setSaving(true);
     setError('');
     try {
@@ -772,14 +833,21 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
       if (screenshotFile) {
         const fd = new FormData();
         fd.append('screenshot', screenshotFile);
-        const uploadRes = await api.post(`/billing/${billingId}/payment-proof`, fd, {
+        const uploadRes = await api.post(`/billing/${billing.id}/payment-proof`, fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
         paymentScreenshotUrl = uploadRes.data.url;
       }
-      await api.put(`/billing/${billingId}/mark-paid`, {
-        paymentRef: paymentRef.trim(),
-        paymentScreenshotUrl,
+      await api.put(`/billing/${billing.id}/mark-paid`, {
+        soaNo: soaNo.trim() || null,
+        grossBill: grossBill ? parseFloat(grossBill) : null,
+        vatAmount: vatAmount ? parseFloat(vatAmount) : null,
+        ewtAmount: ewtAmount ? parseFloat(ewtAmount) : null,
+        totalNetBill: totalNetBill ? parseFloat(totalNetBill) : null,
+        amountPaid: amountPaid ? parseFloat(amountPaid) : null,
+        paymentRef: paymentRef.trim() || null,
+        serviceInvoiceNo: serviceInvoiceNo.trim() || null,
+        paymentScreenshotUrl: paymentScreenshotUrl ?? null,
       });
       toast('success', 'Payment recorded');
       onSaved();
@@ -794,27 +862,105 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 440 }}>
+      <div className="modal" style={{ maxWidth: 560 }}>
         <div className="modal-header">
-          <h2 className="modal-title">Mark as Paid</h2>
+          <div>
+            <h2 className="modal-title">Mark as Paid</h2>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>{billing.client?.name}</div>
+          </div>
           <button className="icon-btn" onClick={onClose}>✕</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
             {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
 
-            <div className="form-group">
-              <label>Payment Reference * <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>(GCash ref, check no., transfer ID…)</span></label>
-              <input
-                className="form-control"
-                required
-                placeholder="e.g. GCash #123456789"
-                value={paymentRef}
-                onChange={e => setPaymentRef(e.target.value)}
-                autoFocus
-              />
+            <ModalSection>SOA Information</ModalSection>
+            <div className="form-grid form-grid-2" style={{ gap: 12 }}>
+              <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                <label>SOA # <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>(Statement of Account number)</span></label>
+                <input
+                  className="form-control"
+                  placeholder="e.g. SOA-2024-001"
+                  value={soaNo}
+                  onChange={e => setSoaNo(e.target.value)}
+                  autoFocus
+                />
+              </div>
             </div>
 
+            <ModalSection>Billing Amounts</ModalSection>
+            <div className="form-grid form-grid-2" style={{ gap: 12 }}>
+              <div className="form-group">
+                <label>Gross Bill</label>
+                <input
+                  type="number" min={0} step={0.01} className="form-control"
+                  placeholder="0.00"
+                  value={grossBill}
+                  onChange={e => setGrossBill(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>VAT <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>(12%)</span></label>
+                <input
+                  type="number" min={0} step={0.01} className="form-control"
+                  placeholder="0.00"
+                  value={vatAmount}
+                  onChange={e => setVatAmount(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>EWT <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>(withholding tax)</span></label>
+                <input
+                  type="number" min={0} step={0.01} className="form-control"
+                  placeholder="0.00"
+                  value={ewtAmount}
+                  onChange={e => setEwtAmount(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label style={{ fontWeight: 700 }}>Total Net Bill</label>
+                <input
+                  type="number" min={0} step={0.01} className="form-control"
+                  placeholder="Auto-calculated"
+                  value={totalNetBill}
+                  onChange={e => setTotalNetBill(e.target.value)}
+                  style={{ fontWeight: 700 }}
+                />
+              </div>
+              <div className="form-group">
+                <label>Amount Paid</label>
+                <input
+                  type="number" min={0} step={0.01} className="form-control"
+                  placeholder="0.00"
+                  value={amountPaid}
+                  onChange={e => setAmountPaid(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <ModalSection>Payment Details</ModalSection>
+            <div className="form-grid form-grid-2" style={{ gap: 12 }}>
+              <div className="form-group">
+                <label>Reference / Cheque # <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>(GCash, bank transfer, cheque…)</span></label>
+                <input
+                  className="form-control"
+                  placeholder="e.g. GCash #123456789"
+                  value={paymentRef}
+                  onChange={e => setPaymentRef(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>Service Invoice / OR # <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>(official receipt)</span></label>
+                <input
+                  className="form-control"
+                  placeholder="e.g. OR-2024-0042"
+                  value={serviceInvoiceNo}
+                  onChange={e => setServiceInvoiceNo(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <ModalSection>Proof of Payment</ModalSection>
             <div className="form-group">
               <label>Payment Screenshot <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>(optional)</span></label>
               <div
@@ -866,6 +1012,14 @@ function MarkPaidModal({ billingId, onClose, onSaved }: {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function ModalSection({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, marginTop: 20 }}>
+      {children}
     </div>
   );
 }
