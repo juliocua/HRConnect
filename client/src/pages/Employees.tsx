@@ -639,7 +639,7 @@ function EmployeeModal({
     // Validate daily rate
     if (form.useDailyRate && (!form.dailyRate || (form.dailyRate as unknown as number) <= 0)) {
       setError('Daily Rate is required and must be greater than 0 when "Use daily rate" is enabled.');
-      setActiveTab('Info');
+      setActiveTab('Profile');
       setSaving(false);
       return;
     }
