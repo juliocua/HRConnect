@@ -858,8 +858,8 @@ router.delete('/run/:runId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (re
   }
 });
 
-// PUT /api/payroll/run/:runId/record/:recordId — update HR-editable fields (DRAFT only)
-router.put('/run/:runId/record/:recordId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+// PUT /api/payroll/:runId/record/:recordId — update HR-editable fields (DRAFT only)
+router.put('/:runId/record/:recordId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const run = await prisma.payrollRun.findUnique({ where: { id: req.params.runId } });
     if (!run) return res.status(404).json({ error: 'Payroll run not found' });

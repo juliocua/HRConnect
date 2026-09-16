@@ -643,9 +643,14 @@ function EmployeeModal({
       setSaving(false);
       return;
     }
+    // Normalize dailyRate to number (onChange stores raw string; blur may not fire before Save)
+    const submitForm = {
+      ...form,
+      dailyRate: form.dailyRate != null ? Number(form.dailyRate) || null : null,
+    };
     try {
       if (isEdit) {
-        await api.put(`/employees/${initial!.id}`, { ...form, userRole });
+        await api.put(`/employees/${initial!.id}`, { ...submitForm, userRole });
         toast('success', 'Employee saved');
         onSaved();
       } else {

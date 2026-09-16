@@ -143,6 +143,14 @@ export default function Payroll() {
       cell: ({ getValue }) => <span className="td-mono">{formatPHP(getValue() as number)}</span>,
     },
     {
+      id: 'dailyRate',
+      header: 'Daily Rate',
+      cell: ({ row: { original: r } }) => {
+        const rate = (r.employee as any).dailyRate;
+        return <span className="td-mono text-muted">{rate != null ? formatPHP(rate) : '—'}</span>;
+      },
+    },
+    {
       accessorKey: 'overtimePay',
       header: 'OT Pay',
       cell: ({ getValue }) => {
