@@ -7,92 +7,41 @@ import { DataTable } from '@/components/DataTable';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import type { LeaveType, Employee, LeaveBalance, CutOffPeriod, GlobalPayrollPolicy, CompanySettings } from '@/types';
 
-// ── Tab Bar (same as Employee modal) ─────────────────────────────────────────
+// ── Tab Bar ───────────────────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }: {
   tabs: string[];
   active: string;
   onChange: (t: string) => void;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const checkScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 0);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-  };
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const rafId = requestAnimationFrame(checkScroll);
-    el.addEventListener('scroll', checkScroll);
-    const ro = new ResizeObserver(checkScroll);
-    ro.observe(el);
-    return () => { cancelAnimationFrame(rafId); el.removeEventListener('scroll', checkScroll); ro.disconnect(); };
-  }, [tabs]);
-
-  const scroll = (dir: 'left' | 'right') => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir === 'left' ? -120 : 120, behavior: 'smooth' });
-  };
-
-  const arrowBtn = (dir: 'left' | 'right', enabled: boolean) => (
-    <button
-      type="button"
-      onClick={() => scroll(dir)}
-      style={{
-        flexShrink: 0, width: 26, height: 30,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: enabled ? 'var(--color-surface-2)' : 'transparent',
-        border: '1px solid var(--color-border)', borderRadius: 6,
-        cursor: enabled ? 'pointer' : 'default',
-        color: enabled ? 'var(--color-text-secondary)' : 'var(--color-border)',
-        fontSize: 14, marginBottom: 0, transition: 'background 0.12s',
-      }}
-      tabIndex={-1}
-    >
-      {dir === 'left' ? '‹' : '›'}
-    </button>
-  );
-
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
-      {arrowBtn('left', canScrollLeft)}
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1, display: 'flex', gap: 2, marginBottom: 0,
-          overflowX: 'auto', scrollbarWidth: 'none' as any,
-          msOverflowStyle: 'none' as any, padding: '0 2px',
-        }}
-      >
-        {tabs.map(t => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => onChange(t)}
-            style={{
-              background: active === t ? 'var(--color-primary)' : 'transparent',
-              border: active === t ? 'none' : '1px solid var(--color-border)',
-              borderRadius: '6px 6px 0 0',
-              padding: '7px 16px',
-              fontSize: 13,
-              fontWeight: active === t ? 700 : 500,
-              color: active === t ? '#fff' : 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'background 0.12s, color 0.12s',
-            }}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      {arrowBtn('right', canScrollRight)}
+    <div
+      style={{
+        display: 'flex', gap: 2,
+        overflowX: 'auto', scrollbarWidth: 'none' as any,
+        msOverflowStyle: 'none' as any, padding: '0 2px',
+      }}
+    >
+      {tabs.map(t => (
+        <button
+          key={t}
+          type="button"
+          onClick={() => onChange(t)}
+          style={{
+            background: active === t ? 'var(--color-primary)' : 'transparent',
+            border: active === t ? 'none' : '1px solid var(--color-border)',
+            borderRadius: '6px 6px 0 0',
+            padding: '7px 16px',
+            fontSize: 13,
+            fontWeight: active === t ? 700 : 500,
+            color: active === t ? '#fff' : 'var(--color-text-secondary)',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            transition: 'background 0.12s, color 0.12s',
+          }}
+        >
+          {t}
+        </button>
+      ))}
     </div>
   );
 }

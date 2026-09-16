@@ -327,48 +327,50 @@ export default function ClientBilling() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 2, marginBottom: 24 }}>
-        {(['generate', 'invoices'] as const).map(t => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setBillingTab(t)}
-            style={{
-              background: billingTab === t ? 'var(--color-primary)' : 'transparent',
-              border: billingTab === t ? 'none' : '1px solid var(--color-border)',
-              borderRadius: '6px 6px 0 0',
-              padding: '7px 16px',
-              fontSize: 13,
-              fontWeight: billingTab === t ? 700 : 500,
-              color: billingTab === t ? '#fff' : 'var(--color-text-secondary)',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            {t === 'generate' ? 'Generate Billing' : 'Recent Invoices'}
-            {t === 'invoices' && allBillings.length > 0 && (
-              <span style={{
-                background: billingTab === t ? 'rgba(255,255,255,0.25)' : 'var(--color-primary)',
-                color: '#fff',
-                borderRadius: 999,
-                fontSize: 10,
-                padding: '1px 7px',
-                fontWeight: 700,
-              }}>
-                {allBillings.length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* Tabs + Content Container */}
+      <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
+        <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 2 }}>
+          {(['generate', 'invoices'] as const).map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setBillingTab(t)}
+              style={{
+                background: billingTab === t ? 'var(--color-primary)' : 'transparent',
+                border: billingTab === t ? 'none' : '1px solid var(--color-border)',
+                borderRadius: '6px 6px 0 0',
+                padding: '7px 16px',
+                fontSize: 13,
+                fontWeight: billingTab === t ? 700 : 500,
+                color: billingTab === t ? '#fff' : 'var(--color-text-secondary)',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              {t === 'generate' ? 'Generate Billing' : 'Recent Invoices'}
+              {t === 'invoices' && allBillings.length > 0 && (
+                <span style={{
+                  background: billingTab === t ? 'rgba(255,255,255,0.25)' : 'var(--color-primary)',
+                  color: '#fff',
+                  borderRadius: 999,
+                  fontSize: 10,
+                  padding: '1px 7px',
+                  fontWeight: 700,
+                }}>
+                  {allBillings.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div style={{ padding: 24 }}>
 
       {/* ── Generate Billing Tab ───────────────────────────────────────────── */}
       {billingTab === 'generate' && (
-        <div className="card">
+        <div>
           <div className="card-header">
             <div>
               <div className="card-title">Generate Billing</div>
@@ -581,7 +583,7 @@ export default function ClientBilling() {
 
       {/* ── Recent Invoices Tab ────────────────────────────────────────────── */}
       {billingTab === 'invoices' && (
-        <div className="card">
+        <div>
           <div className="card-header" style={{ marginBottom: 16 }}>
             <div className="card-title">Recent Invoices</div>
           </div>
@@ -614,6 +616,9 @@ export default function ClientBilling() {
           )}
         </div>
       )}
+
+        </div>{/* end padding div */}
+      </div>{/* end tab container */}
 
       {markPaidBillingId && (
         <MarkPaidModal
