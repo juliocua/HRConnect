@@ -34,12 +34,13 @@ export async function generateInvoicePDF(billing: any, company?: CompanyInfo): P
     const companyAddress = company?.address || '';
     const companyPhone = company?.contactNumber || '';
 
-    // Try to load logo from uploads directory
+    // Try to load logo from disk — logoUrl is stored as a full URL, extract just the filename
     let logoBuffer: Buffer | null = null;
     if (company?.logoUrl) {
       try {
-        const relativePath = company.logoUrl.replace(/^\/uploads\//, '');
-        const logoPath = path.join(__dirname, '../../uploads', relativePath);
+        const filename = path.basename(company.logoUrl); // e.g. 'company-logo.png'
+        const uploadsBase = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+        const logoPath = path.join(uploadsBase, 'logos', filename);
         if (fs.existsSync(logoPath)) {
           logoBuffer = fs.readFileSync(logoPath);
         }
