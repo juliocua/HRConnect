@@ -235,9 +235,9 @@ router.get('/clients-due', async (_req: Request, res: Response, next: NextFuncti
       const dow = today.getDay(); // 0 = Sunday
       switch (c.billingCycle) {
         case 'WEEKLY': return dow === 1; // every Monday
-        case 'EVERY_15TH': return day === 15;
-        case 'EVERY_30TH': return day === 30;
-        case 'MONTHLY': return c.billingDate ? day === c.billingDate : day === 1;
+        case 'EVERY_15TH': return day >= 15;
+        case 'EVERY_30TH': return day >= 30;
+        case 'MONTHLY': return c.billingDate ? day >= c.billingDate : day >= 1;
         default: return false;
       }
     });

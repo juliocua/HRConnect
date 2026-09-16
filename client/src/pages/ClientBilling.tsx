@@ -67,6 +67,7 @@ export default function ClientBilling() {
       setGenerated(res.data.generated ?? []);
       setSkipped(res.data.skipped ?? []);
       setSelected(new Set());
+      setLineItems([]);
       qc.invalidateQueries({ queryKey: ['billing-summary'] });
       qc.invalidateQueries({ queryKey: ['billing-all'] });
       qc.invalidateQueries({ queryKey: ['billing-clients-due'] });
@@ -334,7 +335,7 @@ export default function ClientBilling() {
             <button
               key={t}
               type="button"
-              onClick={() => setBillingTab(t)}
+              onClick={() => { if (t === 'generate') setGenerated([]); setBillingTab(t); }}
               style={{
                 background: billingTab === t ? 'var(--color-primary)' : 'transparent',
                 border: billingTab === t ? 'none' : '1px solid var(--color-border)',
