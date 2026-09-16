@@ -489,6 +489,7 @@ function OtherDeductionsCell({ recordId, initialValue, initialNote, onBlur }: {
             type="text" inputMode="decimal"
             value={line.amount} placeholder="0"
             onChange={e => updateLine(line.id, 'amount', e.target.value)}
+            onBlur={() => commit(linesRef.current)}
             style={{ ...inputStyle, width: 70, fontFamily: 'monospace' }}
           />
           <input
