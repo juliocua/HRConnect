@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
@@ -63,6 +63,9 @@ export default function Payroll() {
       api.put(`/payroll/${viewRunId}/record/${recordId}`, { otherDeductions, otherDeductionsNote }).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] }),
   });
+  // Stable ref so handleOtherDeductionsBlur never changes identity (prevents column recreation & cell remount)
+  const updateRecordMutationRef = useRef(updateRecordMutation);
+  updateRecordMutationRef.current = updateRecordMutation;
 
   const records = currentRun?.records ?? [];
   const isDraft = currentRun?.status === 'DRAFT';
@@ -72,9 +75,10 @@ export default function Payroll() {
   const totalNet = records.reduce((s, r) => s + r.netPay, 0);
   const totalOT = records.reduce((s, r) => s + r.overtimePay, 0);
 
+  // Stable callback — reads mutation from ref so columns never recreate on mutation state change
   const handleOtherDeductionsBlur = useCallback((recordId: string, value: number, note: string | null) => {
-    updateRecordMutation.mutate({ recordId, otherDeductions: value, otherDeductionsNote: note });
-  }, [updateRecordMutation]);
+    updateRecordMutationRef.current.mutate({ recordId, otherDeductions: value, otherDeductionsNote: note });
+  }, []);
 
   const handleDownloadGovReport = async () => {
     if (!viewRunId || !currentRun) return;
@@ -194,7 +198,6 @@ export default function Payroll() {
           initialValue={r.otherDeductions ?? 0}
           initialNote={r.otherDeductionsNote}
           onBlur={handleOtherDeductionsBlur}
-          saving={updateRecordMutation.isPending && updateRecordMutation.variables?.recordId === r.id}
         />
       ) : (
         <span className="td-mono text-muted">{(r.otherDeductions ?? 0) > 0 ? formatPHP(r.otherDeductions ?? 0) : '—'}</span>
@@ -217,7 +220,7 @@ export default function Payroll() {
         <button className="btn btn-ghost btn-sm" onClick={() => setShowSlip(r)}>Slip</button>
       ),
     },
-  ], [isDraft, handleOtherDeductionsBlur, updateRecordMutation]);
+  ], [isDraft, handleOtherDeductionsBlur]);
 
   return (
     <div>
@@ -397,63 +400,99 @@ export default function Payroll() {
   );
 }
 
-// ── Inline editable other deductions cell ─────────────────────────────────────
-function OtherDeductionsCell({ recordId, initialValue, initialNote, onBlur, saving }: {
+// ── Multi-line other deductions cell ─────────────────────────────────────────
+interface DeductionLine { id: number; amount: string; note: string; }
+let _dedLineId = 0;
+const mkLine = (amount = '', note = ''): DeductionLine => ({ id: ++_dedLineId, amount, note });
+
+function parseDeductionLines(initialValue: number, initialNote?: string | null): DeductionLine[] {
+  if (initialNote) {
+    try {
+      const parsed = JSON.parse(initialNote);
+      if (Array.isArray(parsed) && parsed.length > 0)
+        return parsed.map((l: any) => mkLine(l.amount > 0 ? String(l.amount) : '', l.note ?? ''));
+    } catch {}
+    return [mkLine(initialValue > 0 ? String(initialValue) : '', initialNote)];
+  }
+  return [mkLine(initialValue > 0 ? String(initialValue) : '', '')];
+}
+
+function serializeDeductionLines(lines: DeductionLine[]): { total: number; note: string | null } {
+  const items = lines.map(l => ({ amount: Math.max(0, parseFloat(l.amount) || 0), note: l.note.trim() }));
+  const total = items.reduce((s, l) => s + l.amount, 0);
+  if (items.length === 1) return { total, note: items[0].note || null };
+  return { total, note: JSON.stringify(items) };
+}
+
+function OtherDeductionsCell({ recordId, initialValue, initialNote, onBlur }: {
   recordId: string;
   initialValue: number;
   initialNote?: string | null;
   onBlur: (recordId: string, value: number, note: string | null) => void;
-  saving: boolean;
 }) {
-  const [raw, setRaw] = useState(initialValue === 0 ? '' : String(initialValue));
-  const [note, setNote] = useState(initialNote ?? '');
+  const [lines, setLines] = useState<DeductionLine[]>(() => parseDeductionLines(initialValue, initialNote));
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
 
-  const currentAmount = () => {
-    const parsed = parseFloat(raw);
-    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+  const commit = useCallback((current: DeductionLine[]) => {
+    const { total, note } = serializeDeductionLines(current);
+    onBlur(recordId, total, note);
+  }, [recordId, onBlur]);
+
+  const handleContainerBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node))
+      commit(linesRef.current);
   };
 
-  const handleAmountBlur = () => {
-    const final = currentAmount();
-    setRaw(final === 0 ? '' : String(final));
-    onBlur(recordId, final, note || null);
+  const updateLine = (id: number, field: 'amount' | 'note', value: string) =>
+    setLines(prev => prev.map(l => l.id === id ? { ...l, [field]: value } : l));
+
+  const addLine = () => setLines(prev => [...prev, mkLine()]);
+
+  const removeLine = (id: number) => {
+    const next = lines.filter(l => l.id !== id);
+    setLines(next);
+    commit(next);
   };
 
-  const handleNoteBlur = () => {
-    onBlur(recordId, currentAmount(), note || null);
+  const inputStyle: React.CSSProperties = {
+    padding: '3px 6px', fontSize: 12,
+    border: '1px solid var(--color-border)', borderRadius: 4,
+    background: 'var(--color-surface)', color: 'var(--color-text)',
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <input
-        type="text"
-        inputMode="decimal"
-        value={raw}
-        placeholder="0"
-        onChange={e => setRaw(e.target.value)}
-        onBlur={handleAmountBlur}
-        disabled={saving}
+    <div onBlur={handleContainerBlur} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 200 }}>
+      {lines.map(line => (
+        <div key={line.id} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input
+            type="text" inputMode="decimal"
+            value={line.amount} placeholder="0"
+            onChange={e => updateLine(line.id, 'amount', e.target.value)}
+            style={{ ...inputStyle, width: 70, fontFamily: 'monospace' }}
+          />
+          <input
+            type="text"
+            value={line.note} placeholder="Note"
+            onChange={e => updateLine(line.id, 'note', e.target.value)}
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          {lines.length > 1 && (
+            <button
+              type="button" onClick={() => removeLine(line.id)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-danger)', fontSize: 13, padding: '0 2px', lineHeight: 1 }}
+            >✕</button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button" onClick={addLine}
         style={{
-          width: 80, padding: '3px 6px', fontSize: 12,
-          border: '1px solid var(--color-border)', borderRadius: 4,
-          background: 'var(--color-surface)', color: 'var(--color-text)',
-          fontFamily: 'monospace',
+          background: 'none', border: '1px dashed var(--color-border)', borderRadius: 4,
+          cursor: 'pointer', fontSize: 11, color: 'var(--color-text-muted)',
+          padding: '2px 8px', alignSelf: 'flex-start',
         }}
-      />
-      <textarea
-        value={note}
-        placeholder="Note (optional)"
-        onChange={e => setNote(e.target.value)}
-        onBlur={handleNoteBlur}
-        disabled={saving}
-        rows={1}
-        style={{
-          width: 120, padding: '3px 6px', fontSize: 11,
-          border: '1px solid var(--color-border)', borderRadius: 4,
-          background: 'var(--color-surface)', color: 'var(--color-text)',
-          resize: 'vertical', lineHeight: 1.3,
-        }}
-      />
+      >+ Add</button>
     </div>
   );
 }
@@ -705,12 +744,15 @@ function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: 
           <div className="payslip-row"><span>Pag-IBIG Contribution</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.pagibigContrib)})</span></div>
           <div className="payslip-row"><span>Taxable Income</span><span>{formatPHP(r.taxableIncome)}</span></div>
           <div className="payslip-row"><span>Withholding Tax (TRAIN Law)</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.withholdingTax)})</span></div>
-          {otherDed > 0 && (
-            <div className="payslip-row">
-              <span>Other Deductions{r.otherDeductionsNote ? ` (${r.otherDeductionsNote})` : ''}</span>
-              <span style={{ color: 'var(--color-danger)' }}>({formatPHP(otherDed)})</span>
-            </div>
-          )}
+          {otherDed > 0 && (() => {
+            const dedLines = parseDeductionLines(otherDed, r.otherDeductionsNote);
+            return dedLines.map((l, i) => (
+              <div key={i} className="payslip-row">
+                <span>Other Deductions{l.note ? ` (${l.note})` : ''}</span>
+                <span style={{ color: 'var(--color-danger)' }}>({formatPHP(l.amount || otherDed / dedLines.length)})</span>
+              </div>
+            ));
+          })()}
           <div className="payslip-row" style={{ fontWeight: 700 }}>
             <span>Total Deductions</span>
             <span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions + otherDed)})</span>

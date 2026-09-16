@@ -15,7 +15,7 @@ router.use(authenticate);
 // Shared employee select — includes client name for the payroll table column
 const EMPLOYEE_SELECT = {
   id: true, employeeNo: true, firstName: true, lastName: true, position: true,
-  avatarColor: true,
+  avatarColor: true, useDailyRate: true, dailyRate: true,
   department: { select: { name: true } },
   client: { select: { id: true, name: true } },
 };

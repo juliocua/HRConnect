@@ -547,10 +547,10 @@ function PayrollSetupContent() {
               <div className="form-group">
                 <label className="form-label">Cut-Off From Day</label>
                 <input type="number" className="form-control" min={1} max={31} value={form.cutOffFromDay} onChange={e => setField('cutOffFromDay', parseInt(e.target.value) || 1)} />
-              </div>
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 28 }}>
-                <input type="checkbox" id="prevMonth" checked={form.cutOffFromIsPrevMonth} onChange={e => setField('cutOffFromIsPrevMonth', e.target.checked)} />
-                <label htmlFor="prevMonth" style={{ fontSize: 14, cursor: 'pointer', marginBottom: 0 }}>From previous month</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, cursor: 'pointer', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  <input type="checkbox" checked={form.cutOffFromIsPrevMonth} onChange={e => setField('cutOffFromIsPrevMonth', e.target.checked)} />
+                  From previous month
+                </label>
               </div>
               <div className="form-group">
                 <label className="form-label">Cut-Off To Day</label>
@@ -559,18 +559,20 @@ function PayrollSetupContent() {
               <div className="form-group">
                 <label className="form-label">Pay Day</label>
                 <input type="number" className="form-control" min={1} max={31} value={form.payDay} onChange={e => setField('payDay', parseInt(e.target.value) || 1)} />
-              </div>
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 28 }}>
-                <input type="checkbox" id="nextMonth" checked={form.payDayIsNextMonth} onChange={e => setField('payDayIsNextMonth', e.target.checked)} />
-                <label htmlFor="nextMonth" style={{ fontSize: 14, cursor: 'pointer', marginBottom: 0 }}>Pay day is next month</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, cursor: 'pointer', fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  <input type="checkbox" checked={form.payDayIsNextMonth} onChange={e => setField('payDayIsNextMonth', e.target.checked)} />
+                  Pay day is next month
+                </label>
               </div>
               <div className="form-group">
                 <label className="form-label">Sort Order</label>
                 <input type="number" className="form-control" min={0} value={form.sortOrder} onChange={e => setField('sortOrder', parseInt(e.target.value) || 0)} />
               </div>
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 28 }}>
-                <input type="checkbox" id="isActive" checked={form.isActive} onChange={e => setField('isActive', e.target.checked)} />
-                <label htmlFor="isActive" style={{ fontSize: 14, cursor: 'pointer', marginBottom: 0 }}>Active</label>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
+                  <input type="checkbox" checked={form.isActive} onChange={e => setField('isActive', e.target.checked)} />
+                  Active
+                </label>
               </div>
             </div>
             <div className="modal-footer">

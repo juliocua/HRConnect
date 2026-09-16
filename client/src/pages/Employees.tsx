@@ -831,6 +831,9 @@ function EmployeeModal({
                       <InfoRow label="Emp. No." value={initial!.employeeNo} mono />
                       <InfoRow label="Hire Date" value={formatDate(initial!.hireDate)} />
                       <InfoRow label="Basic Salary" value={`₱${initial!.basicSalary.toLocaleString('en-PH')}`} />
+                      {initial!.useDailyRate && (
+                        <InfoRow label="Daily Rate" value={initial!.dailyRate != null ? `₱${Number(initial!.dailyRate).toLocaleString('en-PH')}` : '—'} />
+                      )}
                     </div>
                   </>
                 )}
@@ -928,27 +931,29 @@ function EmployeeModal({
                   </div>
                 </div>
 
-                {/* Daily rate toggle */}
-                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input type="checkbox" id="useDailyRate" checked={!!form.useDailyRate} onChange={e => set('useDailyRate', e.target.checked)} />
-                  <label htmlFor="useDailyRate" style={{ fontSize: 14, cursor: 'pointer', marginBottom: 0 }}>Use daily rate for payroll (overrides monthly salary proration)</label>
+                <div className="form-grid form-grid-2">
+                  {/* Daily rate toggle */}
+                  <label style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
+                    <input type="checkbox" checked={!!form.useDailyRate} onChange={e => set('useDailyRate', e.target.checked)} />
+                    Use daily rate for payroll (overrides monthly salary proration)
+                  </label>
+                  {form.useDailyRate && (
+                    <div className="form-group">
+                      <label>Daily Rate (₱) *</label>
+                      <input
+                        type="text" inputMode="decimal" className="form-control"
+                        value={form.dailyRate == null ? '' : String(form.dailyRate)}
+                        placeholder="0"
+                        onChange={e => set('dailyRate', e.target.value)}
+                        onBlur={e => {
+                          const parsed = parseFloat(e.target.value);
+                          set('dailyRate', isNaN(parsed) || parsed < 0 ? null : parsed);
+                        }}
+                      />
+                      <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>Gross = Daily Rate × Days Worked. Late deduction = (minutes late ÷ 480) × Daily Rate.</p>
+                    </div>
+                  )}
                 </div>
-                {form.useDailyRate && (
-                  <div className="form-group" style={{ maxWidth: 260 }}>
-                    <label>Daily Rate (₱) *</label>
-                    <input
-                      type="text" inputMode="decimal" className="form-control"
-                      value={form.dailyRate == null ? '' : String(form.dailyRate)}
-                      placeholder="0"
-                      onChange={e => set('dailyRate', e.target.value)}
-                      onBlur={e => {
-                        const parsed = parseFloat(e.target.value);
-                        set('dailyRate', isNaN(parsed) || parsed < 0 ? null : parsed);
-                      }}
-                    />
-                    <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>Gross = Daily Rate × Days Worked. Late deduction = (minutes late ÷ 480) × Daily Rate.</p>
-                  </div>
-                )}
 
                 <div className="form-group">
                   <label>Avatar Color</label>
@@ -1848,6 +1853,20 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
               <InfoRow label="Hire Date" value={formatDate(e.hireDate)} />
               <InfoRow label="Basic Salary" value={e.basicSalary != null ? `₱${Number(e.basicSalary).toLocaleString('en-PH')}` : '—'} />
               <InfoRow label="Employee No." value={e.employeeNo ?? '—'} mono />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 14 }}>
+                <input type="checkbox" checked={!!e.useDailyRate} readOnly style={{ pointerEvents: 'none' }} />
+                <span style={{ color: e.useDailyRate ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
+                  Use daily rate for payroll (overrides monthly salary proration)
+                </span>
+              </div>
+              {e.useDailyRate && (
+                <>
+                  <InfoRow label="Daily Rate (₱)" value={e.dailyRate != null ? `₱${Number(e.dailyRate).toLocaleString('en-PH')}` : '—'} />
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', padding: '2px 0 6px' }}>
+                    Gross = Daily Rate × Days Worked. Late deduction = (minutes late ÷ 480) × Daily Rate.
+                  </div>
+                </>
+              )}
             </>
           )}
 
