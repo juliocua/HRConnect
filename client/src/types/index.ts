@@ -229,7 +229,7 @@ export interface PayrollRecord {
   id: string;
   payrollRunId: string;
   employeeId: string;
-  employee: Pick<Employee, 'id' | 'employeeNo' | 'firstName' | 'lastName' | 'position' | 'avatarColor'> & {
+  employee: Pick<Employee, 'id' | 'employeeNo' | 'firstName' | 'lastName' | 'position' | 'avatarColor' | 'useDailyRate' | 'dailyRate'> & {
     department: Department;
     client?: { id: string; name: string } | null;
   };

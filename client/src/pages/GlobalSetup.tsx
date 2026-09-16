@@ -590,7 +590,7 @@ function PayrollSetupContent() {
 
 function CompanySettingsContent() {
   const queryClient = useQueryClient();
-  const { success, error: showError } = useToast();
+  const toast = useToast();
 
   const { data: settings, isLoading } = useQuery<CompanySettings>({
     queryKey: ['company-settings'],
@@ -616,8 +616,8 @@ function CompanySettingsContent() {
 
   const saveMutation = useMutation({
     mutationFn: (data: typeof form) => api.put('/global-setup/company-settings', data).then(r => r.data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['company-settings'] }); success('Company settings saved.'); },
-    onError: () => showError('Failed to save settings.'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['company-settings'] }); toast('success', 'Company settings saved.'); },
+    onError: () => toast('error', 'Failed to save settings.'),
   });
 
   const handleLogoUpload = async (file: File) => {
@@ -627,8 +627,8 @@ function CompanySettingsContent() {
       fd.append('logo', file);
       await api.post('/global-setup/company-settings/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       queryClient.invalidateQueries({ queryKey: ['company-settings'] });
-      success('Logo uploaded.');
-    } catch { showError('Failed to upload logo.'); }
+      toast('success', 'Logo uploaded.');
+    } catch { toast('error', 'Failed to upload logo.'); }
     finally { setLogoUploading(false); }
   };
 
@@ -638,8 +638,8 @@ function CompanySettingsContent() {
     try {
       await api.delete('/global-setup/company-settings/logo');
       queryClient.invalidateQueries({ queryKey: ['company-settings'] });
-      success('Logo removed.');
-    } catch { showError('Failed to remove logo.'); }
+      toast('success', 'Logo removed.');
+    } catch { toast('error', 'Failed to remove logo.'); }
     finally { setLogoRemoving(false); }
   };
 
