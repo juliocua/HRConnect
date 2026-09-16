@@ -705,7 +705,7 @@ function CompanySettingsContent() {
 // ── Main GlobalSetup page ─────────────────────────────────────────────────────
 
 export default function GlobalSetup() {
-  const [outerTab, setOuterTab] = useState('Leave');
+  const [outerTab, setOuterTab] = useState('Company');
 
   return (
     <div className="page-container">
@@ -718,7 +718,7 @@ export default function GlobalSetup() {
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
         <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-          <TabBar tabs={['Leave', 'Payroll', 'Company']} active={outerTab} onChange={setOuterTab} />
+          <TabBar tabs={['Company', 'Leave', 'Payroll']} active={outerTab} onChange={setOuterTab} />
         </div>
         <div style={{ padding: 24 }}>
           {outerTab === 'Leave' && <LeaveSetupContent />}
