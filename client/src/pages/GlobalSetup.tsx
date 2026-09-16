@@ -704,6 +704,95 @@ function CompanySettingsContent() {
   );
 }
 
+// ── Shift Setup sub-component ─────────────────────────────────────────────────
+
+function ShiftSetupContent() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  const { data: settings, isLoading } = useQuery<CompanySettings>({
+    queryKey: ['company-settings'],
+    queryFn: () => api.get('/global-setup/company-settings').then(r => r.data),
+  });
+
+  const [shiftStart, setShiftStart] = useState('08:00');
+  const [shiftEnd, setShiftEnd] = useState('17:00');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (settings) {
+      setShiftStart(settings.defaultShiftStart ?? '08:00');
+      setShiftEnd(settings.defaultShiftEnd ?? '17:00');
+    }
+  }, [settings]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await api.put('/global-setup/company-settings', { defaultShiftStart: shiftStart, defaultShiftEnd: shiftEnd });
+      queryClient.invalidateQueries({ queryKey: ['company-settings'] });
+      toast('success', 'Shift settings saved.');
+    } catch {
+      toast('error', 'Failed to save shift settings.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isLoading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)' }}>Loading…</div>;
+
+  const parseTime = (t: string) => { const [h, m] = t.split(':').map(Number); return { h: h || 0, m: m || 0 }; };
+  const fmt12 = (h: number, m: number) => `${h % 12 === 0 ? 12 : h % 12}:${m.toString().padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  const { h: sH, m: sM } = parseTime(shiftStart);
+  const { h: eH, m: eM } = parseTime(shiftEnd);
+  const startFmt = fmt12(sH, sM);
+  const endFmt = fmt12(eH, eM);
+
+  return (
+    <div style={{ maxWidth: 520 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Default Shift Hours</h3>
+      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 20 }}>
+        Sets the company-wide default shift window. Per-client overrides can be configured in each Client's Policy tab.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+        <div className="form-group">
+          <label className="form-label">Time In (Shift Start)</label>
+          <input type="time" className="form-control" value={shiftStart} onChange={e => setShiftStart(e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Time Out (Shift End)</label>
+          <input type="time" className="form-control" value={shiftEnd} onChange={e => setShiftEnd(e.target.value)} />
+        </div>
+      </div>
+
+      <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+        {saving ? 'Saving…' : 'Save Shift Settings'}
+      </button>
+
+      {/* Behavior Legend */}
+      <div style={{ marginTop: 32, padding: 20, background: 'var(--color-surface-2)', borderRadius: 10, border: '1px solid var(--color-border)' }}>
+        <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, color: 'var(--color-text)' }}>
+          Attendance Status Rules
+        </h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {([
+            { badge: 'badge-success', label: 'Present', desc: `Clocked in on or before ${startFmt}.` },
+            { badge: 'badge-warning', label: 'Late', desc: `Clocked in after ${startFmt}. Late minutes reduce pay proportionally (minutes late ÷ 480 × daily equivalent).` },
+            { badge: 'badge-info', label: 'Overtime', desc: `Hours worked past ${endFmt}, computed from clock-out time. Must have an approved OT request to count toward pay (approved hours × 1.25 rate).` },
+            { badge: 'badge-neutral', label: 'Absent', desc: 'No clock-in recorded for the day and no approved leave on file.' },
+          ] as { badge: string; label: string; desc: string }[]).map(({ badge, label, desc }) => (
+            <div key={label} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <span className={`badge ${badge}`} style={{ minWidth: 72, textAlign: 'center', flexShrink: 0, marginTop: 1 }}>{label}</span>
+              <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>{desc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main GlobalSetup page ─────────────────────────────────────────────────────
 
 export default function GlobalSetup() {
@@ -720,12 +809,13 @@ export default function GlobalSetup() {
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
         <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-          <TabBar tabs={['Company', 'Leave', 'Payroll']} active={outerTab} onChange={setOuterTab} />
+          <TabBar tabs={['Company', 'Shift', 'Leave', 'Payroll']} active={outerTab} onChange={setOuterTab} />
         </div>
         <div style={{ padding: 24 }}>
+          {outerTab === 'Company' && <CompanySettingsContent />}
+          {outerTab === 'Shift' && <ShiftSetupContent />}
           {outerTab === 'Leave' && <LeaveSetupContent />}
           {outerTab === 'Payroll' && <PayrollSetupContent />}
-          {outerTab === 'Company' && <CompanySettingsContent />}
         </div>
       </div>
     </div>

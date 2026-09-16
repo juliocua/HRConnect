@@ -407,7 +407,7 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
                   (auto-calculated · override if needed)
                 </span>
               </label>
-              <input type="number" className="form-control" min={0} max={24} step={0.5} value={form.overtimeHrs} onChange={e => set('overtimeHrs', parseFloat(e.target.value) || 0)} />
+              <input type="text" inputMode="decimal" className="form-control" placeholder="0" value={form.overtimeHrs} onChange={e => set('overtimeHrs', parseFloat(e.target.value) || 0)} />
             </div>
             <div className="form-group">
               <label>Notes</label>

@@ -561,14 +561,16 @@ model GlobalPayrollPolicy {
 }
 
 model CompanySettings {
-  id            String   @id @default("singleton")
-  companyName   String   @default("")
-  address       String?
-  taxNumber     String?
-  contactNumber String?
-  logoUrl       String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                String   @id @default("singleton")
+  companyName       String   @default("")
+  address           String?
+  taxNumber         String?
+  contactNumber     String?
+  logoUrl           String?
+  defaultShiftStart String?  @default("08:00")
+  defaultShiftEnd   String?  @default("17:00")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@map("company_settings")
 }

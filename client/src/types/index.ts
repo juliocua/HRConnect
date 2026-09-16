@@ -402,6 +402,8 @@ export interface CompanySettings {
   taxNumber?: string | null;
   contactNumber?: string | null;
   logoUrl?: string | null;
+  defaultShiftStart?: string | null;
+  defaultShiftEnd?: string | null;
   createdAt: string;
   updatedAt: string;
 }

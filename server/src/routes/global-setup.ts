@@ -145,6 +145,8 @@ const CompanySettingsSchema = z.object({
   address: z.string().nullable().optional(),
   taxNumber: z.string().nullable().optional(),
   contactNumber: z.string().nullable().optional(),
+  defaultShiftStart: z.string().nullable().optional(),
+  defaultShiftEnd: z.string().nullable().optional(),
 });
 
 // GET /api/global-setup/company-settings
