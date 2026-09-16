@@ -687,7 +687,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       records = employees
         .filter((emp: any) => (attendanceMap.get(emp.id)?.daysWorked ?? 0) > 0 || (silDaysMap.get(emp.id) ?? 0) > 0)
         .map((emp: any) => {
-          const totals  = attendanceMap.get(emp.id) ?? { daysWorked: 0, minutesLate: 0 };
+          const totals  = attendanceMap.get(emp.id) ?? { daysWorked: 0, minutesLate: 0, otHours: 0 };
           const daysWorked = totals.daysWorked;
           const silDays = silDaysMap.get(emp.id) ?? 0;
           const silPay  = silDays > 0 ? (emp.basicSalary / 22) * silDays : 0;

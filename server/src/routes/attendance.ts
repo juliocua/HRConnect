@@ -110,12 +110,12 @@ router.post('/clock-in', async (req: Request, res: Response, next: NextFunction)
 
     const record = await prisma.attendance.upsert({
       where: { employeeId_date: { employeeId, date: today } },
-      update: { clockInAt: now, status, lateMinutes, isManualEntry: false },
+      update: { clockInAt: now, status: status as any, lateMinutes, isManualEntry: false },
       create: {
         employeeId,
         date: today,
         clockInAt: now,
-        status,
+        status: status as any,
         lateMinutes,
         isManualEntry: false,
       },
