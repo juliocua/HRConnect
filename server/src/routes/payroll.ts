@@ -643,13 +643,13 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         select: { employeeId: true, status: true, timeIn: true, clockInAt: true },
       });
 
-      // Fetch client shift policies for daily-rate employees (to compute minutes late)
-      const drClientIds = [...new Set(
-        employees.filter((e: any) => e.useDailyRate && e.clientId).map((e: any) => e.clientId as string)
+      // Fetch client shift policies for all employees (to compute minutes late)
+      const allClientIds = [...new Set(
+        employees.filter((e: any) => e.clientId).map((e: any) => e.clientId as string)
       )];
-      const shiftPolicies = drClientIds.length > 0
+      const shiftPolicies = allClientIds.length > 0
         ? await prisma.clientPolicy.findMany({
-            where: { clientId: { in: drClientIds }, type: 'EMPLOYEE_SHIFT' },
+            where: { clientId: { in: allClientIds }, type: 'WORK_HOURS' },
             select: { clientId: true, value: true },
           })
         : [];
@@ -672,17 +672,15 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         cur.daysWorked += att.status === 'HALF_DAY' ? 0.5 : 1;
         if (att.status === 'LATE') {
           const emp = empById.get(att.employeeId);
-          if (emp?.useDailyRate) {
-            const shiftStartStr = emp.clientId ? (shiftMap.get(emp.clientId) ?? '08:00') : '08:00';
-            const [shiftHr, shiftMin] = shiftStartStr.split(':').map(Number);
-            const clockIn = att.clockInAt ?? att.timeIn;
-            if (clockIn) {
-              const clockInDate = new Date(clockIn);
-              const shiftDate = new Date(clockInDate);
-              shiftDate.setHours(shiftHr, shiftMin, 0, 0);
-              const lateMs = Math.max(0, clockInDate.getTime() - shiftDate.getTime());
-              cur.minutesLate += lateMs / 60_000;
-            }
+          const shiftStartStr = emp?.clientId ? (shiftMap.get(emp.clientId) ?? '08:00') : '08:00';
+          const [shiftHr, shiftMin] = shiftStartStr.split(':').map(Number);
+          const clockIn = att.clockInAt ?? att.timeIn;
+          if (clockIn) {
+            const clockInDate = new Date(clockIn);
+            const shiftDate = new Date(clockInDate);
+            shiftDate.setHours(shiftHr, shiftMin, 0, 0);
+            const lateMs = Math.max(0, clockInDate.getTime() - shiftDate.getTime());
+            cur.minutesLate += lateMs / 60_000;
           }
         }
         attendanceMap.set(att.employeeId, cur);
@@ -714,6 +712,20 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         silDaysMap.set(req.employeeId, (silDaysMap.get(req.employeeId) ?? 0) + days);
       }
 
+      // Fetch approved OT requests in the period
+      const otRequests = await prisma.overtimeRequest.findMany({
+        where: {
+          employeeId: { in: employees.map((e: any) => e.id) },
+          status: 'APPROVED',
+          date: { gte: periodStart, lte: periodEnd },
+        },
+        select: { employeeId: true, hours: true },
+      });
+      const otHoursMap = new Map<string, number>();
+      for (const ot of otRequests) {
+        otHoursMap.set(ot.employeeId, (otHoursMap.get(ot.employeeId) ?? 0) + ot.hours);
+      }
+
       // Include employees with attendance OR SIL leave in this period
       records = employees
         .filter((emp: any) => (attendanceMap.get(emp.id)?.daysWorked ?? 0) > 0 || (silDaysMap.get(emp.id) ?? 0) > 0)
@@ -723,14 +735,14 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           const silDays = silDaysMap.get(emp.id) ?? 0;
           const silPay  = silDays > 0 ? (emp.basicSalary / 22) * silDays : 0;
 
-          // Daily-rate employees: gross = dailyRate × daysWorked; late deduction = minutesLate/480 × dailyRate
+          // Daily-rate employees: gross = dailyRate × daysWorked; monthly: basicSalary/22 × daysWorked
           const useDailyRate = emp.useDailyRate && emp.dailyRate > 0;
-          const grossPay    = useDailyRate
-            ? (emp.dailyRate * daysWorked) + silPay
-            : (emp.basicSalary / 22) * daysWorked + silPay;
-          const lateDeduction = useDailyRate
-            ? Math.round((totals.minutesLate / 480) * emp.dailyRate * 100) / 100
-            : 0;
+          const dailyEquiv   = useDailyRate ? (emp.dailyRate as number) : (emp.basicSalary / 22);
+          const otHours      = otHoursMap.get(emp.id) ?? 0;
+          const overtimePay  = Math.round(otHours * (dailyEquiv / 8) * 1.25 * 100) / 100;
+          const grossPay     = dailyEquiv * daysWorked + silPay + overtimePay;
+          // Late deduction: (minutes late / 480) × daily equivalent rate
+          const lateDeduction = Math.round((totals.minutesLate / 480) * dailyEquiv * 100) / 100;
 
           // Statutory contributions are based on full monthly salary bracket
           const sssContrib = computeSSS(emp.basicSalary);
@@ -747,7 +759,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
             daysWorked,
             grossPay,
             silPay,
-            overtimePay: 0,
+            overtimePay,
             allowances: 0,
             otherDeductions: 0,
             lateDeduction,

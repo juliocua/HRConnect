@@ -105,9 +105,28 @@ router.post('/clock-in', async (req: Request, res: Response, next: NextFunction)
       return res.status(409).json({ error: 'Already clocked in today' });
     }
 
-    // Determine late status — after 09:00
+    // Determine late status based on employee's shift start from client policy (default 08:00)
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { clientId: true },
+    });
+    let shiftHour = 8, shiftMin = 0;
+    if (employee?.clientId) {
+      const shiftPolicy = await prisma.clientPolicy.findFirst({
+        where: { clientId: employee.clientId, type: 'WORK_HOURS' },
+        select: { value: true },
+      });
+      if (shiftPolicy?.value) {
+        try {
+          const parsed = JSON.parse(shiftPolicy.value);
+          if (parsed.shiftStart) {
+            [shiftHour, shiftMin] = (parsed.shiftStart as string).split(':').map(Number);
+          }
+        } catch { /* use defaults */ }
+      }
+    }
     const cutoff = new Date(today);
-    cutoff.setHours(9, 0, 0, 0);
+    cutoff.setHours(shiftHour, shiftMin, 0, 0);
     const status = now > cutoff ? 'LATE' : 'PRESENT';
 
     const record = await prisma.attendance.upsert({
