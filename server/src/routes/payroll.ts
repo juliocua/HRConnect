@@ -1,16 +1,20 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import path from 'path';
+import fs from 'fs';
 import PDFDocument from 'pdfkit';
 import { prisma } from '../lib/prisma';
 import { computeSSS, computePhilHealth, computePagIBIG, computeWithholdingTax } from '../lib/payroll';
 import { authenticate, requireRole } from '../middleware/authenticate';
+
+const uploadsBase = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
 
 const router = Router();
 router.use(authenticate);
 
 // Shared employee select — includes client name for the payroll table column
 const EMPLOYEE_SELECT = {
-  id: true, firstName: true, lastName: true, position: true,
+  id: true, employeeNo: true, firstName: true, lastName: true, position: true,
   avatarColor: true,
   department: { select: { name: true } },
   client: { select: { id: true, name: true } },
@@ -94,24 +98,28 @@ router.get('/audit', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reque
 // GET /api/payroll/record/:recordId/pdf  — download a payslip as PDF
 router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const record = await prisma.payrollRecord.findUnique({
-      where: { id: req.params.recordId },
-      include: {
-        employee: {
-          select: {
-            firstName: true, lastName: true, position: true,
-            department: { select: { name: true } },
-            client: { select: { name: true } },
+    const [record, companySettings] = await Promise.all([
+      prisma.payrollRecord.findUnique({
+        where: { id: req.params.recordId },
+        include: {
+          employee: {
+            select: {
+              firstName: true, lastName: true, position: true,
+              useDailyRate: true, dailyRate: true,
+              department: { select: { name: true } },
+              client: { select: { name: true } },
+            },
+          },
+          payrollRun: {
+            select: {
+              period: true, periodStart: true, periodEnd: true,
+              payPeriodType: true,
+            },
           },
         },
-        payrollRun: {
-          select: {
-            period: true, periodStart: true, periodEnd: true,
-            payPeriodType: true,
-          },
-        },
-      },
-    });
+      }),
+      (prisma as any).companySettings.findUnique({ where: { id: 'singleton' } }),
+    ]);
 
     if (!record) return res.status(404).json({ error: 'Record not found' });
 
@@ -124,9 +132,25 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
     const run = record.payrollRun;
     const is13th = run.payPeriodType === 9;
     const otherDed = record.otherDeductions ?? 0;
+    const otherDedNote = (record as any).otherDeductionsNote ?? null;
     const lateDed = (record as any).lateDeduction ?? 0;
     const holidayPay = (record as any).holidayPay ?? 0;
     const nightDiff = (record as any).nightDifferential ?? 0;
+
+    // Company settings
+    const companyName = companySettings?.companyName || 'NUAGE CONSULTING GROUP';
+    const companyAddress = companySettings?.address ?? null;
+    const companyContact = companySettings?.contactNumber ?? null;
+
+    // Load logo from disk if set
+    let logoBuffer: Buffer | undefined;
+    if (companySettings?.logoUrl) {
+      try {
+        const logoFilename = path.basename(new URL(companySettings.logoUrl).pathname);
+        const logoPath = path.join(uploadsBase, 'logos', logoFilename);
+        if (fs.existsSync(logoPath)) logoBuffer = fs.readFileSync(logoPath);
+      } catch { /* ignore */ }
+    }
 
     const phpFmt = (n: number) =>
       `PHP ${Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -171,10 +195,28 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
     };
 
     // ── Header ─────────────────────────────────────────────────────────────────
-    doc.fontSize(16).font('Helvetica-Bold').fillColor('#111111')
-      .text('NUAGE CONSULTING GROUP', { align: 'center' });
-    doc.fontSize(11).font('Helvetica').fillColor('#444444')
-      .text('PAYSLIP', { align: 'center' });
+    if (logoBuffer) {
+      const logoY = doc.y;
+      doc.image(logoBuffer, 50, logoY, { fit: [56, 56], align: 'left', valign: 'center' });
+      doc.fontSize(16).font('Helvetica-Bold').fillColor('#111111')
+        .text(companyName.toUpperCase(), 120, logoY + 4, { width: 375, lineBreak: false });
+      doc.fontSize(10).font('Helvetica').fillColor('#444444')
+        .text('PAYSLIP', 120, doc.y + 2, { width: 375 });
+      if (companyAddress || companyContact) {
+        doc.fontSize(8.5).font('Helvetica').fillColor('#888888')
+          .text([companyAddress, companyContact].filter(Boolean).join('  ·  '), 120, doc.y, { width: 375 });
+      }
+      doc.y = Math.max(doc.y, logoY + 62);
+    } else {
+      doc.fontSize(16).font('Helvetica-Bold').fillColor('#111111')
+        .text(companyName.toUpperCase(), { align: 'center' });
+      doc.fontSize(11).font('Helvetica').fillColor('#444444')
+        .text('PAYSLIP', { align: 'center' });
+      if (companyAddress || companyContact) {
+        doc.fontSize(8.5).font('Helvetica').fillColor('#888888')
+          .text([companyAddress, companyContact].filter(Boolean).join('  ·  '), 50, doc.y, { align: 'center', width: 495 });
+      }
+    }
     doc.fillColor('#111111');
     separator();
 
@@ -224,8 +266,14 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
       }
     } else {
       sectionLabel('Earnings');
-      lineRow('Basic Salary (Monthly)', phpFmt(record.basicSalary));
-      lineRow(`Days Worked  (${record.daysWorked} of 22)`, phpFmt((record.basicSalary / 22) * record.daysWorked));
+      if ((emp as any).useDailyRate && (emp as any).dailyRate) {
+        lineRow('Daily Rate', phpFmt((emp as any).dailyRate));
+        lineRow(`Days Worked`, `${record.daysWorked} day${record.daysWorked !== 1 ? 's' : ''}`);
+        lineRow('Daily Rate Pay  (Daily Rate × Days Worked)', phpFmt((emp as any).dailyRate * record.daysWorked));
+      } else {
+        lineRow('Basic Salary (Monthly)', phpFmt(record.basicSalary));
+        lineRow(`Days Worked  (${record.daysWorked} of 22)`, phpFmt((record.basicSalary / 22) * record.daysWorked));
+      }
       if (record.overtimePay > 0) lineRow('Overtime Pay', phpFmt(record.overtimePay));
       if (holidayPay > 0) lineRow('Holiday Pay', phpFmt(holidayPay));
       if (nightDiff > 0) lineRow('Night Differential', phpFmt(nightDiff));
@@ -241,7 +289,10 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
       lineRow('Taxable Income', phpFmt(record.taxableIncome));
       lineRow('Withholding Tax  (TRAIN Law)', `(${phpFmt(record.withholdingTax)})`, false, '#dc2626');
       if (lateDed > 0) lineRow('Late Deduction', `(${phpFmt(lateDed)})`, false, '#dc2626');
-      if (otherDed > 0) lineRow('Other Deductions', `(${phpFmt(otherDed)})`, false, '#dc2626');
+      if (otherDed > 0) {
+        const otherLabel = otherDedNote ? `Other Deductions  (${otherDedNote})` : 'Other Deductions';
+        lineRow(otherLabel, `(${phpFmt(otherDed)})`, false, '#dc2626');
+      }
       lineRow('Total Deductions', `(${phpFmt(record.totalDeductions + otherDed + lateDed)})`, true, '#dc2626');
     }
 
@@ -589,13 +640,52 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           date: { gte: periodStart, lte: periodEnd },
           status: { in: ['PRESENT', 'LATE', 'HALF_DAY'] },
         },
-        select: { employeeId: true, status: true },
+        select: { employeeId: true, status: true, timeIn: true, clockInAt: true },
       });
 
-      const attendanceMap = new Map<string, number>();
+      // Fetch client shift policies for daily-rate employees (to compute minutes late)
+      const drClientIds = [...new Set(
+        employees.filter((e: any) => e.useDailyRate && e.clientId).map((e: any) => e.clientId as string)
+      )];
+      const shiftPolicies = drClientIds.length > 0
+        ? await prisma.clientPolicy.findMany({
+            where: { clientId: { in: drClientIds }, type: 'EMPLOYEE_SHIFT' },
+            select: { clientId: true, value: true },
+          })
+        : [];
+      const shiftMap = new Map<string, string>(); // clientId → "HH:MM"
+      for (const p of shiftPolicies) {
+        if (p.value) {
+          try {
+            const parsed = JSON.parse(p.value);
+            if (parsed.shiftStart) shiftMap.set(p.clientId, parsed.shiftStart);
+          } catch { /* ignore */ }
+        }
+      }
+
+      const empById = new Map<string, any>(employees.map((e: any) => [e.id, e]));
+
+      interface AttTotals { daysWorked: number; minutesLate: number; }
+      const attendanceMap = new Map<string, AttTotals>();
       for (const att of allAttendance) {
-        const current = attendanceMap.get(att.employeeId) ?? 0;
-        attendanceMap.set(att.employeeId, current + (att.status === 'HALF_DAY' ? 0.5 : 1));
+        const cur = attendanceMap.get(att.employeeId) ?? { daysWorked: 0, minutesLate: 0 };
+        cur.daysWorked += att.status === 'HALF_DAY' ? 0.5 : 1;
+        if (att.status === 'LATE') {
+          const emp = empById.get(att.employeeId);
+          if (emp?.useDailyRate) {
+            const shiftStartStr = emp.clientId ? (shiftMap.get(emp.clientId) ?? '08:00') : '08:00';
+            const [shiftHr, shiftMin] = shiftStartStr.split(':').map(Number);
+            const clockIn = att.clockInAt ?? att.timeIn;
+            if (clockIn) {
+              const clockInDate = new Date(clockIn);
+              const shiftDate = new Date(clockInDate);
+              shiftDate.setHours(shiftHr, shiftMin, 0, 0);
+              const lateMs = Math.max(0, clockInDate.getTime() - shiftDate.getTime());
+              cur.minutesLate += lateMs / 60_000;
+            }
+          }
+        }
+        attendanceMap.set(att.employeeId, cur);
       }
 
       // SIL pay: approved SIL leave requests overlapping this period (separate payslip line)
@@ -626,13 +716,22 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
 
       // Include employees with attendance OR SIL leave in this period
       records = employees
-        .filter((emp: any) => (attendanceMap.get(emp.id) ?? 0) > 0 || (silDaysMap.get(emp.id) ?? 0) > 0)
+        .filter((emp: any) => (attendanceMap.get(emp.id)?.daysWorked ?? 0) > 0 || (silDaysMap.get(emp.id) ?? 0) > 0)
         .map((emp: any) => {
-          const daysWorked = attendanceMap.get(emp.id) ?? 0;
-          const silDays    = silDaysMap.get(emp.id) ?? 0;
-          const silPay     = silDays > 0 ? (emp.basicSalary / 22) * silDays : 0;
-          // Gross = prorated daily rate × days actually worked + SIL pay (shown separately)
-          const grossPay = (emp.basicSalary / 22) * daysWorked + silPay;
+          const totals  = attendanceMap.get(emp.id) ?? { daysWorked: 0, minutesLate: 0 };
+          const daysWorked = totals.daysWorked;
+          const silDays = silDaysMap.get(emp.id) ?? 0;
+          const silPay  = silDays > 0 ? (emp.basicSalary / 22) * silDays : 0;
+
+          // Daily-rate employees: gross = dailyRate × daysWorked; late deduction = minutesLate/480 × dailyRate
+          const useDailyRate = emp.useDailyRate && emp.dailyRate > 0;
+          const grossPay    = useDailyRate
+            ? (emp.dailyRate * daysWorked) + silPay
+            : (emp.basicSalary / 22) * daysWorked + silPay;
+          const lateDeduction = useDailyRate
+            ? Math.round((totals.minutesLate / 480) * emp.dailyRate * 100) / 100
+            : 0;
+
           // Statutory contributions are based on full monthly salary bracket
           const sssContrib = computeSSS(emp.basicSalary);
           const philhealthContrib = computePhilHealth(emp.basicSalary);
@@ -640,7 +739,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           const taxableIncome = Math.max(0, grossPay - sssContrib - philhealthContrib - pagibigContrib);
           const withholdingTax = computeWithholdingTax(taxableIncome);
           const totalDeductions = sssContrib + philhealthContrib + pagibigContrib + withholdingTax;
-          const netPay = grossPay - totalDeductions;
+          const netPay = grossPay - totalDeductions - lateDeduction;
           return {
             payrollRunId: payrollRun.id,
             employeeId: emp.id,
@@ -651,7 +750,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
             overtimePay: 0,
             allowances: 0,
             otherDeductions: 0,
-            lateDeduction: 0,
+            lateDeduction,
             holidayPay: 0,
             nightDifferential: 0,
             sssContrib,
@@ -769,17 +868,19 @@ router.put('/run/:runId/record/:recordId', requireRole('HR_MANAGER', 'SUPER_ADMI
     }
 
     const body = z.object({
-      otherDeductions:   z.number().min(0).optional(),
-      lateDeduction:     z.number().min(0).optional(),
-      holidayPay:        z.number().min(0).optional(),
-      nightDifferential: z.number().min(0).optional(),
+      otherDeductions:     z.number().min(0).optional(),
+      otherDeductionsNote: z.string().nullable().optional(),
+      lateDeduction:       z.number().min(0).optional(),
+      holidayPay:          z.number().min(0).optional(),
+      nightDifferential:   z.number().min(0).optional(),
     }).parse(req.body);
 
-    const updateData: Record<string, number> = {};
-    if (body.otherDeductions   !== undefined) updateData.otherDeductions   = body.otherDeductions;
-    if (body.lateDeduction     !== undefined) updateData.lateDeduction     = body.lateDeduction;
-    if (body.holidayPay        !== undefined) updateData.holidayPay        = body.holidayPay;
-    if (body.nightDifferential !== undefined) updateData.nightDifferential = body.nightDifferential;
+    const updateData: Record<string, any> = {};
+    if (body.otherDeductions     !== undefined) updateData.otherDeductions     = body.otherDeductions;
+    if (body.otherDeductionsNote !== undefined) updateData.otherDeductionsNote = body.otherDeductionsNote;
+    if (body.lateDeduction       !== undefined) updateData.lateDeduction       = body.lateDeduction;
+    if (body.holidayPay          !== undefined) updateData.holidayPay          = body.holidayPay;
+    if (body.nightDifferential   !== undefined) updateData.nightDifferential   = body.nightDifferential;
 
     // Read record BEFORE applying partial update — needed for delta-based recompute
     const prev = await prisma.payrollRecord.findUnique({ where: { id: req.params.recordId } });

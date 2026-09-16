@@ -82,6 +82,8 @@ const EmployeeSchema = z.object({
   status: z.enum(['ACTIVE', 'ON_LEAVE', 'INACTIVE', 'TERMINATED']).optional(),
   hireDate: z.string().transform(d => new Date(d)),
   basicSalary: z.number().positive(),
+  dailyRate: z.number().nonnegative().optional().nullable(),
+  useDailyRate: z.boolean().optional(),
   sssNo: z.string().optional(),
   philhealthNo: z.string().optional(),
   pagibigNo: z.string().optional(),

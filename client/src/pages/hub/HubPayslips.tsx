@@ -290,8 +290,17 @@ function PayslipModal({ record: r, cutOffPeriods, onClose }: { record: MyPayroll
 
           {/* Earnings */}
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Earnings</div>
-          <div className="payslip-row"><span>Basic Salary</span><span>{formatPHP(r.basicSalary)}</span></div>
-          <div className="payslip-row"><span>Days Worked ({r.daysWorked} days)</span><span>{formatPHP(r.basicSalary / 22 * r.daysWorked)}</span></div>
+          {(r as any).employee?.useDailyRate && (r as any).employee?.dailyRate ? (
+            <>
+              <div className="payslip-row"><span>Daily Rate</span><span>{formatPHP((r as any).employee.dailyRate)} / day</span></div>
+              <div className="payslip-row"><span>Days Worked ({r.daysWorked} days)</span><span>{formatPHP((r as any).employee.dailyRate * r.daysWorked)}</span></div>
+            </>
+          ) : (
+            <>
+              <div className="payslip-row"><span>Basic Salary</span><span>{formatPHP(r.basicSalary)}</span></div>
+              <div className="payslip-row"><span>Days Worked ({r.daysWorked} days)</span><span>{formatPHP(r.basicSalary / 22 * r.daysWorked)}</span></div>
+            </>
+          )}
           {r.overtimePay > 0 && <div className="payslip-row"><span>Overtime Pay</span><span>{formatPHP(r.overtimePay)}</span></div>}
           {holidayPay > 0 && <div className="payslip-row"><span>Holiday Pay</span><span>{formatPHP(holidayPay)}</span></div>}
           {nightDiff > 0 && <div className="payslip-row"><span>Night Differential</span><span>{formatPHP(nightDiff)}</span></div>}
@@ -311,7 +320,10 @@ function PayslipModal({ record: r, cutOffPeriods, onClose }: { record: MyPayroll
             <div className="payslip-row"><span>Late Deduction</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(lateDed)})</span></div>
           )}
           {otherDed > 0 && (
-            <div className="payslip-row"><span>Other Deductions</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(otherDed)})</span></div>
+            <div className="payslip-row">
+              <span>Other Deductions{(r as any).otherDeductionsNote ? ` (${(r as any).otherDeductionsNote})` : ''}</span>
+              <span style={{ color: 'var(--color-danger)' }}>({formatPHP(otherDed)})</span>
+            </div>
           )}
           <div className="payslip-row" style={{ fontWeight: 700 }}>
             <span>Total Deductions</span>

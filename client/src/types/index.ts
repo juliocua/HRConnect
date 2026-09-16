@@ -76,6 +76,8 @@ export interface Employee {
   bankName?: string | null;
   bankAccountNo?: string | null;
   bankAccountName?: string | null;
+  dailyRate?: number | null;
+  useDailyRate?: boolean;
   createdAt: string;
   user?: { id: string; email: string; role?: UserRole; isActive: boolean } | null;
 }
@@ -240,6 +242,7 @@ export interface PayrollRecord {
   withholdingTax: number;
   totalDeductions: number;
   otherDeductions: number;
+  otherDeductionsNote?: string | null;
   netPay: number;
   daysWorked: number;
   overtimePay: number;
@@ -389,6 +392,18 @@ export interface Billing {
   notes?: string;
   lineItems?: Array<{ label: string; amount: number }> | null;
   createdAt: string;
+}
+
+// ── Company Settings ──────────────────────────────────────────────────────────
+export interface CompanySettings {
+  id: string;
+  companyName: string;
+  address?: string | null;
+  taxNumber?: string | null;
+  contactNumber?: string | null;
+  logoUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BillingSummary {

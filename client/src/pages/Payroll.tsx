@@ -55,8 +55,12 @@ export default function Payroll() {
   });
 
   const updateRecordMutation = useMutation({
-    mutationFn: ({ recordId, otherDeductions }: { recordId: string; otherDeductions: number }) =>
-      api.put(`/payroll/${viewRunId}/record/${recordId}`, { otherDeductions }).then(r => r.data),
+    mutationFn: ({ recordId, otherDeductions, otherDeductionsNote }: {
+      recordId: string;
+      otherDeductions: number;
+      otherDeductionsNote?: string | null;
+    }) =>
+      api.put(`/payroll/${viewRunId}/record/${recordId}`, { otherDeductions, otherDeductionsNote }).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] }),
   });
 
@@ -68,8 +72,8 @@ export default function Payroll() {
   const totalNet = records.reduce((s, r) => s + r.netPay, 0);
   const totalOT = records.reduce((s, r) => s + r.overtimePay, 0);
 
-  const handleOtherDeductionsBlur = useCallback((recordId: string, value: number) => {
-    updateRecordMutation.mutate({ recordId, otherDeductions: value });
+  const handleOtherDeductionsBlur = useCallback((recordId: string, value: number, note: string | null) => {
+    updateRecordMutation.mutate({ recordId, otherDeductions: value, otherDeductionsNote: note });
   }, [updateRecordMutation]);
 
   const handleDownloadGovReport = async () => {
@@ -188,6 +192,7 @@ export default function Payroll() {
         <OtherDeductionsCell
           recordId={r.id}
           initialValue={r.otherDeductions ?? 0}
+          initialNote={r.otherDeductionsNote}
           onBlur={handleOtherDeductionsBlur}
           saving={updateRecordMutation.isPending && updateRecordMutation.variables?.recordId === r.id}
         />
@@ -393,29 +398,63 @@ export default function Payroll() {
 }
 
 // ── Inline editable other deductions cell ─────────────────────────────────────
-function OtherDeductionsCell({ recordId, initialValue, onBlur, saving }: {
+function OtherDeductionsCell({ recordId, initialValue, initialNote, onBlur, saving }: {
   recordId: string;
   initialValue: number;
-  onBlur: (recordId: string, value: number) => void;
+  initialNote?: string | null;
+  onBlur: (recordId: string, value: number, note: string | null) => void;
   saving: boolean;
 }) {
-  const [value, setValue] = useState(initialValue);
+  const [raw, setRaw] = useState(initialValue === 0 ? '' : String(initialValue));
+  const [note, setNote] = useState(initialNote ?? '');
+
+  const currentAmount = () => {
+    const parsed = parseFloat(raw);
+    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+  };
+
+  const handleAmountBlur = () => {
+    const final = currentAmount();
+    setRaw(final === 0 ? '' : String(final));
+    onBlur(recordId, final, note || null);
+  };
+
+  const handleNoteBlur = () => {
+    onBlur(recordId, currentAmount(), note || null);
+  };
+
   return (
-    <input
-      type="number"
-      min={0}
-      step={0.01}
-      value={value}
-      onChange={e => setValue(parseFloat(e.target.value) || 0)}
-      onBlur={() => onBlur(recordId, value)}
-      disabled={saving}
-      style={{
-        width: 80, padding: '3px 6px', fontSize: 12,
-        border: '1px solid var(--color-border)', borderRadius: 4,
-        background: 'var(--color-surface)', color: 'var(--color-text)',
-        fontFamily: 'monospace',
-      }}
-    />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={raw}
+        placeholder="0"
+        onChange={e => setRaw(e.target.value)}
+        onBlur={handleAmountBlur}
+        disabled={saving}
+        style={{
+          width: 80, padding: '3px 6px', fontSize: 12,
+          border: '1px solid var(--color-border)', borderRadius: 4,
+          background: 'var(--color-surface)', color: 'var(--color-text)',
+          fontFamily: 'monospace',
+        }}
+      />
+      <textarea
+        value={note}
+        placeholder="Note (optional)"
+        onChange={e => setNote(e.target.value)}
+        onBlur={handleNoteBlur}
+        disabled={saving}
+        rows={1}
+        style={{
+          width: 120, padding: '3px 6px', fontSize: 11,
+          border: '1px solid var(--color-border)', borderRadius: 4,
+          background: 'var(--color-surface)', color: 'var(--color-text)',
+          resize: 'vertical', lineHeight: 1.3,
+        }}
+      />
+    </div>
   );
 }
 
@@ -642,8 +681,17 @@ function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: 
 
           {/* Earnings */}
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Earnings</div>
-          <div className="payslip-row"><span>Basic Salary</span><span>{formatPHP(r.basicSalary)}</span></div>
-          <div className="payslip-row"><span>Days Worked ({r.daysWorked} days)</span><span>{formatPHP(r.basicSalary / 22 * r.daysWorked)}</span></div>
+          {r.employee.useDailyRate && r.employee.dailyRate ? (
+            <>
+              <div className="payslip-row"><span>Daily Rate</span><span>{formatPHP(r.employee.dailyRate)} / day</span></div>
+              <div className="payslip-row"><span>Days Worked ({r.daysWorked} days)</span><span>{formatPHP(r.employee.dailyRate * r.daysWorked)}</span></div>
+            </>
+          ) : (
+            <>
+              <div className="payslip-row"><span>Basic Salary</span><span>{formatPHP(r.basicSalary)}</span></div>
+              <div className="payslip-row"><span>Days Worked ({r.daysWorked} days)</span><span>{formatPHP(r.basicSalary / 22 * r.daysWorked)}</span></div>
+            </>
+          )}
           {r.overtimePay > 0 && <div className="payslip-row"><span>Overtime Pay</span><span>{formatPHP(r.overtimePay)}</span></div>}
           {r.allowances > 0 && <div className="payslip-row"><span>Allowances</span><span>{formatPHP(r.allowances)}</span></div>}
           <div className="payslip-row" style={{ fontWeight: 700 }}><span>Gross Pay</span><span>{formatPHP(r.grossPay)}</span></div>
@@ -658,7 +706,10 @@ function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: 
           <div className="payslip-row"><span>Taxable Income</span><span>{formatPHP(r.taxableIncome)}</span></div>
           <div className="payslip-row"><span>Withholding Tax (TRAIN Law)</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.withholdingTax)})</span></div>
           {otherDed > 0 && (
-            <div className="payslip-row"><span>Other Deductions</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(otherDed)})</span></div>
+            <div className="payslip-row">
+              <span>Other Deductions{r.otherDeductionsNote ? ` (${r.otherDeductionsNote})` : ''}</span>
+              <span style={{ color: 'var(--color-danger)' }}>({formatPHP(otherDed)})</span>
+            </div>
           )}
           <div className="payslip-row" style={{ fontWeight: 700 }}>
             <span>Total Deductions</span>

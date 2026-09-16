@@ -547,6 +547,8 @@ function EmployeeModal({
         status: initial.status,
         hireDate: initial.hireDate.slice(0, 10),
         basicSalary: initial.basicSalary,
+        dailyRate: initial.dailyRate ?? null,
+        useDailyRate: initial.useDailyRate ?? false,
         resourceCost: initial.resourceCost ?? null,
         payrollCost: initial.payrollCost ?? null,
         clientId: initial.clientId ?? null,
@@ -567,7 +569,8 @@ function EmployeeModal({
         firstName: '', lastName: '', email: '', phone: '', position: '',
         departmentId: departments[0]?.id ?? '',
         managerId: '', status: 'ACTIVE', hireDate: new Date().toISOString().slice(0, 10),
-        basicSalary: 25000, resourceCost: null, payrollCost: null, clientId: null,
+        basicSalary: 25000, dailyRate: null, useDailyRate: false,
+        resourceCost: null, payrollCost: null, clientId: null,
         sssNo: '', philhealthNo: '', pagibigNo: '', tinNo: '',
         bankName: '', bankAccountNo: '', bankAccountName: '',
         avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
@@ -630,6 +633,13 @@ function EmployeeModal({
     if (!isEdit && !form.clientId) {
       setError('Deployed Client is required. Please select a client in the Organization tab.');
       setActiveTab('Organization');
+      setSaving(false);
+      return;
+    }
+    // Validate daily rate
+    if (form.useDailyRate && (!form.dailyRate || (form.dailyRate as unknown as number) <= 0)) {
+      setError('Daily Rate is required and must be greater than 0 when "Use daily rate" is enabled.');
+      setActiveTab('Info');
       setSaving(false);
       return;
     }
@@ -901,13 +911,44 @@ function EmployeeModal({
                 <div className="form-grid form-grid-2">
                   <div className="form-group">
                     <label>Basic Salary (₱) *</label>
-                    <input type="number" className="form-control" required min={0} value={form.basicSalary} onChange={e => set('basicSalary', Number(e.target.value))} />
+                    <input
+                      type="text" inputMode="decimal" className="form-control" required
+                      value={form.basicSalary === 0 ? '' : String(form.basicSalary)}
+                      placeholder="0"
+                      onChange={e => set('basicSalary', e.target.value)}
+                      onBlur={e => {
+                        const parsed = parseFloat(e.target.value);
+                        set('basicSalary', isNaN(parsed) || parsed < 0 ? 0 : parsed);
+                      }}
+                    />
                   </div>
                   <div className="form-group">
                     <label>Employee No.</label>
                     <input className="form-control" placeholder="Auto-generated" value={form.employeeNo ?? ''} onChange={e => set('employeeNo', e.target.value)} />
                   </div>
                 </div>
+
+                {/* Daily rate toggle */}
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input type="checkbox" id="useDailyRate" checked={!!form.useDailyRate} onChange={e => set('useDailyRate', e.target.checked)} />
+                  <label htmlFor="useDailyRate" style={{ fontSize: 14, cursor: 'pointer', marginBottom: 0 }}>Use daily rate for payroll (overrides monthly salary proration)</label>
+                </div>
+                {form.useDailyRate && (
+                  <div className="form-group" style={{ maxWidth: 260 }}>
+                    <label>Daily Rate (₱) *</label>
+                    <input
+                      type="text" inputMode="decimal" className="form-control"
+                      value={form.dailyRate == null ? '' : String(form.dailyRate)}
+                      placeholder="0"
+                      onChange={e => set('dailyRate', e.target.value)}
+                      onBlur={e => {
+                        const parsed = parseFloat(e.target.value);
+                        set('dailyRate', isNaN(parsed) || parsed < 0 ? null : parsed);
+                      }}
+                    />
+                    <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 4 }}>Gross = Daily Rate × Days Worked. Late deduction = (minutes late ÷ 480) × Daily Rate.</p>
+                  </div>
+                )}
 
                 <div className="form-group">
                   <label>Avatar Color</label>

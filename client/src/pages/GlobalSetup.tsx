@@ -5,7 +5,7 @@ import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
-import type { LeaveType, Employee, LeaveBalance, CutOffPeriod, GlobalPayrollPolicy } from '@/types';
+import type { LeaveType, Employee, LeaveBalance, CutOffPeriod, GlobalPayrollPolicy, CompanySettings } from '@/types';
 
 // ── Tab Bar (same as Employee modal) ─────────────────────────────────────────
 function TabBar({ tabs, active, onChange }: {
@@ -586,6 +586,122 @@ function PayrollSetupContent() {
   );
 }
 
+// ── Company Settings ──────────────────────────────────────────────────────────
+
+function CompanySettingsContent() {
+  const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
+
+  const { data: settings, isLoading } = useQuery<CompanySettings>({
+    queryKey: ['company-settings'],
+    queryFn: () => api.get('/global-setup/company-settings').then(r => r.data),
+  });
+
+  const [form, setForm] = useState({ companyName: '', address: '', taxNumber: '', contactNumber: '' });
+  const [saving, setSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoRemoving, setLogoRemoving] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (settings) {
+      setForm({
+        companyName:   settings.companyName ?? '',
+        address:       settings.address ?? '',
+        taxNumber:     settings.taxNumber ?? '',
+        contactNumber: settings.contactNumber ?? '',
+      });
+    }
+  }, [settings]);
+
+  const saveMutation = useMutation({
+    mutationFn: (data: typeof form) => api.put('/global-setup/company-settings', data).then(r => r.data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['company-settings'] }); success('Company settings saved.'); },
+    onError: () => showError('Failed to save settings.'),
+  });
+
+  const handleLogoUpload = async (file: File) => {
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('logo', file);
+      await api.post('/global-setup/company-settings/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      queryClient.invalidateQueries({ queryKey: ['company-settings'] });
+      success('Logo uploaded.');
+    } catch { showError('Failed to upload logo.'); }
+    finally { setLogoUploading(false); }
+  };
+
+  const handleLogoDelete = async () => {
+    if (!window.confirm('Remove the company logo?')) return;
+    setLogoRemoving(true);
+    try {
+      await api.delete('/global-setup/company-settings/logo');
+      queryClient.invalidateQueries({ queryKey: ['company-settings'] });
+      success('Logo removed.');
+    } catch { showError('Failed to remove logo.'); }
+    finally { setLogoRemoving(false); }
+  };
+
+  if (isLoading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)' }}>Loading…</div>;
+
+  const logoUrl = settings?.logoUrl ? `${settings.logoUrl}?t=${new Date().getTime()}` : null;
+
+  return (
+    <div style={{ maxWidth: 600 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>Company Information</h3>
+
+      {/* Logo */}
+      <div className="form-group" style={{ marginBottom: 24 }}>
+        <label className="form-label">Company Logo</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {logoUrl ? (
+            <img src={logoUrl} alt="Company logo" style={{ width: 80, height: 80, objectFit: 'contain', border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-2)', padding: 4 }} />
+          ) : (
+            <div style={{ width: 80, height: 80, border: '2px dashed var(--color-border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-secondary)', fontSize: 11 }}>No logo</div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input ref={logoInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ''; }} />
+            <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => logoInputRef.current?.click()} disabled={logoUploading}>
+              {logoUploading ? 'Uploading…' : logoUrl ? 'Change Logo' : 'Upload Logo'}
+            </button>
+            {logoUrl && (
+              <button className="btn btn-danger-ghost" style={{ fontSize: 12 }} onClick={handleLogoDelete} disabled={logoRemoving}>
+                {logoRemoving ? 'Removing…' : 'Remove Logo'}
+              </button>
+            )}
+          </div>
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 6 }}>PNG, JPG, or SVG · Max 5 MB · Appears in payslip and billing PDFs</p>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Company Name</label>
+        <input className="form-control" value={form.companyName} onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))} placeholder="e.g. Nuage Consulting Group" />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Address</label>
+        <textarea className="form-control" rows={2} value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Full company address" style={{ resize: 'vertical' }} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Tax Identification Number (TIN)</label>
+        <input className="form-control" value={form.taxNumber} onChange={e => setForm(f => ({ ...f, taxNumber: e.target.value }))} placeholder="e.g. 123-456-789-000" />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Contact Number</label>
+        <input className="form-control" value={form.contactNumber} onChange={e => setForm(f => ({ ...f, contactNumber: e.target.value }))} placeholder="e.g. +63 2 1234 5678" />
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <button className="btn btn-primary" onClick={() => { setSaving(true); saveMutation.mutateAsync(form).finally(() => setSaving(false)); }} disabled={saving}>
+          {saving ? 'Saving…' : 'Save Settings'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main GlobalSetup page ─────────────────────────────────────────────────────
 
 export default function GlobalSetup() {
@@ -596,17 +712,18 @@ export default function GlobalSetup() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Global Setup</h1>
-          <p className="page-subtitle">Configure leave types, balances, and payroll cut-off periods</p>
+          <p className="page-subtitle">Configure company info, leave types, and payroll cut-off periods</p>
         </div>
       </div>
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
         <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-          <TabBar tabs={['Leave', 'Payroll']} active={outerTab} onChange={setOuterTab} />
+          <TabBar tabs={['Leave', 'Payroll', 'Company']} active={outerTab} onChange={setOuterTab} />
         </div>
         <div style={{ padding: 24 }}>
           {outerTab === 'Leave' && <LeaveSetupContent />}
           {outerTab === 'Payroll' && <PayrollSetupContent />}
+          {outerTab === 'Company' && <CompanySettingsContent />}
         </div>
       </div>
     </div>

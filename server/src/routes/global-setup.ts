@@ -1,7 +1,31 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { prisma } from '../lib/prisma';
 import { requireRole } from '../middleware/authenticate';
+
+// ── Logo upload storage ───────────────────────────────────────────────────────
+const uploadsBase = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+const logosDir = path.join(uploadsBase, 'logos');
+if (!fs.existsSync(logosDir)) fs.mkdirSync(logosDir, { recursive: true });
+
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, logosDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.png';
+    cb(null, `company-logo${ext}`);
+  },
+});
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|gif|webp|svg\+xml)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
 
 const router = Router();
 
@@ -109,6 +133,88 @@ router.put('/payroll-policies', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
       include: { cutOffPeriod: true },
     });
     res.json(policy);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Company Settings ──────────────────────────────────────────────────────────
+
+const CompanySettingsSchema = z.object({
+  companyName: z.string().default(''),
+  address: z.string().nullable().optional(),
+  taxNumber: z.string().nullable().optional(),
+  contactNumber: z.string().nullable().optional(),
+});
+
+// GET /api/global-setup/company-settings
+router.get('/company-settings', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    let settings = await (prisma as any).companySettings.findUnique({ where: { id: 'singleton' } });
+    if (!settings) {
+      settings = await (prisma as any).companySettings.create({
+        data: { id: 'singleton', companyName: '' },
+      });
+    }
+    res.json(settings);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/global-setup/company-settings
+router.put('/company-settings', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = CompanySettingsSchema.parse(req.body);
+    const settings = await (prisma as any).companySettings.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton', ...data },
+      update: data,
+    });
+    res.json(settings);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/global-setup/company-settings/logo
+router.post(
+  '/company-settings/logo',
+  requireRole('HR_MANAGER', 'SUPER_ADMIN'),
+  logoUpload.single('logo'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const serverUrl = process.env.SERVER_URL || '';
+      const logoUrl = `${serverUrl}/uploads/logos/${req.file.filename}`;
+      const settings = await (prisma as any).companySettings.upsert({
+        where: { id: 'singleton' },
+        create: { id: 'singleton', companyName: '', logoUrl },
+        update: { logoUrl },
+      });
+      res.json(settings);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// DELETE /api/global-setup/company-settings/logo
+router.delete('/company-settings/logo', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Remove file from disk
+    const existing = await (prisma as any).companySettings.findUnique({ where: { id: 'singleton' } });
+    if (existing?.logoUrl) {
+      const filename = path.basename(existing.logoUrl);
+      const filePath = path.join(logosDir, filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+    const settings = await (prisma as any).companySettings.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton', companyName: '' },
+      update: { logoUrl: null },
+    });
+    res.json(settings);
   } catch (err) {
     next(err);
   }

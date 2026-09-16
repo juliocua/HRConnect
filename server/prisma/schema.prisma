@@ -122,6 +122,9 @@ model Employee {
   bankAccountNo   String?
   bankAccountName String?
 
+  dailyRate    Float?
+  useDailyRate Boolean @default(false)
+
   attendance              Attendance[]
   leaveRequests           LeaveRequest[]
   leaveBalances           LeaveBalance[]
@@ -516,11 +519,12 @@ model PayrollRecord {
   daysWorked        Float      @default(0)
   overtimePay       Float      @default(0)
   allowances        Float      @default(0)
-  otherDeductions   Float      @default(0)
-  lateDeduction     Float      @default(0)
-  holidayPay        Float      @default(0)
-  nightDifferential Float      @default(0)
-  silPay            Float      @default(0)
+  otherDeductions     Float      @default(0)
+  otherDeductionsNote String?
+  lateDeduction       Float      @default(0)
+  holidayPay          Float      @default(0)
+  nightDifferential   Float      @default(0)
+  silPay              Float      @default(0)
 
   @@unique([payrollRunId, employeeId])
   @@map("payroll_records")
@@ -554,4 +558,17 @@ model GlobalPayrollPolicy {
   updatedAt       DateTime     @updatedAt
 
   @@map("global_payroll_policies")
+}
+
+model CompanySettings {
+  id            String   @id @default("singleton")
+  companyName   String   @default("")
+  address       String?
+  taxNumber     String?
+  contactNumber String?
+  logoUrl       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("company_settings")
 }
