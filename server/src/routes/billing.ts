@@ -121,6 +121,16 @@ async function createPayMongoLink(amount: number, description: string, billingId
   };
 }
 
+// ── Company settings helper ───────────────────────────────────────────────────
+
+async function getCompanySettings() {
+  try {
+    return await prisma.companySettings.findUnique({ where: { id: 'singleton' } });
+  } catch {
+    return null;
+  }
+}
+
 // ── Shared includes ───────────────────────────────────────────────────────────
 
 const invoiceInclude = {
@@ -324,7 +334,8 @@ router.post(
               include: invoiceInclude,
             });
             if (billingForPdf) {
-              const pdf = await generateInvoicePDF(billingForPdf);
+              const companySettings = await getCompanySettings();
+              const pdf = await generateInvoicePDF(billingForPdf, companySettings ?? undefined);
               await sendInvoiceEmail(client.contactEmail, billingForPdf, pdf);
             }
           } catch (emailErr) {
@@ -583,7 +594,8 @@ router.get('/:id/pdf', async (req: Request, res: Response, next: NextFunction) =
     });
     if (!billing) return res.status(404).json({ error: 'Billing not found' });
 
-    const pdf = await generateInvoicePDF(billing);
+    const companySettings = await getCompanySettings();
+    const pdf = await generateInvoicePDF(billing, companySettings ?? undefined);
     const invoiceNo = billing.id.slice(-8).toUpperCase();
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoiceNo}.pdf"`);
@@ -605,7 +617,8 @@ router.post('/:id/send-invoice', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async
       return res.status(422).json({ error: 'No contact email on this client. Add one in Client Records first.' });
     }
 
-    const pdf = await generateInvoicePDF(billing);
+    const companySettings = await getCompanySettings();
+    const pdf = await generateInvoicePDF(billing, companySettings ?? undefined);
     await sendInvoiceEmail(toEmail, billing, pdf);
 
     res.json({ sent: true, email: toEmail });

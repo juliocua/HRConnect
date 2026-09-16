@@ -197,6 +197,15 @@ export default function Payroll() {
       cell: ({ getValue }) => <span className="td-mono text-muted">{formatPHP(getValue() as number)}</span>,
     },
     {
+      id: 'lateDeduction',
+      accessorKey: 'lateDeduction',
+      header: 'Late',
+      cell: ({ getValue }) => {
+        const v = (getValue() as number) ?? 0;
+        return <span className="td-mono text-muted">{v > 0 ? formatPHP(v) : '—'}</span>;
+      },
+    },
+    {
       id: 'otherDeductions',
       accessorKey: 'otherDeductions',
       header: 'Other Ded.',
@@ -765,6 +774,7 @@ function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: 
           <div className="payslip-row"><span>Pag-IBIG Contribution</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.pagibigContrib)})</span></div>
           <div className="payslip-row"><span>Taxable Income</span><span>{formatPHP(r.taxableIncome)}</span></div>
           <div className="payslip-row"><span>Withholding Tax (TRAIN Law)</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.withholdingTax)})</span></div>
+          {(r.lateDeduction ?? 0) > 0 && <div className="payslip-row"><span>Late</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.lateDeduction ?? 0)})</span></div>}
           {otherDed > 0 && (() => {
             const dedLines = parsePayslipLines(otherDed, r.otherDeductionsNote);
             return dedLines.map((l, i) => (
@@ -776,7 +786,7 @@ function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: 
           })()}
           <div className="payslip-row" style={{ fontWeight: 700 }}>
             <span>Total Deductions</span>
-            <span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions + otherDed)})</span>
+            <span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions + otherDed + (r.lateDeduction ?? 0))})</span>
           </div>
 
           <div className="divider" />
