@@ -328,24 +328,42 @@ export default function ClientBilling() {
       )}
 
       {/* Tabs */}
-      <div className="tab-bar" style={{ marginBottom: 24 }}>
-        <button
-          className={`tab-btn${billingTab === 'generate' ? ' active' : ''}`}
-          onClick={() => setBillingTab('generate')}
-        >
-          Generate Billing
-        </button>
-        <button
-          className={`tab-btn${billingTab === 'invoices' ? ' active' : ''}`}
-          onClick={() => setBillingTab('invoices')}
-        >
-          Recent Invoices
-          {allBillings.length > 0 && (
-            <span style={{ marginLeft: 6, background: 'var(--color-primary)', color: '#fff', borderRadius: 999, fontSize: 10, padding: '1px 7px', fontWeight: 700 }}>
-              {allBillings.length}
-            </span>
-          )}
-        </button>
+      <div style={{ display: 'flex', gap: 2, marginBottom: 24 }}>
+        {(['generate', 'invoices'] as const).map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setBillingTab(t)}
+            style={{
+              background: billingTab === t ? 'var(--color-primary)' : 'transparent',
+              border: billingTab === t ? 'none' : '1px solid var(--color-border)',
+              borderRadius: '6px 6px 0 0',
+              padding: '7px 16px',
+              fontSize: 13,
+              fontWeight: billingTab === t ? 700 : 500,
+              color: billingTab === t ? '#fff' : 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {t === 'generate' ? 'Generate Billing' : 'Recent Invoices'}
+            {t === 'invoices' && allBillings.length > 0 && (
+              <span style={{
+                background: billingTab === t ? 'rgba(255,255,255,0.25)' : 'var(--color-primary)',
+                color: '#fff',
+                borderRadius: 999,
+                fontSize: 10,
+                padding: '1px 7px',
+                fontWeight: 700,
+              }}>
+                {allBillings.length}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* ── Generate Billing Tab ───────────────────────────────────────────── */}

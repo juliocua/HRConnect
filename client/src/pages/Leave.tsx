@@ -175,9 +175,27 @@ export default function Leave() {
       </div>
 
       {/* Tabs */}
-      <div className="tabs" style={{ maxWidth: 300, marginBottom: 20 }}>
-        <button className={`tab-btn${activeTab === 'requests' ? ' active' : ''}`} onClick={() => setActiveTab('requests')}>Requests</button>
-        <button className={`tab-btn${activeTab === 'balances' ? ' active' : ''}`} onClick={() => setActiveTab('balances')}>Balances</button>
+      <div style={{ display: 'flex', gap: 2, marginBottom: 20 }}>
+        {(['requests', 'balances'] as const).map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setActiveTab(t)}
+            style={{
+              background: activeTab === t ? 'var(--color-primary)' : 'transparent',
+              border: activeTab === t ? 'none' : '1px solid var(--color-border)',
+              borderRadius: '6px 6px 0 0',
+              padding: '7px 16px',
+              fontSize: 13,
+              fontWeight: activeTab === t ? 700 : 500,
+              color: activeTab === t ? '#fff' : 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {t === 'requests' ? 'Requests' : 'Balances'}
+          </button>
+        ))}
       </div>
 
       {activeTab === 'requests' && (

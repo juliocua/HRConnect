@@ -123,17 +123,22 @@ export default function ClientDetail() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--color-border)', marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 2, marginBottom: 24 }}>
         {(['overview', 'policies', 'billing'] as Tab[]).map(t => (
           <button
             key={t}
+            type="button"
             onClick={() => setTab(t)}
             style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '10px 18px', fontSize: 14, fontWeight: tab === t ? 700 : 500,
-              color: tab === t ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-              borderBottom: tab === t ? '2px solid var(--color-primary)' : '2px solid transparent',
-              marginBottom: -1,
+              background: tab === t ? 'var(--color-primary)' : 'transparent',
+              border: tab === t ? 'none' : '1px solid var(--color-border)',
+              borderRadius: '6px 6px 0 0',
+              padding: '7px 16px',
+              fontSize: 13,
+              fontWeight: tab === t ? 700 : 500,
+              color: tab === t ? '#fff' : 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
             }}
           >
             {t === 'overview' ? 'Overview' : t === 'policies' ? `Policies (${client.policies?.length ?? 0})` : `Billing History (${client.billings?.length ?? 0})`}
