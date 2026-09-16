@@ -197,7 +197,7 @@ router.get('/record/:recordId/pdf', async (req: Request, res: Response, next: Ne
     // ── Header ─────────────────────────────────────────────────────────────────
     if (logoBuffer) {
       const logoY = doc.y;
-      doc.image(logoBuffer, 50, logoY, { fit: [56, 56], align: 'left', valign: 'center' });
+      doc.image(logoBuffer, 50, logoY, { fit: [56, 56], valign: 'center' });
       doc.fontSize(16).font('Helvetica-Bold').fillColor('#111111')
         .text(companyName.toUpperCase(), 120, logoY + 4, { width: 375, lineBreak: false });
       doc.fontSize(10).font('Helvetica').fillColor('#444444')
