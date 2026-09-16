@@ -424,6 +424,18 @@ function serializeDeductionLines(lines: DeductionLine[]): { total: number; note:
   return { total, note: JSON.stringify(items) };
 }
 
+function parsePayslipLines(total: number, note?: string | null): { amount: number; note: string }[] {
+  if (note) {
+    try {
+      const parsed = JSON.parse(note);
+      if (Array.isArray(parsed) && parsed.length > 0)
+        return parsed.map((l: any) => ({ amount: Number(l.amount) || 0, note: l.note ?? '' }));
+    } catch {}
+    return [{ amount: total, note }];
+  }
+  return [{ amount: total, note: '' }];
+}
+
 function OtherDeductionsCell({ recordId, initialValue, initialNote, onBlur }: {
   recordId: string;
   initialValue: number;
@@ -745,7 +757,7 @@ function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: 
           <div className="payslip-row"><span>Taxable Income</span><span>{formatPHP(r.taxableIncome)}</span></div>
           <div className="payslip-row"><span>Withholding Tax (TRAIN Law)</span><span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.withholdingTax)})</span></div>
           {otherDed > 0 && (() => {
-            const dedLines = parseDeductionLines(otherDed, r.otherDeductionsNote);
+            const dedLines = parsePayslipLines(otherDed, r.otherDeductionsNote);
             return dedLines.map((l, i) => (
               <div key={i} className="payslip-row">
                 <span>Other Deductions{l.note ? ` (${l.note})` : ''}</span>
