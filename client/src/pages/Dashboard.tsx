@@ -84,7 +84,7 @@ export default function Dashboard() {
           icon="💰"
           color="#F0FDF4"
           label="Latest Payroll"
-          value={latestRun ? formatPHP(latestRun.records.reduce((s, r) => s + r.netPay, 0)) : '—'}
+          value={latestRun ? formatPHP(latestRun.totalNetPay ?? latestRun.records?.reduce((s, r) => s + r.netPay, 0) ?? 0) : '—'}
           sub={latestRun ? `${latestRun.period} · ${latestRun.status}` : 'No payroll run yet'}
           small
         />

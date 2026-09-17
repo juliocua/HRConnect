@@ -45,9 +45,16 @@ router.get('/history', async (_req: Request, res: Response, next: NextFunction) 
   try {
     const runs = await prisma.payrollRun.findMany({
       orderBy: [{ year: 'desc' }, { month: 'desc' }, { payPeriodType: 'asc' }],
-      include: { _count: { select: { records: true } } },
+      include: {
+        _count: { select: { records: true } },
+        records: { select: { netPay: true } },
+      },
     });
-    res.json(runs);
+    const result = runs.map(({ records, ...run }) => ({
+      ...run,
+      totalNetPay: records.reduce((s: number, r: { netPay: number }) => s + r.netPay, 0),
+    }));
+    res.json(result);
   } catch (err) {
     next(err);
   }

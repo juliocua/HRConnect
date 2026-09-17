@@ -293,7 +293,9 @@ export interface PayrollRun {
   status: PayrollStatus;
   runAt: string;
   soaNo?: string | null;
-  records: PayrollRecord[];
+  records: PayrollRecord[];          // present on single-run detail fetch
+  totalNetPay?: number;              // present on history list fetch
+  _count?: { records: number };      // present on history list fetch
 }
 
 export interface MyPayrollRecord extends Omit<PayrollRecord, 'employee'> {
