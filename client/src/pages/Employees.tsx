@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { ClientCombobox } from '@/components/ClientCombobox';
+import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest, GovIdChangeRequest, UserRole, EmployeeAssignment } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { canWrite, ROLE_LABELS } from '@/lib/permissions';
@@ -589,7 +590,7 @@ function EmployeeModal({
   const [accountAction, setAccountAction] = useState<'idle' | 'loading' | 'done'>('idle');
   const [accountError, setAccountError] = useState('');
   const { user: authUser } = useAuth();
-  const canEditRole = canWrite(authUser?.role, 'employees');
+  const canEditRole = authUser?.role !== 'EMPLOYEE';
   const [userRole, setUserRole] = useState<UserRole>(initial?.user?.role ?? 'EMPLOYEE');
 
   const handleCreateAccount = async () => {
@@ -985,12 +986,12 @@ function EmployeeModal({
               <>
                 <div className="form-group">
                   <label>Direct Manager</label>
-                  <select className="form-control" value={form.managerId ?? ''} onChange={e => set('managerId', e.target.value || undefined)}>
-                    <option value="">— None —</option>
-                    {managers.map(m => (
-                      <option key={m.id} value={m.id}>{m.firstName} {m.lastName} · {m.position}</option>
-                    ))}
-                  </select>
+                  <EmployeeCombobox
+                    employees={managers}
+                    value={form.managerId ?? ''}
+                    onChange={id => set('managerId', id || undefined)}
+                    placeholder="— None —"
+                  />
                 </div>
 
                 {isEdit && initial!.subordinates && initial!.subordinates.length > 0 && (
