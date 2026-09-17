@@ -38,8 +38,22 @@ export default function Payroll() {
     enabled: !!viewRunId,
   });
 
+  const { data: auditLogs = [] } = useQuery<any[]>({
+    queryKey: ['payroll-audit', viewRunId],
+    queryFn: () => viewRunId ? api.get(`/payroll/audit?entityId=${viewRunId}`).then(r => r.data) : Promise.resolve([]),
+    enabled: !!viewRunId && isManager,
+  });
+
   const postMutation = useMutation({
     mutationFn: (runId: string) => api.put(`/payroll/${runId}/post`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll-history'] });
+      qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] });
+    },
+  });
+
+  const paidMutation = useMutation({
+    mutationFn: (runId: string) => api.put(`/payroll/${runId}/paid`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payroll-history'] });
       qc.invalidateQueries({ queryKey: ['payroll-run', viewRunId] });
@@ -266,6 +280,19 @@ export default function Payroll() {
               </button>
             </>
           )}
+          {viewRunId && currentRun?.status === 'POSTED' && isManager && (
+            <button
+              className="btn btn-primary"
+              disabled={paidMutation.isPending}
+              onClick={() => {
+                if (confirm('Mark this payroll run as PAID? This cannot be undone.')) {
+                  paidMutation.mutate(viewRunId);
+                }
+              }}
+            >
+              {paidMutation.isPending ? 'Marking…' : '✓ Mark as Paid'}
+            </button>
+          )}
           {viewRunId && currentRun && isManager && (
             <>
               <button className="btn btn-secondary btn-sm" disabled={downloadingGovReport} onClick={handleDownloadGovReport}>
@@ -339,6 +366,37 @@ export default function Payroll() {
               exportFilename={`Payroll_${currentRun.period?.replace(/\s/g, '_')}`}
             />
           </div>
+
+          {/* Audit log */}
+          {isManager && auditLogs.length > 0 && (
+            <div className="card" style={{ marginTop: 20 }}>
+              <div className="card-header">
+                <div className="card-title">Audit Log</div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {auditLogs.map((log: any) => (
+                  <div
+                    key={log.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 4px', borderBottom: '1px solid var(--color-border)',
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>{log.action}</span>
+                      <span className="text-muted text-sm" style={{ marginLeft: 8 }}>by {log.performedByName}</span>
+                    </div>
+                    <div className="text-muted text-sm">
+                      {new Date(log.performedAt).toLocaleString('en-PH', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                        hour: 'numeric', minute: '2-digit',
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       ) : (
         /* History list */
