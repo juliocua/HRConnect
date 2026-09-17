@@ -343,6 +343,24 @@ router.get('/:runId/disbursement', requireRole('HR_MANAGER', 'SUPER_ADMIN'), asy
       orderBy: { employee: { lastName: 'asc' } },
     });
 
+    // ── Grouped JSON mode — one entry per bank ─────────────────────────────────
+    if (req.query.grouped === 'true') {
+      const bankMap = new Map<string, typeof records>();
+      for (const r of records) {
+        const key = r.employee.bankName?.trim() || 'Unknown';
+        if (!bankMap.has(key)) bankMap.set(key, []);
+        bankMap.get(key)!.push(r);
+      }
+      const banks = Array.from(bankMap.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([bankName, recs]) => ({
+          bankName,
+          totalNetPay: recs.reduce((s, r) => s + r.netPay, 0),
+          records: recs,
+        }));
+      return res.json({ period: run.period, banks });
+    }
+
     // Build CSV
     const safeVal = (v: string | null | undefined) => {
       if (!v) return '';

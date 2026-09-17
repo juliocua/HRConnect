@@ -24,6 +24,7 @@ export default function Payroll() {
   const [viewRunId, setViewRunId] = useState<string | null>(null);
   const [showSlip, setShowSlip] = useState<PayrollRecord | null>(null);
   const [downloadingGovReport, setDownloadingGovReport] = useState(false);
+  const [downloadingDisbursement, setDownloadingDisbursement] = useState(false);
 
   const isManager = user?.role === 'HR_MANAGER' || user?.role === 'SUPER_ADMIN';
 
@@ -115,6 +116,46 @@ export default function Payroll() {
       URL.revokeObjectURL(url);
     } catch { console.error('Failed to generate gov benefits report'); }
     finally { setDownloadingGovReport(false); }
+  };
+
+  const handleDownloadDisbursement = async () => {
+    if (!viewRunId || !currentRun) return;
+    setDownloadingDisbursement(true);
+    try {
+      const resp = await api.get(`/payroll/${viewRunId}/disbursement?grouped=true`);
+      const { period, banks } = resp.data as {
+        period: string;
+        banks: { bankName: string; totalNetPay: number; records: any[] }[];
+      };
+      const safeRunPeriod = (period ?? viewRunId).replace(/[^a-zA-Z0-9_\-·]/g, '_');
+      const safeVal = (v: string | null | undefined) => {
+        if (!v) return '';
+        const s = String(v);
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      for (const bank of banks) {
+        const header = ['Employee Name', 'Bank Name', 'Account Number', 'Account Name', 'Net Pay'].join(',');
+        const rows = bank.records.map((r: any) => [
+          safeVal(`${r.employee.lastName}, ${r.employee.firstName}`),
+          safeVal(r.employee.bankName),
+          safeVal(r.employee.bankAccountNo),
+          safeVal(r.employee.bankAccountName),
+          r.netPay.toFixed(2),
+        ].join(','));
+        const footerRow = ['TOTAL', '', '', '', bank.totalNetPay.toFixed(2)].join(',');
+        const csv = [header, ...rows, footerRow].join('\r\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const bankSlug = (bank.bankName ?? 'Unknown').replace(/[^a-zA-Z0-9]/g, '_');
+        a.download = `Disbursement_${safeRunPeriod}_${bankSlug}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+    } catch { console.error('Failed to generate bank disbursement files'); }
+    finally { setDownloadingDisbursement(false); }
   };
 
   const columns = useMemo<ColumnDef<PayrollRecord>[]>(() => [
@@ -291,6 +332,11 @@ export default function Payroll() {
               }}
             >
               {paidMutation.isPending ? 'Marking…' : '✓ Mark as Paid'}
+            </button>
+          )}
+          {viewRunId && currentRun && currentRun.status !== 'DRAFT' && isManager && (
+            <button className="btn btn-secondary btn-sm" disabled={downloadingDisbursement} onClick={handleDownloadDisbursement}>
+              {downloadingDisbursement ? 'Generating…' : '🏦 Bank Disbursement'}
             </button>
           )}
           {viewRunId && currentRun && isManager && (
