@@ -1,10 +1,8 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { formatPHP } from '@/lib/payroll';
-import { DataTable } from '@/components/DataTable';
 import type { PayrollRun, PayrollRecord, PayrollStatus } from '@/types';
 
 const STATUS_COLORS: Record<PayrollStatus, string> = {
@@ -25,6 +23,9 @@ export default function Payroll() {
   const [showSlip, setShowSlip] = useState<PayrollRecord | null>(null);
   const [downloadingGovReport, setDownloadingGovReport] = useState(false);
   const [downloadingDisbursement, setDownloadingDisbursement] = useState(false);
+  const [collapsedClients, setCollapsedClients] = useState<Set<string>>(new Set());
+  const [payrollSearch, setPayrollSearch] = useState('');
+  const [collapsedYears, setCollapsedYears] = useState<Set<string>>(new Set());
 
   const isManager = user?.role === 'HR_MANAGER' || user?.role === 'SUPER_ADMIN';
 
@@ -158,141 +159,49 @@ export default function Payroll() {
     finally { setDownloadingDisbursement(false); }
   };
 
-  const columns = useMemo<ColumnDef<PayrollRecord>[]>(() => [
-    {
-      id: 'empNo',
-      accessorFn: row => row.employee.employeeNo,
-      header: 'Emp #',
-      cell: ({ getValue }) => <span className="text-sm text-muted" style={{ fontFamily: 'monospace' }}>{getValue() as string}</span>,
-    },
-    {
-      id: 'employee',
-      accessorFn: row => `${row.employee.lastName} ${row.employee.firstName}`,
-      header: 'Employee',
-      cell: ({ row: { original: r } }) => (
-        <div className="emp-info">
-          <div className="emp-avatar" style={{ background: r.employee.avatarColor }}>
-            {r.employee.firstName[0]}{r.employee.lastName[0]}
-          </div>
-          <div>
-            <div className="emp-name">{r.employee.firstName} {r.employee.lastName}</div>
-            <div className="emp-role">{r.employee.position}</div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: 'client',
-      accessorFn: row => row.employee.client?.name ?? '',
-      header: 'Client',
-      cell: ({ getValue }) => <span className="text-muted text-sm">{(getValue() as string) || '—'}</span>,
-    },
-    {
-      accessorKey: 'daysWorked',
-      header: 'Days',
-      cell: ({ getValue }) => <span>{getValue() as number}</span>,
-    },
-    {
-      accessorKey: 'basicSalary',
-      header: 'Basic',
-      cell: ({ getValue }) => <span className="td-mono">{formatPHP(getValue() as number)}</span>,
-    },
-    {
-      id: 'dailyRate',
-      header: 'Daily Rate',
-      cell: ({ row: { original: r } }) => {
-        const rate = (r.employee as any).dailyRate;
-        return <span className="td-mono text-muted">{rate != null ? formatPHP(rate) : '—'}</span>;
-      },
-    },
-    {
-      accessorKey: 'overtimePay',
-      header: 'OT Pay',
-      cell: ({ getValue }) => {
-        const v = getValue() as number;
-        return <span className="td-mono">{v > 0 ? formatPHP(v) : '—'}</span>;
-      },
-    },
-    {
-      accessorKey: 'grossPay',
-      header: 'Gross Pay',
-      cell: ({ getValue }) => <span className="td-mono" style={{ fontWeight: 600 }}>{formatPHP(getValue() as number)}</span>,
-    },
-    {
-      id: 'sss',
-      accessorKey: 'sssContrib',
-      header: 'SSS',
-      cell: ({ row: { original: r } }) => {
-        const regular = Math.min(r.sssContrib, 900);
-        return <span className="td-mono text-muted">{formatPHP(regular)}</span>;
-      },
-    },
-    {
-      id: 'wisp',
-      accessorKey: 'sssContrib',
-      header: 'WISP',
-      cell: ({ row: { original: r } }) => {
-        const wisp = Math.max(0, r.sssContrib - 900);
-        return <span className="td-mono text-muted">{wisp > 0 ? formatPHP(wisp) : '—'}</span>;
-      },
-    },
-    {
-      accessorKey: 'philhealthContrib',
-      header: 'PHIC',
-      cell: ({ getValue }) => <span className="td-mono text-muted">{formatPHP(getValue() as number)}</span>,
-    },
-    {
-      accessorKey: 'pagibigContrib',
-      header: 'HDMF',
-      cell: ({ getValue }) => <span className="td-mono text-muted">{formatPHP(getValue() as number)}</span>,
-    },
-    {
-      accessorKey: 'withholdingTax',
-      header: 'Tax',
-      cell: ({ getValue }) => <span className="td-mono text-muted">{formatPHP(getValue() as number)}</span>,
-    },
-    {
-      id: 'lateDeduction',
-      accessorKey: 'lateDeduction',
-      header: 'Late',
-      cell: ({ getValue }) => {
-        const v = (getValue() as number) ?? 0;
-        return <span className="td-mono text-muted">{v > 0 ? formatPHP(v) : '—'}</span>;
-      },
-    },
-    {
-      id: 'otherDeductions',
-      accessorKey: 'otherDeductions',
-      header: 'Other Ded.',
-      cell: ({ row: { original: r } }) => isDraft ? (
-        <OtherDeductionsCell
-          recordId={r.id}
-          initialValue={r.otherDeductions ?? 0}
-          initialNote={r.otherDeductionsNote}
-          onBlur={handleOtherDeductionsBlur}
-        />
-      ) : (
-        <span className="td-mono text-muted">{(r.otherDeductions ?? 0) > 0 ? formatPHP(r.otherDeductions ?? 0) : '—'}</span>
-      ),
-    },
-    {
-      accessorKey: 'netPay',
-      header: 'Net Pay',
-      cell: ({ getValue }) => (
-        <span className="td-mono" style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
-          {formatPHP(getValue() as number)}
-        </span>
-      ),
-    },
-    {
-      id: 'actions',
-      header: '',
-      enableSorting: false,
-      cell: ({ row: { original: r } }) => (
-        <button className="btn btn-ghost btn-sm" onClick={() => setShowSlip(r)}>Slip</button>
-      ),
-    },
-  ], [isDraft, handleOtherDeductionsBlur]);
+  // Group records by client (with optional search filter)
+  const groupedRecords = useMemo(() => {
+    const q = payrollSearch.trim().toLowerCase();
+    const filtered = q
+      ? records.filter(r =>
+          `${r.employee.firstName} ${r.employee.lastName}`.toLowerCase().includes(q) ||
+          (r.employee.employeeNo ?? '').toLowerCase().includes(q) ||
+          (r.employee.client?.name ?? '').toLowerCase().includes(q)
+        )
+      : records;
+    const groups = new Map<string, PayrollRecord[]>();
+    for (const r of filtered) {
+      const key = r.employee.client?.name ?? '— No Client —';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(r);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [records, payrollSearch]);
+
+  // Group history by year (newest first)
+  const groupedHistory = useMemo(() => {
+    const groups = new Map<string, typeof history>();
+    for (const h of history) {
+      const year = h.periodStart
+        ? new Date(h.periodStart).getFullYear().toString()
+        : 'Unknown';
+      if (!groups.has(year)) groups.set(year, []);
+      groups.get(year)!.push(h);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => Number(b) - Number(a));
+  }, [history]);
+
+  const toggleClient = (name: string) => setCollapsedClients(prev => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
+
+  const toggleYear = (year: string) => setCollapsedYears(prev => {
+    const next = new Set(prev);
+    if (next.has(year)) next.delete(year); else next.add(year);
+    return next;
+  });
 
   return (
     <div>
@@ -403,15 +312,172 @@ export default function Payroll() {
             ))}
           </div>
 
-          {/* Records table with DataTable */}
-          <div className="card">
-            <DataTable
-              data={records}
-              columns={columns}
-              globalFilterPlaceholder="Search employees or client…"
-              exportFilename={`Payroll_${currentRun.period?.replace(/\s/g, '_')}`}
-            />
-          </div>
+          {/* Records grouped by client */}
+          {(() => {
+            const grpTh: React.CSSProperties = {
+              textAlign: 'left', padding: '6px 10px', fontWeight: 600, fontSize: 11.5,
+              color: 'var(--color-text-muted)', whiteSpace: 'nowrap',
+              borderBottom: '2px solid var(--color-border)',
+            };
+            const grpTd: React.CSSProperties = {
+              padding: '8px 10px', fontSize: 12.5, verticalAlign: 'middle',
+              borderBottom: '1px solid var(--color-border)',
+            };
+            return (
+              <>
+                {/* Search bar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <input
+                    className="form-control"
+                    style={{ maxWidth: 260 }}
+                    placeholder="Search employees…"
+                    value={payrollSearch}
+                    onChange={e => setPayrollSearch(e.target.value)}
+                  />
+                  <span className="text-muted text-sm">{records.length} employee{records.length !== 1 ? 's' : ''}</span>
+                  {groupedRecords.length > 1 && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ marginLeft: 'auto' }}
+                      onClick={() => {
+                        const allKeys = groupedRecords.map(([k]) => k);
+                        const allCollapsed = allKeys.every(k => collapsedClients.has(k));
+                        setCollapsedClients(allCollapsed ? new Set() : new Set(allKeys));
+                      }}
+                    >
+                      {groupedRecords.every(([k]) => collapsedClients.has(k)) ? '▼ Expand All' : '▶ Collapse All'}
+                    </button>
+                  )}
+                </div>
+
+                {groupedRecords.map(([clientName, clientRecords]) => {
+                  const isCollapsed = collapsedClients.has(clientName);
+                  const grpGross = clientRecords.reduce((s, r) => s + r.grossPay, 0);
+                  const grpNet = clientRecords.reduce((s, r) => s + r.netPay, 0);
+                  return (
+                    <div key={clientName} className="card" style={{ marginBottom: 12, padding: '12px 16px' }}>
+                      {/* Group header */}
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => toggleClient(clientName)}
+                      >
+                        <span style={{ fontSize: 13, color: 'var(--color-text-muted)', width: 14, textAlign: 'center', flexShrink: 0 }}>
+                          {isCollapsed ? '▶' : '▼'}
+                        </span>
+                        <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>{clientName}</span>
+                        <span className="text-muted text-sm">{clientRecords.length} emp{clientRecords.length !== 1 ? 's' : ''}</span>
+                        <span className="text-muted text-sm" style={{ marginLeft: 12 }}>
+                          Gross: <strong>{formatPHP(grpGross)}</strong>
+                        </span>
+                        <span className="text-muted text-sm" style={{ marginLeft: 12 }}>
+                          Net: <strong style={{ color: 'var(--color-primary)' }}>{formatPHP(grpNet)}</strong>
+                        </span>
+                      </div>
+
+                      {/* Group rows */}
+                      {!isCollapsed && (
+                        <div style={{ overflowX: 'auto', marginTop: 12 }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr>
+                                <th style={grpTh}>Emp #</th>
+                                <th style={grpTh}>Employee</th>
+                                <th style={grpTh}>Days</th>
+                                <th style={grpTh}>Basic</th>
+                                <th style={grpTh}>Daily Rate</th>
+                                <th style={grpTh}>OT Pay</th>
+                                <th style={grpTh}>Gross Pay</th>
+                                <th style={grpTh}>SSS</th>
+                                <th style={grpTh}>WISP</th>
+                                <th style={grpTh}>PHIC</th>
+                                <th style={grpTh}>HDMF</th>
+                                <th style={grpTh}>Tax</th>
+                                <th style={grpTh}>Late</th>
+                                <th style={grpTh}>Other Ded.</th>
+                                <th style={grpTh}>Net Pay</th>
+                                <th style={grpTh}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {clientRecords.map(r => {
+                                const sssRegular = Math.min(r.sssContrib, 900);
+                                const sssWisp = Math.max(0, r.sssContrib - 900);
+                                return (
+                                  <tr key={r.id}>
+                                    <td style={grpTd}>
+                                      <span className="text-sm text-muted" style={{ fontFamily: 'monospace' }}>{r.employee.employeeNo}</span>
+                                    </td>
+                                    <td style={grpTd}>
+                                      <div className="emp-info">
+                                        <div className="emp-avatar" style={{ background: r.employee.avatarColor }}>
+                                          {r.employee.firstName[0]}{r.employee.lastName[0]}
+                                        </div>
+                                        <div>
+                                          <div className="emp-name">{r.employee.firstName} {r.employee.lastName}</div>
+                                          <div className="emp-role">{r.employee.position}</div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td style={grpTd}>{r.daysWorked}</td>
+                                    <td style={grpTd}><span className="td-mono">{formatPHP(r.basicSalary)}</span></td>
+                                    <td style={grpTd}>
+                                      <span className="td-mono text-muted">
+                                        {(r.employee as any).dailyRate != null ? formatPHP((r.employee as any).dailyRate) : '—'}
+                                      </span>
+                                    </td>
+                                    <td style={grpTd}>
+                                      <span className="td-mono">{r.overtimePay > 0 ? formatPHP(r.overtimePay) : '—'}</span>
+                                    </td>
+                                    <td style={grpTd}>
+                                      <span className="td-mono" style={{ fontWeight: 600 }}>{formatPHP(r.grossPay)}</span>
+                                    </td>
+                                    <td style={grpTd}><span className="td-mono text-muted">{formatPHP(sssRegular)}</span></td>
+                                    <td style={grpTd}>
+                                      <span className="td-mono text-muted">{sssWisp > 0 ? formatPHP(sssWisp) : '—'}</span>
+                                    </td>
+                                    <td style={grpTd}><span className="td-mono text-muted">{formatPHP(r.philhealthContrib)}</span></td>
+                                    <td style={grpTd}><span className="td-mono text-muted">{formatPHP(r.pagibigContrib)}</span></td>
+                                    <td style={grpTd}><span className="td-mono text-muted">{formatPHP(r.withholdingTax)}</span></td>
+                                    <td style={grpTd}>
+                                      <span className="td-mono text-muted">
+                                        {(r.lateDeduction ?? 0) > 0 ? formatPHP(r.lateDeduction ?? 0) : '—'}
+                                      </span>
+                                    </td>
+                                    <td style={grpTd}>
+                                      {isDraft ? (
+                                        <OtherDeductionsCell
+                                          recordId={r.id}
+                                          initialValue={r.otherDeductions ?? 0}
+                                          initialNote={r.otherDeductionsNote}
+                                          onBlur={handleOtherDeductionsBlur}
+                                        />
+                                      ) : (
+                                        <span className="td-mono text-muted">
+                                          {(r.otherDeductions ?? 0) > 0 ? formatPHP(r.otherDeductions ?? 0) : '—'}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td style={grpTd}>
+                                      <span className="td-mono" style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
+                                        {formatPHP(r.netPay)}
+                                      </span>
+                                    </td>
+                                    <td style={grpTd}>
+                                      <button className="btn btn-ghost btn-sm" onClick={() => setShowSlip(r)}>Slip</button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            );
+          })()}
 
           {/* Audit log */}
           {isManager && auditLogs.length > 0 && (
@@ -457,48 +523,70 @@ export default function Payroll() {
             <div className="card-header">
               <div className="card-title">Payroll History</div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {history.map(h => (
-                <div
-                  key={h.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 4px', borderBottom: '1px solid var(--color-border)',
-                  }}
-                >
-                  <button
-                    onClick={() => setViewRunId(h.id)}
+            {groupedHistory.map(([year, yearRuns]) => {
+              const isYearCollapsed = collapsedYears.has(year);
+              return (
+                <div key={year}>
+                  {/* Year header */}
+                  <div
                     style={{
-                      flex: 1, background: 'none', border: 'none', cursor: 'pointer',
-                      textAlign: 'left', padding: 0,
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '8px 4px', cursor: 'pointer', userSelect: 'none',
+                      borderBottom: '2px solid var(--color-border)',
+                      background: 'var(--color-surface-2)',
                     }}
+                    onClick={() => toggleYear(year)}
                   >
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{h.period}</div>
-                    <div className="text-muted text-sm" style={{ marginTop: 2 }}>
-                      {h._count.records} employees
-                      {h.periodStart && ` · ${new Date(h.periodStart).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} – ${new Date(h.periodEnd).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`}
-                      {(h as any).soaNo && ` · SOA# ${(h as any).soaNo}`}
-                    </div>
-                  </button>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span className={`badge ${STATUS_COLORS[h.status]}`}>{h.status}</span>
-                    {h.status === 'DRAFT' && isManager && (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ color: 'var(--color-danger)' }}
-                        disabled={deleteMutation.isPending}
-                        onClick={() => {
-                          if (confirm('Delete this draft payroll run?')) deleteMutation.mutate(h.id);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    )}
-                    <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>›</span>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)', width: 14, textAlign: 'center' }}>
+                      {isYearCollapsed ? '▶' : '▼'}
+                    </span>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{year}</span>
+                    <span className="text-muted text-sm">
+                      ({yearRuns.length} run{yearRuns.length !== 1 ? 's' : ''})
+                    </span>
                   </div>
+
+                  {/* Year rows */}
+                  {!isYearCollapsed && yearRuns.map(h => (
+                    <div
+                      key={h.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '12px 4px', borderBottom: '1px solid var(--color-border)',
+                      }}
+                    >
+                      <button
+                        onClick={() => setViewRunId(h.id)}
+                        style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{h.period}</div>
+                        <div className="text-muted text-sm" style={{ marginTop: 2 }}>
+                          {h._count.records} employees
+                          {h.periodStart && ` · ${new Date(h.periodStart).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} – ${new Date(h.periodEnd).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                          {(h as any).soaNo && ` · SOA# ${(h as any).soaNo}`}
+                        </div>
+                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span className={`badge ${STATUS_COLORS[h.status]}`}>{h.status}</span>
+                        {h.status === 'DRAFT' && isManager && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: 'var(--color-danger)' }}
+                            disabled={deleteMutation.isPending}
+                            onClick={() => {
+                              if (confirm('Delete this draft payroll run?')) deleteMutation.mutate(h.id);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                        <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>›</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         )
       )}
