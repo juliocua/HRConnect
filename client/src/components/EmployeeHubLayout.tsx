@@ -15,16 +15,16 @@ export default function EmployeeHubLayout() {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
-  const drawerRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => { logout(); navigate('/login'); };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
-        setMobileOpen(false);
-      }
+      // Only close the avatar dropdown on outside click.
+      // The drawer is closed via the backdrop overlay onClick — do NOT close it
+      // on mousedown here, as that would destroy the NavLink before its click event
+      // fires, preventing navigation.
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
         setAvatarMenuOpen(false);
       }
@@ -254,7 +254,7 @@ export default function EmployeeHubLayout() {
             </div>
 
             {/* Hamburger */}
-            <div ref={drawerRef}>
+            <div>
               <button
                 onClick={() => setMobileOpen(o => !o)}
                 style={{
