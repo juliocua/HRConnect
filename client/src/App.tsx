@@ -24,6 +24,8 @@ import LeaveSetup from '@/pages/LeaveSetup';
 import GlobalSetup from '@/pages/GlobalSetup';
 import Overtime from '@/pages/Overtime';
 import HubOvertime from '@/pages/hub/HubOvertime';
+import Expenses from '@/pages/Expenses';
+import HubExpenses from '@/pages/hub/HubExpenses';
 
 // Handles /auth/callback?token=xxx from OAuth redirects
 function OAuthCallback() {
@@ -98,6 +100,7 @@ function AppRoutes() {
         <Route path="leave" element={<HubLeave />} />
         <Route path="overtime" element={<HubOvertime />} />
         <Route path="payslips" element={<HubPayslips />} />
+        <Route path="expenses" element={<HubExpenses />} />
         <Route path="profile" element={<HubProfile />} />
       </Route>
 
@@ -159,6 +162,10 @@ function AppRoutes() {
         <Route
           path="overtime"
           element={<ModuleRoute module="overtime"><Overtime /></ModuleRoute>}
+        />
+        <Route
+          path="expenses"
+          element={<ModuleRoute module="expenses"><Expenses /></ModuleRoute>}
         />
       </Route>
 

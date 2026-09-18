@@ -16,6 +16,7 @@ export type Module =
   | 'reports'
   | 'import'
   | 'leaveSetup'
+  | 'expenses'
   | 'settings';
 
 // ── Permission matrix ─────────────────────────────────────────────────────────
@@ -23,42 +24,42 @@ const ROLE_ACCESS: Record<UserRole, Record<Module, Access>> = {
   SUPER_ADMIN: {
     dashboard: 'full', employees: 'full', attendance: 'full', leave: 'full',
     overtime: 'full', payroll: 'full', billing: 'full', clients: 'full',
-    reports: 'full', import: 'full', leaveSetup: 'full', settings: 'full',
+    reports: 'full', import: 'full', leaveSetup: 'full', expenses: 'full', settings: 'full',
   },
   HR_MANAGER: {
     dashboard: 'full', employees: 'full', attendance: 'full', leave: 'full',
     overtime: 'full', payroll: 'full', billing: 'full', clients: 'full',
-    reports: 'full', import: 'full', leaveSetup: 'full', settings: 'none',
+    reports: 'full', import: 'full', leaveSetup: 'full', expenses: 'full', settings: 'none',
   },
   HR_STAFF: {
     dashboard: 'full', employees: 'full', attendance: 'full', leave: 'full',
     overtime: 'full', payroll: 'full', billing: 'full', clients: 'full',
-    reports: 'full', import: 'full', leaveSetup: 'full', settings: 'none',
+    reports: 'full', import: 'full', leaveSetup: 'full', expenses: 'full', settings: 'none',
   },
   EMPLOYEE_RELATIONS: {
     dashboard: 'full', employees: 'full', attendance: 'none', leave: 'none',
     overtime: 'none', payroll: 'none', billing: 'none', clients: 'read',
-    reports: 'none', import: 'none', leaveSetup: 'none', settings: 'none',
+    reports: 'none', import: 'none', leaveSetup: 'none', expenses: 'full', settings: 'none',
   },
   ACCOUNTS_MANAGEMENT: {
     dashboard: 'full', employees: 'read', attendance: 'full', leave: 'full',
     overtime: 'full', payroll: 'full', billing: 'none', clients: 'read',
-    reports: 'full', import: 'none', leaveSetup: 'none', settings: 'none',
+    reports: 'full', import: 'none', leaveSetup: 'none', expenses: 'full', settings: 'none',
   },
   BILLING_COLLECTION: {
     dashboard: 'full', employees: 'full', attendance: 'full', leave: 'full',
     overtime: 'full', payroll: 'full', billing: 'full', clients: 'full',
-    reports: 'full', import: 'full', leaveSetup: 'full', settings: 'none',
+    reports: 'full', import: 'full', leaveSetup: 'full', expenses: 'full', settings: 'none',
   },
   ACCOUNTING: {
     dashboard: 'full', employees: 'full', attendance: 'full', leave: 'full',
     overtime: 'full', payroll: 'full', billing: 'full', clients: 'full',
-    reports: 'full', import: 'full', leaveSetup: 'full', settings: 'none',
+    reports: 'full', import: 'full', leaveSetup: 'full', expenses: 'full', settings: 'none',
   },
   EMPLOYEE: {
     dashboard: 'none', employees: 'none', attendance: 'none', leave: 'none',
     overtime: 'none', payroll: 'none', billing: 'none', clients: 'none',
-    reports: 'none', import: 'none', leaveSetup: 'none', settings: 'none',
+    reports: 'none', import: 'none', leaveSetup: 'none', expenses: 'none', settings: 'none',
   },
 };
 

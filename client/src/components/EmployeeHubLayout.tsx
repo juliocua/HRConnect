@@ -7,6 +7,7 @@ const NAV = [
   { to: '/hub/leave', label: 'My Leave', icon: '🏖️', short: 'Leave', end: false },
   { to: '/hub/overtime', label: 'Overtime', icon: '⏱️', short: 'OT', end: false },
   { to: '/hub/payslips', label: 'My Payslips', icon: '💰', short: 'Payslips', end: false },
+  { to: '/hub/expenses', label: 'Expense Reimbursement', icon: '🧾', short: 'Expenses', end: false },
 ];
 
 export default function EmployeeHubLayout() {

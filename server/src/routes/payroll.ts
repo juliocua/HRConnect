@@ -613,6 +613,27 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
 
     await prisma.payrollRecord.deleteMany({ where: { payrollRunId: payrollRun.id } });
 
+    // ── Expense reimbursements (regular runs only) ─────────────────────────────
+    let pendingExpensesForStamp: Array<{ id: string; employeeId: string }> = [];
+    const expenseMap = new Map<string, { ids: string[]; total: number }>();
+    if (!is13th) {
+      const rawExpenses = await (prisma as any).expenseRequest.findMany({
+        where: {
+          employeeId: { in: employees.map((e: any) => e.id) },
+          status: 'APPROVED',
+          payrollRecordId: null,
+        },
+        select: { id: true, employeeId: true, amount: true },
+      });
+      pendingExpensesForStamp = rawExpenses;
+      for (const exp of rawExpenses) {
+        const cur = expenseMap.get(exp.employeeId) ?? { ids: [], total: 0 };
+        cur.ids.push(exp.id);
+        cur.total += exp.amount;
+        expenseMap.set(exp.employeeId, cur);
+      }
+    }
+
     let records: any[];
 
     if (is13th) {
@@ -759,7 +780,8 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           const taxableIncome = Math.max(0, grossPay - sssContrib - philhealthContrib - pagibigContrib);
           const withholdingTax = computeWithholdingTax(taxableIncome);
           const totalDeductions = sssContrib + philhealthContrib + pagibigContrib + withholdingTax;
-          const netPay = grossPay - totalDeductions - lateDeduction;
+          const expenseTotal = expenseMap.get(emp.id)?.total ?? 0;
+          const netPay = grossPay - totalDeductions - lateDeduction + expenseTotal;
           return {
             payrollRunId: payrollRun.id,
             employeeId: emp.id,
@@ -785,6 +807,23 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
     }
 
     await prisma.payrollRecord.createMany({ data: records });
+
+    // Stamp approved expenses with their newly created payroll record IDs
+    if (pendingExpensesForStamp.length > 0) {
+      const createdRecords = await prisma.payrollRecord.findMany({
+        where: { payrollRunId: payrollRun.id },
+        select: { id: true, employeeId: true },
+      });
+      for (const rec of createdRecords) {
+        const expInfo = expenseMap.get(rec.employeeId);
+        if (expInfo && expInfo.ids.length > 0) {
+          await (prisma as any).expenseRequest.updateMany({
+            where: { id: { in: expInfo.ids } },
+            data: { payrollRecordId: rec.id },
+          });
+        }
+      }
+    }
 
     const result = await prisma.payrollRun.findUnique({
       where: { id: payrollRun.id },

@@ -136,6 +136,8 @@ model Employee {
   documents               EmployeeDocument[]
   assignments             EmployeeAssignment[]
   user                    User?
+  expenseRequests         ExpenseRequest[]
+  approvedExpenses        ExpenseRequest[]       @relation("ExpenseApprovals")
 
   @@map("employees")
 }
@@ -533,6 +535,7 @@ model PayrollRecord {
   holidayPay          Float      @default(0)
   nightDifferential   Float      @default(0)
   silPay              Float      @default(0)
+  expenses            ExpenseRequest[]
 
   @@unique([payrollRunId, employeeId])
   @@map("payroll_records")
@@ -591,4 +594,44 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 
   @@map("app_settings")
+}
+
+// ── Expense Reimbursements ────────────────────────────────────────────────────
+
+model ExpenseCategory {
+  id        String           @id @default(cuid())
+  name      String
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  expenses  ExpenseRequest[]
+
+  @@map("expense_categories")
+}
+
+model ExpenseRequest {
+  id              String           @id @default(cuid())
+  employeeId      String
+  employee        Employee         @relation(fields: [employeeId], references: [id])
+  categoryId      String?
+  category        ExpenseCategory? @relation(fields: [categoryId], references: [id])
+  description     String
+  amount          Float
+  receiptUrl      String?
+  status          ExpenseStatus    @default(PENDING)
+  approvedById    String?
+  approvedBy      Employee?        @relation("ExpenseApprovals", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+  rejectionNote   String?
+  payrollRecordId String?
+  payrollRecord   PayrollRecord?   @relation(fields: [payrollRecordId], references: [id])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@map("expense_requests")
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
