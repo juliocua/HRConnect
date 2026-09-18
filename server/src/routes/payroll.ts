@@ -396,6 +396,39 @@ router.get('/:runId/disbursement', requireRole('HR_MANAGER', 'SUPER_ADMIN'), asy
   }
 });
 
+// GET /api/payroll/record/:recordId/attendance  — attendance, approved OT, approved leaves for a payroll record's period
+router.get('/record/:recordId/attendance', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const record = await prisma.payrollRecord.findUnique({
+      where: { id: req.params.recordId },
+      include: { payrollRun: { select: { periodStart: true, periodEnd: true } } },
+    });
+    if (!record) return res.status(404).json({ error: 'Record not found' });
+    const { periodStart, periodEnd } = record.payrollRun;
+    const [attendance, overtime, leaves] = await Promise.all([
+      prisma.attendance.findMany({
+        where: { employeeId: record.employeeId, date: { gte: periodStart, lte: periodEnd } },
+        orderBy: { date: 'asc' },
+      }),
+      prisma.overtimeRequest.findMany({
+        where: { employeeId: record.employeeId, status: 'APPROVED', date: { gte: periodStart, lte: periodEnd } },
+        orderBy: { date: 'asc' },
+      }),
+      prisma.leaveRequest.findMany({
+        where: {
+          employeeId: record.employeeId,
+          status: 'APPROVED',
+          startDate: { lte: periodEnd },
+          endDate: { gte: periodStart },
+        },
+        include: { leaveType: { select: { name: true, code: true } } },
+        orderBy: { startDate: 'asc' },
+      }),
+    ]);
+    res.json({ periodStart, periodEnd, attendance, overtime, leaves });
+  } catch (err) { next(err); }
+});
+
 // GET /api/payroll/:runId  — single run with records (includes client column)
 router.get('/:runId', async (req: Request, res: Response, next: NextFunction) => {
   try {

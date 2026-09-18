@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatPHP } from '@/lib/payroll';
@@ -23,6 +23,130 @@ function getPeriodTypeLabel(type: number, cutOffPeriods: CutOffPeriod[]): string
   if (type === 7) return 'Special Pay';
   if (type === 9) return '13th Month Pay';
   return 'Payroll';
+}
+
+function fmtAttTime(iso?: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+const ATT_STATUS_BADGE: Record<string, string> = {
+  PRESENT: '🟢', LATE: '🟡', ABSENT: '🔴', HALF_DAY: '🟠', ON_LEAVE: '🔵',
+};
+
+function PayslipAttendanceSection({ recordId }: { recordId: string }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useQuery({
+    queryKey: ['payroll-attendance', recordId],
+    queryFn: () => api.get(`/payroll/record/${recordId}/attendance`).then(r => r.data),
+  });
+  const thStyle: React.CSSProperties = { textAlign: 'left', padding: '3px 4px', color: 'var(--color-text-muted)', fontWeight: 600, fontSize: 11, whiteSpace: 'nowrap' };
+  const tdStyle: React.CSSProperties = { padding: '3px 4px', fontSize: 11 };
+  return (
+    <div>
+      <div className="divider" />
+      <div
+        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', userSelect: 'none' }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          Time Entries
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div style={{ paddingBottom: 8 }}>
+          {isLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+              <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Loading…
+            </div>
+          ) : !data ? null : (
+            <>
+              {data.attendance.length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6, marginBottom: 4, fontWeight: 600 }}>Daily Attendance</div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                          <th style={thStyle}>Date</th>
+                          <th style={thStyle}>Status</th>
+                          <th style={thStyle}>Time In</th>
+                          <th style={thStyle}>Time Out</th>
+                          <th style={{ ...thStyle, textAlign: 'right' }}>OT hrs</th>
+                          <th style={{ ...thStyle, textAlign: 'right' }}>Late min</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.attendance.map((a: any) => (
+                          <tr key={a.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                            <td style={tdStyle}>{fmtDate(a.date)}</td>
+                            <td style={tdStyle}>{ATT_STATUS_BADGE[a.status] ?? ''} {a.status}</td>
+                            <td style={tdStyle}>{fmtAttTime(a.timeIn)}</td>
+                            <td style={tdStyle}>{fmtAttTime(a.timeOut)}</td>
+                            <td style={{ ...tdStyle, textAlign: 'right' }}>{a.overtimeHrs > 0 ? a.overtimeHrs : '—'}</td>
+                            <td style={{ ...tdStyle, textAlign: 'right' }}>{a.lateMinutes > 0 ? a.lateMinutes : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+              {data.overtime.length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8, marginBottom: 4, fontWeight: 600 }}>Approved Overtime</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <th style={thStyle}>Date</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Hours</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.overtime.map((o: any) => (
+                        <tr key={o.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                          <td style={tdStyle}>{fmtDate(o.date)}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right' }}>{o.hours}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+              {data.leaves.length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8, marginBottom: 4, fontWeight: 600 }}>Approved Leaves</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <th style={thStyle}>Leave Type</th>
+                        <th style={thStyle}>From</th>
+                        <th style={thStyle}>To</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Days</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.leaves.map((l: any) => (
+                        <tr key={l.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                          <td style={tdStyle}>{l.leaveType?.name ?? '—'}</td>
+                          <td style={tdStyle}>{fmtDate(l.startDate)}</td>
+                          <td style={tdStyle}>{fmtDate(l.endDate)}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right' }}>{l.totalDays}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+              {data.attendance.length === 0 && data.overtime.length === 0 && data.leaves.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '6px 0' }}>No time entries found for this period.</div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function fmtDate(iso?: string) {
@@ -336,6 +460,8 @@ function PayslipModal({ record: r, cutOffPeriods, onClose }: { record: MyPayroll
             <span>NET PAY</span>
             <span>{formatPHP(r.netPay)}</span>
           </div>
+
+          <PayslipAttendanceSection recordId={r.id} />
         </div>
       </div>
     </div>

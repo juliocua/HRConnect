@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
@@ -636,6 +636,166 @@ export default function ClientBilling() {
   );
 }
 
+function fmtBillingDate(iso?: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function fmtBillingTime(iso?: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+const BILLING_ATT_BADGE: Record<string, string> = {
+  PRESENT: '🟢', LATE: '🟡', ABSENT: '🔴', HALF_DAY: '🟠', ON_LEAVE: '🔵',
+};
+
+function EmployeeAttendanceRow({ emp }: { emp: any }) {
+  const [open, setOpen] = useState(false);
+  const thS: React.CSSProperties = { textAlign: 'left', padding: '3px 4px', color: 'var(--color-text-muted)', fontWeight: 600, fontSize: 11, whiteSpace: 'nowrap' };
+  const tdS: React.CSSProperties = { padding: '3px 4px', fontSize: 11 };
+  return (
+    <div style={{ borderBottom: '1px solid var(--color-border)' }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 4px', cursor: 'pointer', userSelect: 'none' }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <div>
+          <span style={{ fontWeight: 600, fontSize: 12 }}>{emp.firstName} {emp.lastName}</span>
+          {emp.position && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--color-text-muted)' }}>{emp.position}</span>}
+        </div>
+        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div style={{ paddingLeft: 8, paddingBottom: 8 }}>
+          {emp.attendance.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4, fontWeight: 600 }}>Daily Attendance</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <th style={thS}>Date</th>
+                      <th style={thS}>Status</th>
+                      <th style={thS}>Time In</th>
+                      <th style={thS}>Time Out</th>
+                      <th style={{ ...thS, textAlign: 'right' }}>OT hrs</th>
+                      <th style={{ ...thS, textAlign: 'right' }}>Late min</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {emp.attendance.map((a: any) => (
+                      <tr key={a.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                        <td style={tdS}>{fmtBillingDate(a.date)}</td>
+                        <td style={tdS}>{BILLING_ATT_BADGE[a.status] ?? ''} {a.status}</td>
+                        <td style={tdS}>{fmtBillingTime(a.timeIn)}</td>
+                        <td style={tdS}>{fmtBillingTime(a.timeOut)}</td>
+                        <td style={{ ...tdS, textAlign: 'right' }}>{a.overtimeHrs > 0 ? a.overtimeHrs : '—'}</td>
+                        <td style={{ ...tdS, textAlign: 'right' }}>{a.lateMinutes > 0 ? a.lateMinutes : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          {emp.overtime.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8, marginBottom: 4, fontWeight: 600 }}>Approved Overtime</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    <th style={thS}>Date</th>
+                    <th style={{ ...thS, textAlign: 'right' }}>Hours</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emp.overtime.map((o: any) => (
+                    <tr key={o.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <td style={tdS}>{fmtBillingDate(o.date)}</td>
+                      <td style={{ ...tdS, textAlign: 'right' }}>{o.hours}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          {emp.leaves.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8, marginBottom: 4, fontWeight: 600 }}>Approved Leaves</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    <th style={thS}>Leave Type</th>
+                    <th style={thS}>From</th>
+                    <th style={thS}>To</th>
+                    <th style={{ ...thS, textAlign: 'right' }}>Days</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emp.leaves.map((l: any) => (
+                    <tr key={l.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <td style={tdS}>{l.leaveType?.name ?? '—'}</td>
+                      <td style={tdS}>{fmtBillingDate(l.startDate)}</td>
+                      <td style={tdS}>{fmtBillingDate(l.endDate)}</td>
+                      <td style={{ ...tdS, textAlign: 'right' }}>{l.totalDays}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          {emp.attendance.length === 0 && emp.overtime.length === 0 && emp.leaves.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '4px 0' }}>No time entries for this period.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BillingEmployeesSection({ billingId }: { billingId: string }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useQuery({
+    queryKey: ['billing-emp-att', billingId],
+    queryFn: () => api.get(`/billing/${billingId}/employee-attendance`).then(r => r.data),
+  });
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div className="divider" style={{ margin: '8px 0' }} />
+      <div
+        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', userSelect: 'none' }}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          Employee Attendance
+          {data?.periodStart && (
+            <span style={{ fontWeight: 400, marginLeft: 6, textTransform: 'none', letterSpacing: 'normal' }}>
+              ({fmtBillingDate(data.periodStart)} – {fmtBillingDate(data.periodEnd)})
+            </span>
+          )}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </div>
+      {open && (
+        <div style={{ paddingBottom: 8 }}>
+          {isLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', color: 'var(--color-text-muted)', fontSize: 12 }}>
+              <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Loading…
+            </div>
+          ) : !data || data.employees.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '6px 0' }}>No employees found.</div>
+          ) : (
+            <div style={{ marginTop: 6 }}>
+              {data.employees.map((emp: any) => (
+                <EmployeeAttendanceRow key={emp.id} emp={emp} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Inline expandable invoice detail
 function InvoiceDetail({ billing }: { billing: any }) {
   const { data, isLoading } = useQuery({
@@ -780,6 +940,8 @@ function InvoiceDetail({ billing }: { billing: any }) {
           Notes: {b.notes}
         </div>
       )}
+
+      <BillingEmployeesSection billingId={b.id} />
     </div>
   );
 }

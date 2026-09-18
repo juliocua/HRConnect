@@ -604,6 +604,55 @@ router.get('/reports/attendance-summary', async (req: Request, res: Response, ne
 
 // ── Invoice PDF & Email ───────────────────────────────────────────────────────
 
+// GET /api/billing/:id/employee-attendance  — attendance, approved OT, approved leaves for all employees in a billing period
+router.get('/:id/employee-attendance', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const billing = await prisma.billing.findUnique({
+      where: { id: req.params.id },
+      include: {
+        client: {
+          include: {
+            employees: {
+              where: { status: { in: ['ACTIVE', 'ON_LEAVE'] as any } },
+              select: { id: true, firstName: true, lastName: true, position: true },
+            },
+          },
+        },
+      },
+    });
+    if (!billing) return res.status(404).json({ error: 'Not found' });
+    const periodEnd = new Date(billing.billingDate);
+    const periodStart = new Date(periodEnd);
+    periodStart.setDate(periodStart.getDate() - 30);
+    const employeeData = await Promise.all(
+      billing.client.employees.map(async (emp: any) => {
+        const [attendance, overtime, leaves] = await Promise.all([
+          prisma.attendance.findMany({
+            where: { employeeId: emp.id, date: { gte: periodStart, lte: periodEnd } },
+            orderBy: { date: 'asc' },
+          }),
+          prisma.overtimeRequest.findMany({
+            where: { employeeId: emp.id, status: 'APPROVED', date: { gte: periodStart, lte: periodEnd } },
+            orderBy: { date: 'asc' },
+          }),
+          prisma.leaveRequest.findMany({
+            where: {
+              employeeId: emp.id,
+              status: 'APPROVED',
+              startDate: { lte: periodEnd },
+              endDate: { gte: periodStart },
+            },
+            include: { leaveType: { select: { name: true, code: true } } },
+            orderBy: { startDate: 'asc' },
+          }),
+        ]);
+        return { ...emp, attendance, overtime, leaves };
+      })
+    );
+    res.json({ periodStart, periodEnd, employees: employeeData });
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/billing/:id  — delete a PENDING invoice (PAID invoices cannot be deleted)
 router.delete('/:id', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
   try {
