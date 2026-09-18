@@ -253,6 +253,7 @@ export interface PayrollRecord {
   silPay?: number;
   priorPeriodDeduction?: number;
   absenceCarryForward?: number;
+  expenseReimbursement?: number;
 }
 
 // ── Global Setup ──────────────────────────────────────────────────────────────
@@ -424,4 +425,29 @@ export interface BillingSummary {
   paidAmount: number;
   paidCount: number;
   dueSoon: (Billing & { client: { id: string; name: string } })[];
+}
+
+// ── Expenses ──────────────────────────────────────────────────────────────────
+export type ExpenseStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface ExpenseRequest {
+  id: string;
+  categoryId: string | null;
+  category: ExpenseCategory | null;
+  description: string;
+  amount: number;
+  receiptUrl: string | null;
+  status: ExpenseStatus;
+  rejectionNote: string | null;
+  approvedAt: string | null;
+  approvedBy: { firstName: string; lastName: string } | null;
+  payrollRecord: { id: string; payrollRun: { periodStart: string; periodEnd: string } } | null;
+  createdAt: string;
+  employee?: { id: string; firstName: string; lastName: string; client: { id: string; name: string } | null };
 }
