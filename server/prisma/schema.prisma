@@ -582,3 +582,13 @@ model CompanySettings {
 
   @@map("company_settings")
 }
+
+// ── App Settings ──────────────────────────────────────────────────────────────
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}

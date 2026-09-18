@@ -46,8 +46,9 @@ const NAV_ITEMS: Array<{
   {
     section: 'Tools',
     links: [
-      { to: '/import',      label: 'Bulk Import', icon: IconImport,     module: 'import'     },
-      { to: '/global-setup', label: 'Global Setup',  icon: IconLeaveSetup, module: 'leaveSetup' },
+      { to: '/import',       label: 'Bulk Import',     icon: IconImport,     module: 'import'     },
+      { to: '/global-setup', label: 'Global Setup',    icon: IconLeaveSetup, module: 'leaveSetup' },
+      { to: '/settings',     label: 'Global Settings', icon: IconSettings,   module: 'settings'   },
     ],
   },
 ];
@@ -225,6 +226,15 @@ function IconOvertime() {
 }
 
 function IconLeaveSetup() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.07 4.93l-1.41 1.41M4.93 19.07l-1.41 1.41M19.07 19.07l-1.41-1.41M4.93 4.93l-1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2"/>
+    </svg>
+  );
+}
+
+function IconSettings() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3"/>

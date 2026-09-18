@@ -22,6 +22,7 @@ import overtimeRoutes from './routes/overtime';
 import companiesRoutes from './routes/companies';
 import { startLeaveAccrualJob } from './jobs/leaveAccrual';
 import globalSetupRoutes from './routes/global-setup';
+import settingsRoutes from './routes/settings';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -87,6 +88,7 @@ app.use('/api/import',     authenticate, rbacGuard('import'),     importRoutes);
 app.use('/api/overtime',   authenticate, rbacGuard('overtime'),   overtimeRoutes);
 app.use('/api/companies',  authenticate, rbacGuard('companies'),  companiesRoutes);
 app.use('/api/global-setup', authenticate, globalSetupRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));

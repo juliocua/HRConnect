@@ -104,8 +104,12 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-    // Non-employees: return JWT immediately
-    if (user.role !== 'EMPLOYEE') {
+    // Check global requireOtp setting (default: true if not set)
+    const otpSetting = await (prisma as any).appSetting.findUnique({ where: { key: 'requireOtp' } });
+    const requireOtp = otpSetting ? otpSetting.value === 'true' : true;
+
+    // If OTP is disabled OR user is not an EMPLOYEE: return JWT immediately
+    if (!requireOtp || user.role !== 'EMPLOYEE') {
       const token = signToken({
         userId: user.id,
         email: user.email,
@@ -125,7 +129,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       });
     }
 
-    // EMPLOYEE role: 2-step OTP via SMS (Semaphore)
+    // EMPLOYEE role + OTP enabled: 2-step OTP via SMS (Semaphore)
     const phone = (user as any).employee?.phone;
     if (!phone) {
       return res.status(422).json({ error: 'No mobile number on file. Contact HR to update your employee record.' });
