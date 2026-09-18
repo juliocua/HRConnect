@@ -278,6 +278,7 @@ export default function HubPayslips() {
                   {[
                     { label: 'Gross Pay', value: formatPHP(filtered[0].grossPay), bold: false },
                     { label: 'Deductions', value: formatPHP(filtered[0].totalDeductions), bold: false },
+                    ...((filtered[0].expenseReimbursement ?? 0) > 0 ? [{ label: 'Expenses', value: formatPHP(filtered[0].expenseReimbursement ?? 0), bold: false }] : []),
                     { label: 'Net Pay', value: formatPHP(filtered[0].netPay), bold: true },
                   ].map(s => (
                     <div key={s.label} style={{ textAlign: 'right' }}>
@@ -301,6 +302,7 @@ export default function HubPayslips() {
                   <th>Days</th>
                   <th>Gross Pay</th>
                   <th>Deductions</th>
+                  <th>Expenses</th>
                   <th>Net Pay</th>
                   <th>Status</th>
                   <th></th>
@@ -334,6 +336,9 @@ export default function HubPayslips() {
                         <td>{r.daysWorked}</td>
                         <td className="td-mono">{formatPHP(r.grossPay)}</td>
                         <td className="td-mono text-muted">{formatPHP(r.totalDeductions)}</td>
+                        <td className="td-mono" style={{ color: 'var(--color-success)' }}>
+                          {(r.expenseReimbursement ?? 0) > 0 ? formatPHP(r.expenseReimbursement ?? 0) : '—'}
+                        </td>
                         <td className="td-mono" style={{ fontWeight: 800, color: 'var(--color-primary)' }}>{formatPHP(r.netPay)}</td>
                         <td><span className={`badge ${STATUS_COLORS[r.payrollRun.status]}`}>{r.payrollRun.status}</span></td>
                         <td onClick={e => e.stopPropagation()}>
@@ -342,7 +347,7 @@ export default function HubPayslips() {
                       </tr>
                       {isRowExpanded && (
                         <tr>
-                          <td colSpan={8} style={{ padding: 0, background: 'var(--color-surface-2)', borderBottom: '2px solid var(--color-border)' }}>
+                          <td colSpan={9} style={{ padding: 0, background: 'var(--color-surface-2)', borderBottom: '2px solid var(--color-border)' }}>
                             <div style={{ padding: '4px 16px 12px' }}>
                               <PayslipAttendanceSection recordId={r.id} />
                             </div>
@@ -482,6 +487,17 @@ function PayslipModal({ record: r, cutOffPeriods, onClose }: { record: MyPayroll
             <span>Total Deductions</span>
             <span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions + otherDed + lateDed)})</span>
           </div>
+
+          {(r.expenseReimbursement ?? 0) > 0 && (
+            <>
+              <div className="divider" />
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Reimbursements</div>
+              <div className="payslip-row" style={{ color: 'var(--color-success)' }}>
+                <span>Expense Reimbursement</span>
+                <span>+{formatPHP(r.expenseReimbursement ?? 0)}</span>
+              </div>
+            </>
+          )}
 
           <div className="divider" />
 

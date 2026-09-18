@@ -91,6 +91,7 @@ export default function Payroll() {
   const totalOtherDeductions = records.reduce((s, r) => s + (r.otherDeductions ?? 0), 0);
   const totalNet = records.reduce((s, r) => s + r.netPay, 0);
   const totalOT = records.reduce((s, r) => s + r.overtimePay, 0);
+  const totalExpenses = records.reduce((s, r) => s + (r.expenseReimbursement ?? 0), 0);
 
   // Stable callback — reads mutation from ref so columns never recreate on mutation state change
   const handleOtherDeductionsBlur = useCallback((recordId: string, value: number, note: string | null) => {
@@ -307,6 +308,7 @@ export default function Payroll() {
               { label: 'Total Deductions', value: formatPHP(totalDeductions + totalOtherDeductions), icon: '📉', color: '#FEF2F2' },
               { label: 'Net Pay', value: formatPHP(totalNet), icon: '✅', color: '#EFF6FF' },
               { label: 'OT Pay', value: formatPHP(totalOT), icon: '⏱️', color: '#FFFBEB' },
+              ...(totalExpenses > 0 ? [{ label: 'Expense Reimbursements', value: formatPHP(totalExpenses), icon: '🧾', color: '#F0FDF4' }] : []),
             ].map(s => (
               <div key={s.label} className="stat-card">
                 <div className="stat-icon" style={{ background: s.color, fontSize: 20 }}>{s.icon}</div>
@@ -393,6 +395,7 @@ export default function Payroll() {
                                 <th style={grpTh}>Basic</th>
                                 <th style={grpTh}>Daily Rate</th>
                                 <th style={grpTh}>OT Pay</th>
+                                <th style={grpTh}>Expenses</th>
                                 <th style={grpTh}>Gross Pay</th>
                                 <th style={grpTh}>SSS</th>
                                 <th style={grpTh}>WISP</th>
@@ -444,6 +447,11 @@ export default function Payroll() {
                                       <span className="td-mono">{r.overtimePay > 0 ? formatPHP(r.overtimePay) : '—'}</span>
                                     </td>
                                     <td style={grpTd}>
+                                      <span className="td-mono" style={{ color: 'var(--color-success)' }}>
+                                        {(r.expenseReimbursement ?? 0) > 0 ? formatPHP(r.expenseReimbursement ?? 0) : '—'}
+                                      </span>
+                                    </td>
+                                    <td style={grpTd}>
                                       <span className="td-mono" style={{ fontWeight: 600 }}>{formatPHP(r.grossPay)}</span>
                                     </td>
                                     <td style={grpTd}><span className="td-mono text-muted">{formatPHP(sssRegular)}</span></td>
@@ -483,7 +491,7 @@ export default function Payroll() {
                                   </tr>
                                   {isRowExpanded && (
                                     <tr>
-                                      <td colSpan={16} style={{ padding: 0, background: 'var(--color-surface-2)', borderBottom: '2px solid var(--color-border)' }}>
+                                      <td colSpan={17} style={{ padding: 0, background: 'var(--color-surface-2)', borderBottom: '2px solid var(--color-border)' }}>
                                         <div style={{ padding: '8px 16px' }}>
                                           <PayslipAttendanceSection recordId={r.id} />
                                         </div>
@@ -1170,6 +1178,17 @@ function PayslipModal({ record: r, onClose }: { record: PayrollRecord; onClose: 
             <span>Total Deductions</span>
             <span style={{ color: 'var(--color-danger)' }}>({formatPHP(r.totalDeductions + otherDed + (r.lateDeduction ?? 0))})</span>
           </div>
+
+          {(r.expenseReimbursement ?? 0) > 0 && (
+            <>
+              <div className="divider" />
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Reimbursements</div>
+              <div className="payslip-row" style={{ color: 'var(--color-success)' }}>
+                <span>Expense Reimbursement</span>
+                <span>+{formatPHP(r.expenseReimbursement ?? 0)}</span>
+              </div>
+            </>
+          )}
 
           <div className="divider" />
 

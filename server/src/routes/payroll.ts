@@ -31,10 +31,15 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
       include: {
         payrollRun: { select: { period: true, year: true, month: true, payPeriodType: true, description: true, periodStart: true, periodEnd: true, runAt: true, status: true } },
         employee: { select: { client: { select: { id: true, name: true } } } },
+        expenses: { select: { amount: true } },
       },
       orderBy: [{ payrollRun: { year: 'desc' } }, { payrollRun: { month: 'desc' } }],
     });
-    res.json(records);
+    const result = records.map(({ expenses, ...r }) => ({
+      ...r,
+      expenseReimbursement: expenses.reduce((s: number, e: { amount: number }) => s + e.amount, 0),
+    }));
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -438,13 +443,21 @@ router.get('/:runId', async (req: Request, res: Response, next: NextFunction) =>
         records: {
           include: {
             employee: { select: EMPLOYEE_SELECT },
+            expenses: { select: { amount: true } },
           },
           orderBy: { employee: { lastName: 'asc' } },
         },
       },
     });
     if (!run) return res.status(404).json({ error: 'Payroll run not found' });
-    res.json(run);
+    const processedRun = {
+      ...run,
+      records: run.records.map(({ expenses, ...r }) => ({
+        ...r,
+        expenseReimbursement: expenses.reduce((s: number, e: { amount: number }) => s + e.amount, 0),
+      })),
+    };
+    res.json(processedRun);
   } catch (err) {
     next(err);
   }
@@ -825,15 +838,22 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       }
     }
 
-    const result = await prisma.payrollRun.findUnique({
+    const rawResult = await prisma.payrollRun.findUnique({
       where: { id: payrollRun.id },
       include: {
         records: {
-          include: { employee: { select: EMPLOYEE_SELECT } },
+          include: { employee: { select: EMPLOYEE_SELECT }, expenses: { select: { amount: true } } },
           orderBy: { employee: { lastName: 'asc' } },
         },
       },
     });
+    const result = rawResult ? {
+      ...rawResult,
+      records: rawResult.records.map(({ expenses, ...r }) => ({
+        ...r,
+        expenseReimbursement: expenses.reduce((s: number, e: { amount: number }) => s + e.amount, 0),
+      })),
+    } : rawResult;
     res.status(201).json(result);
   } catch (err) {
     next(err);
@@ -909,6 +929,11 @@ router.delete('/run/:runId', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (re
     if (!run) return res.status(404).json({ error: 'Payroll run not found' });
     if (run.status !== 'DRAFT') return res.status(422).json({ error: 'Only DRAFT payroll runs can be deleted' });
 
+    // Null out expense references before deleting records so expenses revert to "not added to payroll"
+    await (prisma as any).expenseRequest.updateMany({
+      where: { payrollRecord: { payrollRunId: run.id } },
+      data: { payrollRecordId: null },
+    });
     await prisma.payrollRecord.deleteMany({ where: { payrollRunId: run.id } });
     await prisma.payrollRun.delete({ where: { id: run.id } });
     res.json({ ok: true });
