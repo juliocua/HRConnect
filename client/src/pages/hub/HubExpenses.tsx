@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
@@ -34,10 +34,13 @@ export default function HubExpenses() {
   const qc = useQueryClient();
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const catRef = useRef<HTMLDivElement>(null);
 
   const [form, setForm] = useState({ categoryId: '', description: '', amount: '' });
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [catOpen, setCatOpen] = useState(false);
+  const [catSearch, setCatSearch] = useState('');
 
   const { data: categories = [] } = useQuery<ExpenseCategory[]>({
     queryKey: ['expense-categories'],
@@ -48,6 +51,23 @@ export default function HubExpenses() {
     queryKey: ['my-expenses'],
     queryFn: () => api.get('/expenses').then(r => r.data),
   });
+
+  // Close category combobox when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (catRef.current && !catRef.current.contains(e.target as Node)) {
+        setCatOpen(false);
+        setCatSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selectedCat = categories.find(c => c.id === form.categoryId) ?? null;
+  const filteredCats = catSearch.trim()
+    ? categories.filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase()))
+    : categories;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,17 +110,97 @@ export default function HubExpenses() {
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>New Expense Request</div>
         <form onSubmit={handleSubmit}>
           <div className="form-grid form-grid-2" style={{ gap: 14, marginBottom: 14 }}>
+            {/* Category combobox */}
             <div className="form-group">
               <label>Category</label>
-              <select
-                className="form-control"
-                value={form.categoryId}
-                onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}
-              >
-                <option value="">— Select category —</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <div ref={catRef} style={{ position: 'relative' }}>
+                {/* Trigger */}
+                <div
+                  onClick={() => { setCatOpen(o => !o); setCatSearch(''); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 10px', border: '1px solid var(--color-border)', borderRadius: 7,
+                    background: 'var(--color-surface)', cursor: 'pointer', minHeight: 38,
+                    fontSize: 14, color: selectedCat ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                    userSelect: 'none',
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {selectedCat ? selectedCat.name : '— Select category —'}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                    {selectedCat && (
+                      <span
+                        onClick={e => { e.stopPropagation(); setForm(f => ({ ...f, categoryId: '' })); }}
+                        style={{ cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: 16, lineHeight: 1, padding: '0 2px' }}
+                        title="Clear"
+                      >×</span>
+                    )}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                      style={{ color: 'var(--color-text-muted)', transform: catOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Dropdown */}
+                {catOpen && (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+                    background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
+                    zIndex: 200, overflow: 'hidden',
+                  }}>
+                    {/* Search input */}
+                    <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--color-border)' }}>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                          style={{ position: 'absolute', left: 8, width: 14, height: 14, color: 'var(--color-text-muted)', pointerEvents: 'none' }}>
+                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Search categories…"
+                          value={catSearch}
+                          onChange={e => setCatSearch(e.target.value)}
+                          style={{
+                            width: '100%', paddingLeft: 30, paddingRight: 10, paddingTop: 6, paddingBottom: 6,
+                            border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 13,
+                            background: 'var(--color-surface)', color: 'var(--color-text-primary)',
+                            outline: 'none',
+                          }}
+                        />
+                      </div>
+                    </div>
+                    {/* Options list */}
+                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      {filteredCats.length === 0 ? (
+                        <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--color-text-muted)' }}>No categories found</div>
+                      ) : (
+                        filteredCats.map(c => (
+                          <div
+                            key={c.id}
+                            onClick={() => { setForm(f => ({ ...f, categoryId: c.id })); setCatOpen(false); setCatSearch(''); }}
+                            style={{
+                              padding: '9px 14px', fontSize: 14, cursor: 'pointer',
+                              background: form.categoryId === c.id ? 'var(--color-primary-light)' : 'transparent',
+                              color: form.categoryId === c.id ? 'var(--color-primary)' : 'var(--color-text-primary)',
+                              fontWeight: form.categoryId === c.id ? 600 : 400,
+                            }}
+                            onMouseEnter={e => { if (form.categoryId !== c.id) (e.currentTarget as HTMLDivElement).style.background = 'var(--color-surface-2)'; }}
+                            onMouseLeave={e => { if (form.categoryId !== c.id) (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+                          >
+                            {c.name}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+
             <div className="form-group">
               <label>Amount (PHP) *</label>
               <input

@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { formatPHP } from '@/lib/payroll';
+import { DataTable } from '@/components/DataTable';
 
 type ExpenseCategory = { id: string; name: string; isActive: boolean };
 type ExpenseRequest = {
@@ -109,6 +111,91 @@ export default function Expenses() {
 
   const pending = expenses.filter(e => e.status === 'PENDING');
 
+  // DataTable columns for the History tab
+  const historyColumns = useMemo<ColumnDef<ExpenseRequest, any>[]>(() => [
+    {
+      id: 'date',
+      header: 'Date',
+      accessorFn: row => fmtDate(row.createdAt),
+      cell: info => <span style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{info.getValue()}</span>,
+    },
+    {
+      id: 'employee',
+      header: 'Employee',
+      accessorFn: row => `${row.employee.firstName} ${row.employee.lastName}`,
+      cell: info => <span style={{ fontWeight: 600 }}>{info.getValue()}</span>,
+    },
+    {
+      id: 'client',
+      header: 'Client',
+      accessorFn: row => row.employee.client?.name ?? '',
+      cell: info => <span style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>,
+    },
+    {
+      id: 'category',
+      header: 'Category',
+      accessorFn: row => row.category?.name ?? '',
+      cell: info => <span style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>,
+    },
+    {
+      id: 'description',
+      header: 'Description',
+      accessorFn: row => row.description,
+      cell: info => <span style={{ fontSize: 13, maxWidth: 180, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{info.getValue()}</span>,
+    },
+    {
+      id: 'amount',
+      header: 'Amount',
+      accessorFn: row => row.amount,
+      cell: info => <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{formatPHP(info.row.original.amount)}</span>,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorFn: row => row.status,
+      cell: info => <span className={`badge ${STATUS_BADGE[info.getValue() as ExpenseRequest['status']]}`}>{info.getValue()}</span>,
+    },
+    {
+      id: 'receipt',
+      header: 'Receipt',
+      accessorFn: row => row.receiptUrl ? 'View' : '',
+      cell: info => info.row.original.receiptUrl ? (
+        <a
+          href={`${import.meta.env.VITE_API_URL ?? ''}${info.row.original.receiptUrl}`}
+          target="_blank"
+          rel="noreferrer"
+          className="btn btn-ghost btn-sm"
+          style={{ fontSize: 11, textDecoration: 'none' }}
+        >🖼 View</a>
+      ) : <span>—</span>,
+    },
+    {
+      id: 'processed',
+      header: 'Processed',
+      accessorFn: row => row.approvedAt ? fmtDate(row.approvedAt) : (row.status === 'REJECTED' ? 'Rejected' : ''),
+      cell: info => {
+        const exp = info.row.original;
+        return (
+          <div style={{ fontSize: 12 }}>
+            {exp.approvedAt ? fmtDate(exp.approvedAt) : '—'}
+            {exp.approvedBy && (
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                by {exp.approvedBy.firstName} {exp.approvedBy.lastName}
+              </div>
+            )}
+            {exp.status === 'REJECTED' && exp.rejectionNote && (
+              <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 2 }}>{exp.rejectionNote}</div>
+            )}
+            {exp.status === 'APPROVED' && exp.payrollRecord && (
+              <div style={{ fontSize: 11, color: 'var(--color-success)', marginTop: 2 }}>Added to payroll</div>
+            )}
+          </div>
+        );
+      },
+    },
+  ], []);
+
+  // Requests tab uses the original plain table (with approve/reject actions)
   const ExpenseTable = ({ rows }: { rows: ExpenseRequest[] }) => (
     rows.length === 0 ? (
       <div className="empty-state" style={{ padding: '40px 0' }}>
@@ -128,8 +215,7 @@ export default function Expenses() {
               <th>Amount</th>
               <th>Status</th>
               <th>Receipt</th>
-              {tab === 'requests' && <th>Actions</th>}
-              {tab === 'history' && <th>Processed</th>}
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -157,47 +243,25 @@ export default function Expenses() {
                     </a>
                   ) : '—'}
                 </td>
-                {tab === 'requests' && (
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        className="btn btn-success btn-sm"
-                        style={{ fontSize: 11 }}
-                        disabled={approveMutation.isPending}
-                        onClick={() => approveMutation.mutate(exp.id)}
-                      >
-                        ✓ Approve
-                      </button>
-                      <button
-                        className="btn btn-danger-outline btn-sm"
-                        style={{ fontSize: 11 }}
-                        onClick={() => setRejectTarget(exp)}
-                      >
-                        ✕ Reject
-                      </button>
-                    </div>
-                  </td>
-                )}
-                {tab === 'history' && (
-                  <td style={{ fontSize: 12 }}>
-                    {exp.approvedAt ? fmtDate(exp.approvedAt) : '—'}
-                    {exp.approvedBy && (
-                      <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                        by {exp.approvedBy.firstName} {exp.approvedBy.lastName}
-                      </div>
-                    )}
-                    {exp.status === 'REJECTED' && exp.rejectionNote && (
-                      <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 2 }}>
-                        {exp.rejectionNote}
-                      </div>
-                    )}
-                    {exp.status === 'APPROVED' && exp.payrollRecord && (
-                      <div style={{ fontSize: 11, color: 'var(--color-success)', marginTop: 2 }}>
-                        Added to payroll
-                      </div>
-                    )}
-                  </td>
-                )}
+                <td>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className="btn btn-success btn-sm"
+                      style={{ fontSize: 11 }}
+                      disabled={approveMutation.isPending}
+                      onClick={() => approveMutation.mutate(exp.id)}
+                    >
+                      ✓ Approve
+                    </button>
+                    <button
+                      className="btn btn-danger-outline btn-sm"
+                      style={{ fontSize: 11 }}
+                      onClick={() => setRejectTarget(exp)}
+                    >
+                      ✕ Reject
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -265,7 +329,7 @@ export default function Expenses() {
             </div>
           )}
 
-          {/* History tab */}
+          {/* History tab — DataTable with search, sort, pagination, CSV/PDF */}
           {tab === 'history' && (
             <div>
               <div className="card-header" style={{ marginBottom: 16 }}>
@@ -274,7 +338,13 @@ export default function Expenses() {
               {isLoading ? (
                 <div className="loading-center" style={{ padding: 32 }}><div className="spinner" /></div>
               ) : (
-                <ExpenseTable rows={expenses} />
+                <DataTable
+                  data={expenses}
+                  columns={historyColumns}
+                  globalFilterPlaceholder="Search expenses…"
+                  exportFilename="expense-history"
+                  pageSize={20}
+                />
               )}
             </div>
           )}
