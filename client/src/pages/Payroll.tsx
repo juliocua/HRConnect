@@ -302,20 +302,20 @@ export default function Payroll() {
           </div>
 
           {/* Summary cards */}
-          <div className="grid-4" style={{ marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 20 }}>
             {[
-              { label: 'Gross Pay', value: formatPHP(totalGross), icon: '💵', color: '#F0FDF4' },
-              { label: 'Total Deductions', value: formatPHP(totalDeductions + totalOtherDeductions), icon: '📉', color: '#FEF2F2' },
-              { label: 'Net Pay', value: formatPHP(totalNet), icon: '✅', color: '#EFF6FF' },
-              { label: 'OT Pay', value: formatPHP(totalOT), icon: '⏱️', color: '#FFFBEB' },
-              ...(totalExpenses > 0 ? [{ label: 'Expense Reimbursements', value: formatPHP(totalExpenses), icon: '🧾', color: '#F0FDF4' }] : []),
+              { label: 'Gross Pay', value: formatPHP(totalGross), icon: '💵', color: '#F0FDF4', count: records.length },
+              { label: 'Total Deductions', value: formatPHP(totalDeductions + totalOtherDeductions), icon: '📉', color: '#FEF2F2', count: records.length },
+              { label: 'Net Pay', value: formatPHP(totalNet), icon: '✅', color: '#EFF6FF', count: records.length },
+              { label: 'OT Pay', value: formatPHP(totalOT), icon: '⏱️', color: '#FFFBEB', count: records.filter(r => r.overtimePay > 0).length },
+              ...(totalExpenses > 0 ? [{ label: 'Expense Reimbursements', value: formatPHP(totalExpenses), icon: '🧾', color: '#F0FDF4', count: records.filter(r => (r.expenseReimbursement ?? 0) > 0).length }] : []),
             ].map(s => (
-              <div key={s.label} className="stat-card">
-                <div className="stat-icon" style={{ background: s.color, fontSize: 20 }}>{s.icon}</div>
+              <div key={s.label} className="stat-card" style={{ padding: '12px 14px', gap: 10 }}>
+                <div className="stat-icon" style={{ background: s.color, fontSize: 17, width: 36, height: 36 }}>{s.icon}</div>
                 <div>
                   <div className="stat-label">{s.label}</div>
-                  <div className="stat-value" style={{ fontSize: 16 }}>{s.value}</div>
-                  <div className="stat-delta">{records.length} employees</div>
+                  <div className="stat-value" style={{ fontSize: 15 }}>{s.value}</div>
+                  <div className="stat-delta">{s.count} employee{s.count !== 1 ? 's' : ''}</div>
                 </div>
               </div>
             ))}

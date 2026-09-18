@@ -19,7 +19,7 @@ type ExpenseRequest = {
   category: ExpenseCategory | null;
   employee: { id: string; firstName: string; lastName: string; client: { id: string; name: string } | null };
   approvedBy: { firstName: string; lastName: string } | null;
-  payrollRecord: { id: string; payrollRun: { periodStart: string; periodEnd: string } } | null;
+  payrollRecord: { id: string; payrollRun: { period: string; periodStart: string; periodEnd: string } } | null;
 };
 
 function fmtDate(iso: string) {
@@ -187,7 +187,7 @@ export default function Expenses() {
               <div style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 2 }}>{exp.rejectionNote}</div>
             )}
             {exp.status === 'APPROVED' && exp.payrollRecord && (
-              <div style={{ fontSize: 11, color: 'var(--color-success)', marginTop: 2 }}>Added to payroll</div>
+              <div style={{ fontSize: 11, color: 'var(--color-success)', marginTop: 2 }}>{exp.payrollRecord.payrollRun.period}</div>
             )}
           </div>
         );

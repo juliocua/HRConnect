@@ -125,7 +125,7 @@ router.get('/', async (req: any, res) => {
         employee: { select: { id: true, firstName: true, lastName: true, client: { select: { id: true, name: true } } } },
         category: true,
         approvedBy: { select: { id: true, firstName: true, lastName: true } },
-        payrollRecord: { select: { id: true, payrollRun: { select: { periodStart: true, periodEnd: true } } } },
+        payrollRecord: { select: { id: true, payrollRun: { select: { period: true, periodStart: true, periodEnd: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
