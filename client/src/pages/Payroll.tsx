@@ -344,19 +344,6 @@ export default function Payroll() {
                     onChange={e => setPayrollSearch(e.target.value)}
                   />
                   <span className="text-muted text-sm">{records.length} employee{records.length !== 1 ? 's' : ''}</span>
-                  {groupedRecords.length > 1 && (
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ marginLeft: 'auto' }}
-                      onClick={() => {
-                        const allKeys = groupedRecords.map(([k]) => k);
-                        const allCollapsed = allKeys.every(k => collapsedClients.has(k));
-                        setCollapsedClients(allCollapsed ? new Set() : new Set(allKeys));
-                      }}
-                    >
-                      {groupedRecords.every(([k]) => collapsedClients.has(k)) ? '▼ Expand All' : '▶ Collapse All'}
-                    </button>
-                  )}
                 </div>
 
                 {groupedRecords.map(([clientName, clientRecords]) => {
