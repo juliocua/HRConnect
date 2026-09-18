@@ -90,21 +90,12 @@ function RejectModal({ expense, onClose, onRejected }: {
 export default function Expenses() {
   const qc = useQueryClient();
   const toast = useToast();
-  const [tab, setTab] = useState<'requests' | 'history' | 'categories'>('requests');
+  const [tab, setTab] = useState<'requests' | 'history'>('requests');
   const [rejectTarget, setRejectTarget] = useState<ExpenseRequest | null>(null);
-
-  // Category management state
-  const [newCatName, setNewCatName] = useState('');
-  const [addingCat, setAddingCat] = useState(false);
 
   const { data: expenses = [], isLoading } = useQuery<ExpenseRequest[]>({
     queryKey: ['expenses-all'],
     queryFn: () => api.get('/expenses').then(r => r.data),
-  });
-
-  const { data: categories = [], isLoading: catsLoading } = useQuery<ExpenseCategory[]>({
-    queryKey: ['expense-categories-all'],
-    queryFn: () => api.get('/expenses/categories/all').then(r => r.data),
   });
 
   const approveMutation = useMutation({
@@ -116,30 +107,7 @@ export default function Expenses() {
     onError: () => toast('error', 'Failed to approve'),
   });
 
-  const toggleCatMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      api.patch(`/expenses/categories/${id}`, { isActive }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['expense-categories-all'] });
-      qc.invalidateQueries({ queryKey: ['expense-categories'] });
-    },
-    onError: () => toast('error', 'Failed to update category'),
-  });
-
-  const addCatMutation = useMutation({
-    mutationFn: (name: string) => api.post('/expenses/categories', { name }),
-    onSuccess: () => {
-      toast('success', 'Category added');
-      setNewCatName('');
-      setAddingCat(false);
-      qc.invalidateQueries({ queryKey: ['expense-categories-all'] });
-      qc.invalidateQueries({ queryKey: ['expense-categories'] });
-    },
-    onError: () => toast('error', 'Failed to add category'),
-  });
-
   const pending = expenses.filter(e => e.status === 'PENDING');
-  const history = expenses.filter(e => e.status !== 'PENDING');
 
   const ExpenseTable = ({ rows }: { rows: ExpenseRequest[] }) => (
     rows.length === 0 ? (
@@ -250,7 +218,7 @@ export default function Expenses() {
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
         {/* Tabs */}
         <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 2 }}>
-          {(['requests', 'history', 'categories'] as const).map(t => (
+          {(['requests', 'history'] as const).map(t => (
             <button
               key={t}
               type="button"
@@ -269,7 +237,7 @@ export default function Expenses() {
                 gap: 6,
               }}
             >
-              {t === 'requests' ? 'Requests' : t === 'history' ? 'History' : 'Categories'}
+              {t === 'requests' ? 'Requests' : 'History'}
               {t === 'requests' && pending.length > 0 && (
                 <span style={{
                   background: tab === t ? 'rgba(255,255,255,0.25)' : 'var(--color-primary)',
@@ -307,78 +275,6 @@ export default function Expenses() {
                 <div className="loading-center" style={{ padding: 32 }}><div className="spinner" /></div>
               ) : (
                 <ExpenseTable rows={expenses} />
-              )}
-            </div>
-          )}
-
-          {/* Categories tab */}
-          {tab === 'categories' && (
-            <div>
-              <div className="card-header" style={{ marginBottom: 16 }}>
-                <div className="card-title">Expense Categories</div>
-                <button className="btn btn-primary btn-sm" onClick={() => setAddingCat(true)}>+ Add Category</button>
-              </div>
-
-              {addingCat && (
-                <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    className="form-control"
-                    style={{ maxWidth: 280 }}
-                    placeholder="Category name"
-                    value={newCatName}
-                    autoFocus
-                    onChange={e => setNewCatName(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') addCatMutation.mutate(newCatName); if (e.key === 'Escape') setAddingCat(false); }}
-                  />
-                  <button className="btn btn-primary btn-sm" onClick={() => addCatMutation.mutate(newCatName)} disabled={!newCatName.trim() || addCatMutation.isPending}>
-                    Save
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => { setAddingCat(false); setNewCatName(''); }}>Cancel</button>
-                </div>
-              )}
-
-              {catsLoading ? (
-                <div className="loading-center" style={{ padding: 32 }}><div className="spinner" /></div>
-              ) : categories.length === 0 ? (
-                <div className="empty-state" style={{ padding: '32px 0' }}>
-                  <div className="empty-state-icon">🏷️</div>
-                  <div>No categories yet — add one above</div>
-                </div>
-              ) : (
-                <div className="table-wrap">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Category Name</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {categories.map(cat => (
-                        <tr key={cat.id}>
-                          <td style={{ fontWeight: 600 }}>{cat.name}</td>
-                          <td>
-                            <span className={`badge ${cat.isActive ? 'badge-green' : 'badge-red'}`}>
-                              {cat.isActive ? 'Active' : 'Inactive'}
-                            </span>
-                          </td>
-                          <td>
-                            <button
-                              className={`btn btn-sm ${cat.isActive ? 'btn-danger-outline' : 'btn-success'}`}
-                              style={{ fontSize: 11 }}
-                              disabled={toggleCatMutation.isPending}
-                              onClick={() => toggleCatMutation.mutate({ id: cat.id, isActive: !cat.isActive })}
-                            >
-                              {cat.isActive ? 'Deactivate' : 'Activate'}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               )}
             </div>
           )}

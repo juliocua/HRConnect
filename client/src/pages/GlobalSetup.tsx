@@ -802,6 +802,124 @@ function ShiftSetupContent() {
   );
 }
 
+// ── Expense Categories Setup ──────────────────────────────────────────────────
+
+type ExpenseCategory = { id: string; name: string; isActive: boolean };
+
+function ExpenseCategoriesContent() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [newCatName, setNewCatName] = useState('');
+  const [addingCat, setAddingCat] = useState(false);
+
+  const { data: categories = [], isLoading: catsLoading } = useQuery<ExpenseCategory[]>({
+    queryKey: ['expense-categories-all'],
+    queryFn: () => api.get('/expenses/categories/all').then((r: any) => r.data),
+  });
+
+  const toggleCatMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api.patch(`/expenses/categories/${id}`, { isActive }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['expense-categories-all'] });
+      qc.invalidateQueries({ queryKey: ['expense-categories'] });
+    },
+    onError: () => toast('error', 'Failed to update category'),
+  });
+
+  const addCatMutation = useMutation({
+    mutationFn: (name: string) => api.post('/expenses/categories', { name }),
+    onSuccess: () => {
+      toast('success', 'Category added');
+      setNewCatName('');
+      setAddingCat(false);
+      qc.invalidateQueries({ queryKey: ['expense-categories-all'] });
+      qc.invalidateQueries({ queryKey: ['expense-categories'] });
+    },
+    onError: () => toast('error', 'Failed to add category'),
+  });
+
+  return (
+    <div>
+      <div className="card-header" style={{ marginBottom: 16 }}>
+        <div className="card-title">Expense Categories</div>
+        <button className="btn btn-primary btn-sm" onClick={() => setAddingCat(true)}>+ Add Category</button>
+      </div>
+
+      {addingCat && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+          <input
+            type="text"
+            className="form-control"
+            style={{ maxWidth: 280 }}
+            placeholder="Category name"
+            value={newCatName}
+            autoFocus
+            onChange={e => setNewCatName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') addCatMutation.mutate(newCatName);
+              if (e.key === 'Escape') setAddingCat(false);
+            }}
+          />
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => addCatMutation.mutate(newCatName)}
+            disabled={!newCatName.trim() || addCatMutation.isPending}
+          >
+            Save
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setAddingCat(false); setNewCatName(''); }}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {catsLoading ? (
+        <div className="loading-center" style={{ padding: 32 }}><div className="spinner" /></div>
+      ) : categories.length === 0 ? (
+        <div className="empty-state" style={{ padding: '32px 0' }}>
+          <div className="empty-state-icon">🏷️</div>
+          <div>No categories yet — add one above</div>
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Category Name</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map((cat: ExpenseCategory) => (
+                <tr key={cat.id}>
+                  <td style={{ fontWeight: 600 }}>{cat.name}</td>
+                  <td>
+                    <span className={`badge ${cat.isActive ? 'badge-green' : 'badge-red'}`}>
+                      {cat.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      className={`btn btn-sm ${cat.isActive ? 'btn-danger-outline' : 'btn-success'}`}
+                      style={{ fontSize: 11 }}
+                      disabled={toggleCatMutation.isPending}
+                      onClick={() => toggleCatMutation.mutate({ id: cat.id, isActive: !cat.isActive })}
+                    >
+                      {cat.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main GlobalSetup page ─────────────────────────────────────────────────────
 
 export default function GlobalSetup() {
@@ -818,13 +936,14 @@ export default function GlobalSetup() {
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
         <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-          <TabBar tabs={['Company', 'Shift', 'Leave', 'Payroll', 'OTP']} active={outerTab} onChange={setOuterTab} />
+          <TabBar tabs={['Company', 'Shift', 'Leave', 'Payroll', 'Expenses', 'OTP']} active={outerTab} onChange={setOuterTab} />
         </div>
         <div style={{ padding: 24 }}>
           {outerTab === 'Company' && <CompanySettingsContent />}
           {outerTab === 'Shift' && <ShiftSetupContent />}
           {outerTab === 'Leave' && <LeaveSetupContent />}
           {outerTab === 'Payroll' && <PayrollSetupContent />}
+          {outerTab === 'Expenses' && <ExpenseCategoriesContent />}
           {outerTab === 'OTP' && <OtpSettingsContent />}
         </div>
       </div>
