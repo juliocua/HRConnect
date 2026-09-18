@@ -1,10 +1,8 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { formatPHP } from '@/lib/payroll';
-import { DataTable } from '@/components/DataTable';
 import type { Client, Billing, BillingSummary, BillingCycle } from '@/types';
 
 const CYCLE_LABELS: Record<BillingCycle, string> = {
@@ -23,7 +21,8 @@ export default function ClientBilling() {
   const [generated, setGenerated] = useState<(Billing & { client: { id: string; name: string } })[]>([]);
   const [skipped, setSkipped] = useState<{ clientId: string; name: string; reason: string }[]>([]);
   const [showAll, setShowAll] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedBillingId, setExpandedBillingId] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [markPaidBilling, setMarkPaidBilling] = useState<(Billing & { client: { id: string; name: string } }) | null>(null);
 
   type LineItem = { description: string; amount: number };
@@ -153,133 +152,26 @@ export default function ClientBilling() {
   const lineItemTotal = lineItems.filter(li => li.description.trim()).reduce((s, li) => s + (li.amount || 0), 0);
   const totalSelected = resourceTotal + lineItemTotal;
 
-  // Billing table columns for DataTable
   type BillingRow = Billing & { client: { id: string; name: string } };
-  const billingColumns = useMemo<ColumnDef<BillingRow>[]>(() => [
-    {
-      id: 'client',
-      header: 'Client',
-      accessorFn: row => row.client.name,
-      cell: ({ row }) => <span style={{ fontWeight: 600 }}>{row.original.client.name}</span>,
-    },
-    {
-      id: 'invoiceNo',
-      header: 'Invoice #',
-      accessorFn: row => row.id.slice(-8).toUpperCase(),
-      cell: ({ getValue }) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 12 }}>#{getValue() as string}</span>
-      ),
-    },
-    {
-      id: 'date',
-      header: 'Date',
-      accessorFn: row => row.billingDate,
-      cell: ({ row }) => <span style={{ fontSize: 13 }}>{fmtDate(row.original.billingDate)}</span>,
-    },
-    {
-      id: 'amount',
-      header: 'Amount',
-      accessorFn: row => row.amount,
-      cell: ({ row }) => <span style={{ fontWeight: 700 }}>{formatPHP(row.original.amount)}</span>,
-    },
-    {
-      id: 'status',
-      header: 'Status',
-      accessorFn: row => row.status,
-      cell: ({ row }) => (
-        <span className={`badge ${row.original.status === 'PAID' ? 'badge-green' : 'badge-yellow'}`}>
-          {row.original.status}
-        </span>
-      ),
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      cell: ({ row }) => {
-        const b = row.original;
-        return (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{ fontSize: 11 }}
-              onClick={() => downloadPDF(b.id, b.client.name)}
-              title="Download PDF"
-            >
-              📄 PDF
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{ fontSize: 11 }}
-              disabled={sendingInvoice === b.id}
-              onClick={() => sendInvoice(b.id)}
-              title="Send invoice by email"
-            >
-              {sendingInvoice === b.id ? '…' : '📧 Email'}
-            </button>
-            {b.status === 'PENDING' && (
-              <>
-                {b.paymentLinkUrl && (
-                  <a
-                    href={b.paymentLinkUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-ghost btn-sm"
-                    style={{ textDecoration: 'none', fontSize: 11 }}
-                  >
-                    🔗 Link
-                  </a>
-                )}
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ fontSize: 11 }}
-                  disabled={resend.isPending}
-                  onClick={() => resend.mutate(b.id)}
-                >
-                  Resend
-                </button>
-                <button
-                  className="btn btn-success btn-sm"
-                  style={{ fontSize: 11 }}
-                  onClick={() => setMarkPaidBilling(b)}
-                >
-                  Paid
-                </button>
-                <button
-                  className="btn btn-danger-outline btn-sm"
-                  style={{ fontSize: 11 }}
-                  disabled={deleteBilling.isPending}
-                  onClick={() => {
-                    if (confirm('Delete this invoice? This cannot be undone.')) {
-                      deleteBilling.mutate(b.id);
-                    }
-                  }}
-                  title="Delete invoice"
-                >
-                  🗑
-                </button>
-              </>
-            )}
-            {b.status === 'PAID' && (b as any).paymentScreenshotUrl && (
-              <a
-                href={(b as any).paymentScreenshotUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-ghost btn-sm"
-                style={{ fontSize: 11, textDecoration: 'none' }}
-              >
-                🖼 Proof
-              </a>
-            )}
-            {sendMsg?.id === b.id && (
-              <span style={{ fontSize: 11, color: sendMsg.ok ? '#15803D' : '#DC2626' }}>
-                {sendMsg.text}
-              </span>
-            )}
-          </div>
-        );
-      },
-    },
-  ], [sendingInvoice, sendMsg, resend.isPending, deleteBilling.isPending]);
+
+  const groupedBillings = useMemo(() => {
+    const groups = new Map<string, { clientId: string; clientName: string; billings: BillingRow[] }>();
+    for (const b of allBillings) {
+      if (!groups.has(b.client.id)) {
+        groups.set(b.client.id, { clientId: b.client.id, clientName: b.client.name, billings: [] });
+      }
+      groups.get(b.client.id)!.billings.push(b);
+    }
+    return Array.from(groups.values()).sort((a, b) => a.clientName.localeCompare(b.clientName));
+  }, [allBillings]);
+
+  const toggleGroup = (clientId: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(clientId)) next.delete(clientId); else next.add(clientId);
+      return next;
+    });
+  };
 
   return (
     <div>
@@ -597,23 +489,97 @@ export default function ClientBilling() {
               <div>No billing records yet</div>
             </div>
           ) : (
-            <>
-              <DataTable
-                data={allBillings}
-                columns={billingColumns}
-                globalFilterPlaceholder="Search invoices…"
-                exportFilename="invoices"
-                onRowClick={row => setExpandedId(prev => prev === row.id ? null : row.id)}
-              />
-              {expandedId && (() => {
-                const b = allBillings.find(x => x.id === expandedId);
-                return b ? (
-                  <div style={{ marginTop: 12, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-2)' }}>
-                    <InvoiceDetail billing={b} />
-                  </div>
-                ) : null;
-              })()}
-            </>
+            <div className="table-wrap">
+              <table className="data-table" style={{ minWidth: '100%' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 28 }}></th>
+                    <th>Billing Date</th>
+                    <th>Invoice #</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Paid At</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupedBillings.map(({ clientId, clientName, billings }) => {
+                    const isCollapsed = collapsedGroups.has(clientId);
+                    const groupTotal = billings.reduce((s, b) => s + b.amount, 0);
+                    return (
+                      <React.Fragment key={clientId}>
+                        <tr
+                          onClick={() => toggleGroup(clientId)}
+                          style={{ cursor: 'pointer', background: 'var(--color-surface-2)', userSelect: 'none' }}
+                        >
+                          <td style={{ padding: '8px 4px', textAlign: 'center' }}>
+                            <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{isCollapsed ? '▶' : '▼'}</span>
+                          </td>
+                          <td colSpan={5} style={{ fontWeight: 700, fontSize: 13 }}>
+                            {clientName}
+                            <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 10 }}>
+                              {billings.length} invoice{billings.length !== 1 ? 's' : ''} · {formatPHP(groupTotal)}
+                            </span>
+                          </td>
+                          <td></td>
+                        </tr>
+                        {!isCollapsed && billings.map(b => {
+                          const isExpanded = expandedBillingId === b.id;
+                          return (
+                            <React.Fragment key={b.id}>
+                              <tr
+                                onClick={() => setExpandedBillingId(prev => prev === b.id ? null : b.id)}
+                                style={{ cursor: 'pointer', background: isExpanded ? 'var(--color-surface-2)' : undefined }}
+                              >
+                                <td style={{ width: 28, textAlign: 'center', padding: '0 4px' }}>
+                                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{isExpanded ? '▼' : '▶'}</span>
+                                </td>
+                                <td style={{ fontWeight: 600 }}>{fmtDate(b.billingDate)}</td>
+                                <td style={{ fontFamily: 'monospace', fontSize: 12 }}>#{b.id.slice(-8).toUpperCase()}</td>
+                                <td style={{ fontWeight: 700 }}>{formatPHP(b.amount)}</td>
+                                <td>
+                                  <span className={`badge ${b.status === 'PAID' ? 'badge-green' : 'badge-yellow'}`}>{b.status}</span>
+                                </td>
+                                <td style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{(b as any).paidAt ? fmtDate((b as any).paidAt) : '—'}</td>
+                                <td onClick={e => e.stopPropagation()}>
+                                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => downloadPDF(b.id, b.client.name)}>📄 PDF</button>
+                                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={sendingInvoice === b.id} onClick={() => sendInvoice(b.id)}>
+                                      {sendingInvoice === b.id ? '…' : '📧 Email'}
+                                    </button>
+                                    {b.status === 'PENDING' && (
+                                      <>
+                                        {b.paymentLinkUrl && <a href={b.paymentLinkUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none', fontSize: 11 }}>🔗 Link</a>}
+                                        <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={resend.isPending} onClick={() => resend.mutate(b.id)}>Resend</button>
+                                        <button className="btn btn-success btn-sm" style={{ fontSize: 11 }} onClick={() => setMarkPaidBilling(b)}>Paid</button>
+                                        <button className="btn btn-danger-outline btn-sm" style={{ fontSize: 11 }} disabled={deleteBilling.isPending} onClick={() => { if (confirm('Delete this invoice? This cannot be undone.')) deleteBilling.mutate(b.id); }} title="Delete invoice">🗑</button>
+                                      </>
+                                    )}
+                                    {b.status === 'PAID' && (b as any).paymentScreenshotUrl && (
+                                      <a href={(b as any).paymentScreenshotUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: 11, textDecoration: 'none' }}>🖼 Proof</a>
+                                    )}
+                                    {sendMsg?.id === b.id && <span style={{ fontSize: 11, color: sendMsg.ok ? '#15803D' : '#DC2626' }}>{sendMsg.text}</span>}
+                                  </div>
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan={7} style={{ padding: 0, background: 'var(--color-surface-2)', borderBottom: '2px solid var(--color-border)' }}>
+                                    <div style={{ padding: '0 16px' }}>
+                                      <InvoiceDetail billing={b} />
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
