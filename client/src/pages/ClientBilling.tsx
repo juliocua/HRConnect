@@ -655,14 +655,14 @@ function EmployeeAttendanceRow({ emp }: { emp: any }) {
   return (
     <div style={{ borderBottom: '1px solid var(--color-border)' }}>
       <div
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 4px', cursor: 'pointer', userSelect: 'none' }}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', cursor: 'pointer', userSelect: 'none' }}
         onClick={() => setOpen(o => !o)}
       >
+        <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flexShrink: 0 }}>{open ? '▼' : '▶'}</span>
         <div>
           <span style={{ fontWeight: 600, fontSize: 12 }}>{emp.firstName} {emp.lastName}</span>
           {emp.position && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--color-text-muted)' }}>{emp.position}</span>}
         </div>
-        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{open ? '▼' : '▶'}</span>
       </div>
       {open && (
         <div style={{ paddingLeft: 8, paddingBottom: 8 }}>
@@ -762,9 +762,10 @@ function BillingEmployeesSection({ billingId }: { billingId: string }) {
     <div style={{ marginTop: 8 }}>
       <div className="divider" style={{ margin: '8px 0' }} />
       <div
-        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', userSelect: 'none' }}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', userSelect: 'none' }}
         onClick={() => setOpen(o => !o)}
       >
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)', flexShrink: 0 }}>{open ? '▼' : '▶'}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           Employee Attendance
           {data?.periodStart && (
@@ -773,7 +774,6 @@ function BillingEmployeesSection({ billingId }: { billingId: string }) {
             </span>
           )}
         </span>
-        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{open ? '▼' : '▶'}</span>
       </div>
       {open && (
         <div style={{ paddingBottom: 8 }}>

@@ -26,6 +26,7 @@ export default function Payroll() {
   const [collapsedClients, setCollapsedClients] = useState<Set<string>>(new Set());
   const [payrollSearch, setPayrollSearch] = useState('');
   const [collapsedYears, setCollapsedYears] = useState<Set<string>>(new Set());
+  const [expandedPayrollRows, setExpandedPayrollRows] = useState<Set<string>>(new Set());
 
   const isManager = user?.role === 'HR_MANAGER' || user?.role === 'SUPER_ADMIN';
 
@@ -194,6 +195,12 @@ export default function Payroll() {
   const toggleClient = (name: string) => setCollapsedClients(prev => {
     const next = new Set(prev);
     if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
+
+  const togglePayrollRow = (id: string) => setExpandedPayrollRows(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
 
@@ -402,10 +409,18 @@ export default function Payroll() {
                               {clientRecords.map(r => {
                                 const sssRegular = Math.min(r.sssContrib, 900);
                                 const sssWisp = Math.max(0, r.sssContrib - 900);
+                                const isRowExpanded = expandedPayrollRows.has(r.id);
                                 return (
-                                  <tr key={r.id}>
+                                  <React.Fragment key={r.id}>
+                                  <tr
+                                    onClick={() => togglePayrollRow(r.id)}
+                                    style={{ cursor: 'pointer', background: isRowExpanded ? 'var(--color-surface-2)' : undefined }}
+                                  >
                                     <td style={grpTd}>
-                                      <span className="text-sm text-muted" style={{ fontFamily: 'monospace' }}>{r.employee.employeeNo}</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>{isRowExpanded ? '▼' : '▶'}</span>
+                                        <span className="text-sm text-muted" style={{ fontFamily: 'monospace' }}>{r.employee.employeeNo}</span>
+                                      </div>
                                     </td>
                                     <td style={grpTd}>
                                       <div className="emp-info">
@@ -443,7 +458,7 @@ export default function Payroll() {
                                         {(r.lateDeduction ?? 0) > 0 ? formatPHP(r.lateDeduction ?? 0) : '—'}
                                       </span>
                                     </td>
-                                    <td style={grpTd}>
+                                    <td style={grpTd} onClick={e => e.stopPropagation()}>
                                       {isDraft ? (
                                         <OtherDeductionsCell
                                           recordId={r.id}
@@ -462,10 +477,20 @@ export default function Payroll() {
                                         {formatPHP(r.netPay)}
                                       </span>
                                     </td>
-                                    <td style={grpTd}>
+                                    <td style={grpTd} onClick={e => e.stopPropagation()}>
                                       <button className="btn btn-ghost btn-sm" onClick={() => setShowSlip(r)}>Slip</button>
                                     </td>
                                   </tr>
+                                  {isRowExpanded && (
+                                    <tr>
+                                      <td colSpan={16} style={{ padding: 0, background: 'var(--color-surface-2)', borderBottom: '2px solid var(--color-border)' }}>
+                                        <div style={{ padding: '8px 16px' }}>
+                                          <PayslipAttendanceSection recordId={r.id} />
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                  </React.Fragment>
                                 );
                               })}
                             </tbody>
@@ -657,13 +682,13 @@ function PayslipAttendanceSection({ recordId }: { recordId: string }) {
     <div>
       <div className="divider" />
       <div
-        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', userSelect: 'none' }}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', userSelect: 'none' }}
         onClick={() => setOpen(o => !o)}
       >
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)', flexShrink: 0 }}>{open ? '▼' : '▶'}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           Time Entries
         </span>
-        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{open ? '▲' : '▼'}</span>
       </div>
       {open && (
         <div style={{ paddingBottom: 8 }}>

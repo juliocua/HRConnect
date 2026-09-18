@@ -45,13 +45,13 @@ function PayslipAttendanceSection({ recordId }: { recordId: string }) {
     <div>
       <div className="divider" />
       <div
-        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', userSelect: 'none' }}
+        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', userSelect: 'none' }}
         onClick={() => setOpen(o => !o)}
       >
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)', flexShrink: 0 }}>{open ? '▼' : '▶'}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           Time Entries
         </span>
-        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{open ? '▼' : '▶'}</span>
       </div>
       {open && (
         <div style={{ paddingBottom: 8 }}>
@@ -159,6 +159,13 @@ export default function HubPayslips() {
   const [yearFilter, setYearFilter]   = useState<string>('');
   const [monthFilter, setMonthFilter] = useState<string>('');
   const [typeFilter, setTypeFilter]   = useState<string>('');
+  const [expandedSlipRows, setExpandedSlipRows] = useState<Set<string>>(new Set());
+
+  const toggleSlipRow = (id: string) => setExpandedSlipRows(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const { data: records = [], isLoading } = useQuery<MyPayrollRecord[]>({
     queryKey: ['hub-payslips'],
@@ -300,29 +307,51 @@ export default function HubPayslips() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(r => (
-                  <tr key={r.id}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>
-                        {r.payrollRun.description || `${MONTHS[(r.payrollRun.month || 1) - 1]} ${r.payrollRun.year}`}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-                        {getPeriodTypeLabel(r.payrollRun.payPeriodType, cutOffPeriods)}
-                      </div>
-                    </td>
-                    <td style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                      {r.payrollRun.periodStart ? `${fmtDate(r.payrollRun.periodStart)} – ${fmtDate(r.payrollRun.periodEnd)}` : '—'}
-                    </td>
-                    <td>{r.daysWorked}</td>
-                    <td className="td-mono">{formatPHP(r.grossPay)}</td>
-                    <td className="td-mono text-muted">{formatPHP(r.totalDeductions)}</td>
-                    <td className="td-mono" style={{ fontWeight: 800, color: 'var(--color-primary)' }}>{formatPHP(r.netPay)}</td>
-                    <td><span className={`badge ${STATUS_COLORS[r.payrollRun.status]}`}>{r.payrollRun.status}</span></td>
-                    <td>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setShowSlip(r)}>View</button>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map(r => {
+                  const isRowExpanded = expandedSlipRows.has(r.id);
+                  return (
+                    <React.Fragment key={r.id}>
+                      <tr
+                        onClick={() => toggleSlipRow(r.id)}
+                        style={{ cursor: 'pointer', background: isRowExpanded ? 'var(--color-surface-2)' : undefined }}
+                      >
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>{isRowExpanded ? '▼' : '▶'}</span>
+                            <div>
+                              <div style={{ fontWeight: 600 }}>
+                                {r.payrollRun.description || `${MONTHS[(r.payrollRun.month || 1) - 1]} ${r.payrollRun.year}`}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                                {getPeriodTypeLabel(r.payrollRun.payPeriodType, cutOffPeriods)}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                          {r.payrollRun.periodStart ? `${fmtDate(r.payrollRun.periodStart)} – ${fmtDate(r.payrollRun.periodEnd)}` : '—'}
+                        </td>
+                        <td>{r.daysWorked}</td>
+                        <td className="td-mono">{formatPHP(r.grossPay)}</td>
+                        <td className="td-mono text-muted">{formatPHP(r.totalDeductions)}</td>
+                        <td className="td-mono" style={{ fontWeight: 800, color: 'var(--color-primary)' }}>{formatPHP(r.netPay)}</td>
+                        <td><span className={`badge ${STATUS_COLORS[r.payrollRun.status]}`}>{r.payrollRun.status}</span></td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setShowSlip(r)}>View</button>
+                        </td>
+                      </tr>
+                      {isRowExpanded && (
+                        <tr>
+                          <td colSpan={8} style={{ padding: 0, background: 'var(--color-surface-2)', borderBottom: '2px solid var(--color-border)' }}>
+                            <div style={{ padding: '4px 16px 12px' }}>
+                              <PayslipAttendanceSection recordId={r.id} />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
