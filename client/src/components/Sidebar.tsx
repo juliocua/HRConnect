@@ -48,7 +48,6 @@ const NAV_ITEMS: Array<{
     links: [
       { to: '/import',       label: 'Bulk Import',     icon: IconImport,     module: 'import'     },
       { to: '/global-setup', label: 'Global Setup',    icon: IconLeaveSetup, module: 'leaveSetup' },
-      { to: '/settings',     label: 'Global Settings', icon: IconSettings,   module: 'settings'   },
     ],
   },
 ];

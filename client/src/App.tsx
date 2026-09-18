@@ -21,9 +21,9 @@ import ClientBilling from '@/pages/ClientBilling';
 import Reports from '@/pages/Reports';
 import BulkImport from '@/pages/BulkImport';
 import LeaveSetup from '@/pages/LeaveSetup';
+import GlobalSetup from '@/pages/GlobalSetup';
 import Overtime from '@/pages/Overtime';
 import HubOvertime from '@/pages/hub/HubOvertime';
-import Settings from '@/pages/Settings';
 
 // Handles /auth/callback?token=xxx from OAuth redirects
 function OAuthCallback() {
@@ -153,12 +153,12 @@ function AppRoutes() {
           element={<ModuleRoute module="leaveSetup"><LeaveSetup /></ModuleRoute>}
         />
         <Route
-          path="overtime"
-          element={<ModuleRoute module="overtime"><Overtime /></ModuleRoute>}
+          path="global-setup"
+          element={<ModuleRoute module="leaveSetup"><GlobalSetup /></ModuleRoute>}
         />
         <Route
-          path="settings"
-          element={<ModuleRoute module="settings"><Settings /></ModuleRoute>}
+          path="overtime"
+          element={<ModuleRoute module="overtime"><Overtime /></ModuleRoute>}
         />
       </Route>
 

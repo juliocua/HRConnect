@@ -345,6 +345,7 @@ export default function ClientDetail() {
               <table className="data-table" style={{ minWidth: '100%' }}>
                 <thead>
                   <tr>
+                    <th style={{ width: 28 }}></th>
                     <th>Billing Date</th>
                     <th>Amount</th>
                     <th>Status</th>
@@ -360,10 +361,12 @@ export default function ClientDetail() {
                         style={{ cursor: 'pointer' }}
                         onClick={() => setExpandedBillingId(id => id === b.id ? null : b.id)}
                       >
-                        <td style={{ fontWeight: 600 }}>
-                          <span style={{ marginRight: 6, fontSize: 10, color: 'var(--color-text-muted)' }}>
-                            {expandedBillingId === b.id ? '▲' : '▼'}
+                        <td style={{ width: 28, textAlign: 'center', padding: '0 4px' }}>
+                          <span style={{ fontSize: 10, color: 'var(--color-text-muted)', display: 'inline-block', transition: 'transform 0.15s' }}>
+                            {expandedBillingId === b.id ? '▼' : '▶'}
                           </span>
+                        </td>
+                        <td style={{ fontWeight: 600 }}>
                           {fmtDate(b.billingDate)}
                         </td>
                         <td className="td-mono" style={{ fontWeight: 700 }}>{formatPHP(b.amount)}</td>
@@ -413,7 +416,7 @@ export default function ClientDetail() {
                       </tr>
                       {expandedBillingId === b.id && (
                         <tr>
-                          <td colSpan={6} style={{ padding: '0 8px 12px', background: 'var(--color-surface-2)' }}>
+                          <td colSpan={7} style={{ padding: '0 8px 12px', background: 'var(--color-surface-2)' }}>
                             <BillingEmployeesSection billingId={b.id} />
                           </td>
                         </tr>

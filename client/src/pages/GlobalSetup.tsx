@@ -7,6 +7,66 @@ import { DataTable } from '@/components/DataTable';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import type { LeaveType, Employee, LeaveBalance, CutOffPeriod, GlobalPayrollPolicy, CompanySettings } from '@/types';
 
+// ── OTP Settings sub-component ────────────────────────────────────────────────
+
+function OtpSettingsContent() {
+  const [requireOtp, setRequireOtp] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  useEffect(() => {
+    api.get<Record<string, string>>('/settings')
+      .then(res => { setRequireOtp(res.data.requireOtp !== 'false'); })
+      .catch(() => setError('Failed to load OTP settings'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true); setError(''); setSuccessMsg('');
+    try {
+      const res = await api.put<Record<string, string>>('/settings', { requireOtp });
+      setRequireOtp(res.data.requireOtp !== 'false');
+      setSuccessMsg('OTP settings saved.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch { setError('Failed to save OTP settings'); }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)' }}>Loading…</div>;
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>OTP Authentication</h3>
+      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 20, lineHeight: 1.5 }}>
+        Control whether employees are required to verify a 6-digit SMS code after entering their password.
+      </p>
+      {error && <div className="error-msg" style={{ marginBottom: 16 }}>{error}</div>}
+      {successMsg && (
+        <div style={{ background: 'var(--color-success-bg, #d1fae5)', color: 'var(--color-success, #065f46)', border: '1px solid var(--color-success-border, #6ee7b7)', borderRadius: 6, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+          {successMsg}
+        </div>
+      )}
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 14, cursor: 'pointer', marginBottom: 24 }}>
+        <div style={{ paddingTop: 2 }}>
+          <input type="checkbox" checked={requireOtp} onChange={e => setRequireOtp(e.target.checked)} style={{ width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--color-primary)' }} />
+        </div>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)', marginBottom: 3 }}>Require OTP for Employee login</div>
+          <div style={{ fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+            When checked, employees must verify a 6-digit SMS code after entering their password.
+            Uncheck to allow all users to log in with just their password — useful when SMS delivery is unavailable.
+          </div>
+        </div>
+      </label>
+      <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+        {saving ? 'Saving…' : 'Save OTP Settings'}
+      </button>
+    </div>
+  );
+}
+
 // ── Tab Bar ───────────────────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }: {
   tabs: string[];
@@ -758,13 +818,14 @@ export default function GlobalSetup() {
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
         <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-          <TabBar tabs={['Company', 'Shift', 'Leave', 'Payroll']} active={outerTab} onChange={setOuterTab} />
+          <TabBar tabs={['Company', 'Shift', 'Leave', 'Payroll', 'OTP']} active={outerTab} onChange={setOuterTab} />
         </div>
         <div style={{ padding: 24 }}>
           {outerTab === 'Company' && <CompanySettingsContent />}
           {outerTab === 'Shift' && <ShiftSetupContent />}
           {outerTab === 'Leave' && <LeaveSetupContent />}
           {outerTab === 'Payroll' && <PayrollSetupContent />}
+          {outerTab === 'OTP' && <OtpSettingsContent />}
         </div>
       </div>
     </div>

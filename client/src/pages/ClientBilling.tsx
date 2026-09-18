@@ -649,7 +649,7 @@ const BILLING_ATT_BADGE: Record<string, string> = {
 };
 
 function EmployeeAttendanceRow({ emp }: { emp: any }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const thS: React.CSSProperties = { textAlign: 'left', padding: '3px 4px', color: 'var(--color-text-muted)', fontWeight: 600, fontSize: 11, whiteSpace: 'nowrap' };
   const tdS: React.CSSProperties = { padding: '3px 4px', fontSize: 11 };
   return (
@@ -662,7 +662,7 @@ function EmployeeAttendanceRow({ emp }: { emp: any }) {
           <span style={{ fontWeight: 600, fontSize: 12 }}>{emp.firstName} {emp.lastName}</span>
           {emp.position && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--color-text-muted)' }}>{emp.position}</span>}
         </div>
-        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{open ? '▲' : '▼'}</span>
+        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{open ? '▼' : '▶'}</span>
       </div>
       {open && (
         <div style={{ paddingLeft: 8, paddingBottom: 8 }}>
@@ -753,7 +753,7 @@ function EmployeeAttendanceRow({ emp }: { emp: any }) {
 }
 
 function BillingEmployeesSection({ billingId }: { billingId: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const { data, isLoading } = useQuery({
     queryKey: ['billing-emp-att', billingId],
     queryFn: () => api.get(`/billing/${billingId}/employee-attendance`).then(r => r.data),
@@ -773,7 +773,7 @@ function BillingEmployeesSection({ billingId }: { billingId: string }) {
             </span>
           )}
         </span>
-        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{open ? '▲' : '▼'}</span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{open ? '▼' : '▶'}</span>
       </div>
       {open && (
         <div style={{ paddingBottom: 8 }}>

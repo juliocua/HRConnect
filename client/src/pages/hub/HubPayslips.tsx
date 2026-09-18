@@ -34,7 +34,7 @@ const ATT_STATUS_BADGE: Record<string, string> = {
 };
 
 function PayslipAttendanceSection({ recordId }: { recordId: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const { data, isLoading } = useQuery({
     queryKey: ['payroll-attendance', recordId],
     queryFn: () => api.get(`/payroll/record/${recordId}/attendance`).then(r => r.data),
@@ -51,7 +51,7 @@ function PayslipAttendanceSection({ recordId }: { recordId: string }) {
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           Time Entries
         </span>
-        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{open ? '▲' : '▼'}</span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{open ? '▼' : '▶'}</span>
       </div>
       {open && (
         <div style={{ paddingBottom: 8 }}>
