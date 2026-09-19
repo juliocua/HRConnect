@@ -157,7 +157,14 @@ export default function Employees() {
         </div>
       ) : null,
     },
-  ].filter(col => !(('id' in col && col.id === 'client') || ('accessorKey' in col && col.accessorKey === 'client')) || settings.useClientsModule), [deleteMutation, settings.useClientsModule]);
+  ], [deleteMutation, settings.useClientsModule]);
+
+  const visibleColumns = useMemo(
+    () => settings.useClientsModule
+      ? columns
+      : columns.filter(c => !('id' in c && c.id === 'client') && !('accessorKey' in c && (c as any).accessorKey === 'client')),
+    [columns, settings.useClientsModule]
+  );
 
   return (
     <div>
@@ -215,7 +222,7 @@ export default function Employees() {
         <div className="card">
           <DataTable
             data={employees}
-            columns={columns}
+            columns={visibleColumns}
             globalFilterPlaceholder="Search employees…"
             exportFilename="Employees"
             onRowClick={e => setViewTarget(e)}

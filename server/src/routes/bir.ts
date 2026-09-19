@@ -146,7 +146,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.get('/my', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
