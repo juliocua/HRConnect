@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ToastProvider } from '@/lib/toast';
+import { AppSettingsProvider } from '@/context/AppSettingsContext';
 import { canAccess, type Module } from '@/lib/permissions';
 import Layout from '@/components/Layout';
 import EmployeeHubLayout from '@/components/EmployeeHubLayout';
@@ -26,6 +27,8 @@ import Overtime from '@/pages/Overtime';
 import HubOvertime from '@/pages/hub/HubOvertime';
 import Expenses from '@/pages/Expenses';
 import HubExpenses from '@/pages/hub/HubExpenses';
+import BIRReports from '@/pages/BIRReports';
+import HubBIR from '@/pages/hub/HubBIR';
 
 // Handles /auth/callback?token=xxx from OAuth redirects
 function OAuthCallback() {
@@ -102,6 +105,7 @@ function AppRoutes() {
         <Route path="payslips" element={<HubPayslips />} />
         <Route path="expenses" element={<HubExpenses />} />
         <Route path="profile" element={<HubProfile />} />
+        <Route path="bir" element={<HubBIR />} />
       </Route>
 
       {/* HR Portal — for all non-EMPLOYEE roles */}
@@ -167,6 +171,10 @@ function AppRoutes() {
           path="expenses"
           element={<ModuleRoute module="expenses"><Expenses /></ModuleRoute>}
         />
+        <Route
+          path="bir"
+          element={<ModuleRoute module="bir"><BIRReports /></ModuleRoute>}
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -177,9 +185,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <ToastProvider>
-        <AppRoutes />
-      </ToastProvider>
+      <AppSettingsProvider>
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
+      </AppSettingsProvider>
     </AuthProvider>
   );
 }

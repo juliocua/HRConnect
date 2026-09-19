@@ -4,6 +4,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { formatPHP } from '@/lib/payroll';
+import { useAppSettings } from '@/context/AppSettingsContext';
 import { DataTable } from '@/components/DataTable';
 
 type ExpenseCategory = { id: string; name: string; isActive: boolean };
@@ -109,6 +110,7 @@ export default function Expenses() {
     onError: () => toast('error', 'Failed to approve'),
   });
 
+  const { settings } = useAppSettings();
   const pending = expenses.filter(e => e.status === 'PENDING');
 
   // DataTable columns for the History tab
@@ -125,12 +127,12 @@ export default function Expenses() {
       accessorFn: row => `${row.employee.firstName} ${row.employee.lastName}`,
       cell: info => <span style={{ fontWeight: 600 }}>{info.getValue()}</span>,
     },
-    {
+    ...(settings.useClientsModule ? [{
       id: 'client',
       header: 'Client',
-      accessorFn: row => row.employee.client?.name ?? '',
-      cell: info => <span style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>,
-    },
+      accessorFn: (row: ExpenseRequest) => row.employee.client?.name ?? '',
+      cell: (info: any) => <span style={{ fontSize: 13 }}>{info.getValue() || '—'}</span>,
+    }] : []),
     {
       id: 'category',
       header: 'Category',
@@ -209,7 +211,7 @@ export default function Expenses() {
             <tr>
               <th>Date</th>
               <th>Employee</th>
-              <th>Client</th>
+              {settings.useClientsModule && <th>Client</th>}
               <th>Category</th>
               <th>Description</th>
               <th>Amount</th>
@@ -223,7 +225,7 @@ export default function Expenses() {
               <tr key={exp.id}>
                 <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{fmtDate(exp.createdAt)}</td>
                 <td style={{ fontWeight: 600 }}>{exp.employee.firstName} {exp.employee.lastName}</td>
-                <td style={{ fontSize: 13 }}>{exp.employee.client?.name ?? '—'}</td>
+                {settings.useClientsModule && <td style={{ fontSize: 13 }}>{exp.employee.client?.name ?? '—'}</td>}
                 <td style={{ fontSize: 13 }}>{exp.category?.name ?? '—'}</td>
                 <td style={{ maxWidth: 180, fontSize: 13 }}>{exp.description}</td>
                 <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{formatPHP(exp.amount)}</td>

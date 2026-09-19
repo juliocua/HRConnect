@@ -30,6 +30,7 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
 // ── PUT /api/settings ─────────────────────────────────────────────────────────
 const SettingsSchema = z.object({
   requireOtp: z.boolean().optional(),
+  useClientsModule: z.boolean().optional(),
 });
 
 router.put('/', async (req: Request, res: Response, next: NextFunction) => {
@@ -43,6 +44,16 @@ router.put('/', async (req: Request, res: Response, next: NextFunction) => {
           where: { key: 'requireOtp' },
           update: { value: String(body.requireOtp) },
           create: { key: 'requireOtp', value: String(body.requireOtp) },
+        })
+      );
+    }
+
+    if (body.useClientsModule !== undefined) {
+      ops.push(
+        (prisma as any).appSetting.upsert({
+          where: { key: 'useClientsModule' },
+          update: { value: String(body.useClientsModule) },
+          create: { key: 'useClientsModule', value: String(body.useClientsModule) },
         })
       );
     }

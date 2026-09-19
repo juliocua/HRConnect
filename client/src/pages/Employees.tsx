@@ -7,6 +7,7 @@ import { DataTable } from '@/components/DataTable';
 import { ClientCombobox } from '@/components/ClientCombobox';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import type { Employee, Department, EmployeeFormData, EmployeeStatus, Client, ProfileChangeRequest, GovIdChangeRequest, UserRole, EmployeeAssignment } from '@/types';
+import { useAppSettings } from '@/context/AppSettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { canWrite, ROLE_LABELS } from '@/lib/permissions';
 
@@ -38,6 +39,7 @@ const AVATAR_COLORS = [
 export default function Employees() {
   const qc = useQueryClient();
   const toast = useToast();
+  const { settings } = useAppSettings();
   const [clientFilter, setClientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const { user } = useAuth();
@@ -155,7 +157,7 @@ export default function Employees() {
         </div>
       ) : null,
     },
-  ], [deleteMutation]);
+  ].filter(col => !(('id' in col && col.id === 'client') || ('accessorKey' in col && col.accessorKey === 'client')) || settings.useClientsModule), [deleteMutation, settings.useClientsModule]);
 
   return (
     <div>
@@ -179,12 +181,14 @@ export default function Employees() {
       {/* Filters */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="filter-bar">
+          {settings.useClientsModule && (
           <ClientCombobox
             clients={clients}
             value={clientFilter}
             onChange={setClientFilter}
             style={{ width: 220 }}
           />
+          )}
           <select className="form-control" style={{ width: 150 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="">All Statuses</option>
             {(Object.keys(STATUS_LABELS) as EmployeeStatus[]).map(s => (
@@ -488,6 +492,7 @@ function EmployeeModal({
     queryKey: ['clients'],
     queryFn: () => api.get('/clients').then(r => r.data),
   });
+  const { settings } = useAppSettings();
   const toast = useToast();
   const isEdit = !!initial;
   const [activeTab, setActiveTab] = useState('Profile');
@@ -630,8 +635,8 @@ function EmployeeModal({
     e.preventDefault();
     setSaving(true);
     setError('');
-    // Require a deployed client on new employees
-    if (!isEdit && !form.clientId) {
+    // Require a deployed client on new employees (only when clients module is enabled)
+    if (!isEdit && !form.clientId && settings.useClientsModule) {
       setError('Deployed Client is required. Please select a client in the Organization tab.');
       setActiveTab('Organization');
       setSaving(false);

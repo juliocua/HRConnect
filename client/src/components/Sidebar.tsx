@@ -1,5 +1,6 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useAppSettings } from '@/context/AppSettingsContext';
 import { canAccess, ROLE_LABELS, type Module } from '@/lib/permissions';
 
 // ── Nav structure ─────────────────────────────────────────────────────────────
@@ -7,7 +8,7 @@ import { canAccess, ROLE_LABELS, type Module } from '@/lib/permissions';
 // The Sidebar filters links using canAccess(user.role, module).
 const NAV_ITEMS: Array<{
   section: string;
-  links: Array<{ to: string; label: string; icon: () => JSX.Element; exact?: boolean; module: Module }>;
+  links: Array<{ to: string; label: string; icon: () => JSX.Element; exact?: boolean; module: Module; clientsOnly?: boolean }>;
 }> = [
   {
     section: 'Overview',
@@ -29,13 +30,14 @@ const NAV_ITEMS: Array<{
     links: [
       { to: '/payroll',  label: 'Payroll',         icon: IconPayroll,  module: 'payroll'  },
       { to: '/expenses', label: 'Expenses',         icon: IconExpenses, module: 'expenses' },
-      { to: '/billing',  label: 'Client Billing',  icon: IconBilling,  module: 'billing'  },
+      { to: '/billing',  label: 'Client Billing',  icon: IconBilling,  module: 'billing', clientsOnly: true },
+      { to: '/bir',      label: 'BIR Reports',     icon: IconBIR,      module: 'bir'      },
     ],
   },
   {
     section: 'Clients',
     links: [
-      { to: '/clients', label: 'Client Records', icon: IconClients, module: 'clients' },
+      { to: '/clients', label: 'Client Records', icon: IconClients, module: 'clients', clientsOnly: true },
     ],
   },
   {
@@ -56,12 +58,18 @@ const NAV_ITEMS: Array<{
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const { settings } = useAppSettings();
 
   // Filter sections and links to only those the user's role can access
   const visibleSections = NAV_ITEMS
     .map(section => ({
       ...section,
-      links: section.links.filter(link => canAccess(user?.role, link.module)),
+      links: section.links.filter(link => {
+        if (!canAccess(user?.role, link.module)) return false;
+        // Hide client-centric links when clients module is disabled
+        if (link.clientsOnly && !settings.useClientsModule) return false;
+        return true;
+      }),
     }))
     .filter(section => section.links.length > 0);
 
@@ -205,6 +213,18 @@ function IconClients() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
       <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  );
+}
+
+function IconBIR() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/>
+      <line x1="16" y1="17" x2="8" y2="17"/>
+      <line x1="10" y1="9" x2="8" y2="9"/>
     </svg>
   );
 }

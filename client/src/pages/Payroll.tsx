@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { formatPHP } from '@/lib/payroll';
 import type { PayrollRun, PayrollRecord, PayrollStatus } from '@/types';
+import { useAppSettings } from '@/context/AppSettingsContext';
 
 const STATUS_COLORS: Record<PayrollStatus, string> = {
   DRAFT: 'badge-yellow', POSTED: 'badge-blue', PAID: 'badge-green',
@@ -24,6 +25,7 @@ export default function Payroll() {
   const [downloadingGovReport, setDownloadingGovReport] = useState(false);
   const [downloadingDisbursement, setDownloadingDisbursement] = useState(false);
   const [collapsedClients, setCollapsedClients] = useState<Set<string>>(new Set());
+  const { settings } = useAppSettings();
   const [payrollSearch, setPayrollSearch] = useState('');
   const [collapsedYears, setCollapsedYears] = useState<Set<string>>(new Set());
   const [expandedPayrollRows, setExpandedPayrollRows] = useState<Set<string>>(new Set());
@@ -347,12 +349,13 @@ export default function Payroll() {
                 </div>
 
                 {groupedRecords.map(([clientName, clientRecords]) => {
-                  const isCollapsed = collapsedClients.has(clientName);
+                  const isCollapsed = settings.useClientsModule && collapsedClients.has(clientName);
                   const grpGross = clientRecords.reduce((s, r) => s + r.grossPay, 0);
                   const grpNet = clientRecords.reduce((s, r) => s + r.netPay, 0);
                   return (
                     <div key={clientName} className="card" style={{ marginBottom: 12, padding: '12px 16px' }}>
                       {/* Group header */}
+                      {settings.useClientsModule && (
                       <div
                         style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}
                         onClick={() => toggleClient(clientName)}
@@ -369,6 +372,7 @@ export default function Payroll() {
                           Net: <strong style={{ color: 'var(--color-primary)' }}>{formatPHP(grpNet)}</strong>
                         </span>
                       </div>
+                      )}
 
                       {/* Group rows */}
                       {!isCollapsed && (

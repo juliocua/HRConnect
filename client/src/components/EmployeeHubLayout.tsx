@@ -8,6 +8,7 @@ const NAV = [
   { to: '/hub/overtime', label: 'Overtime', icon: '⏱️', end: false },
   { to: '/hub/payslips', label: 'My Payslips', icon: '💰', end: false },
   { to: '/hub/expenses', label: 'Expense Reimbursement', icon: '🧾', end: false },
+  { to: '/hub/bir', label: 'BIR Documents', icon: '📋', end: false },
 ];
 
 export default function EmployeeHubLayout() {
