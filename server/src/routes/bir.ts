@@ -40,7 +40,6 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
             id: true,
             firstName: true,
             lastName: true,
-            middleName: true,
             tinNo: true,
             sssNo: true,
             philhealthNo: true,
@@ -62,10 +61,10 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       if (!employeeMap[emp.id]) {
         employeeMap[emp.id] = {
           employeeId: emp.id,
-          name: [emp.lastName, emp.firstName, emp.middleName].filter(Boolean).join(', '),
+          name: [emp.lastName, emp.firstName].filter(Boolean).join(', '),
           firstName: emp.firstName,
           lastName: emp.lastName,
-          middleName: emp.middleName || '',
+          middleName: '',
           position: emp.position || '',
           tinNo: emp.tinNo || '',
           sssNo: emp.sssNo || '',
@@ -157,7 +156,6 @@ router.get('/my', async (req: Request, res: Response, next: NextFunction) => {
         id: true,
         firstName: true,
         lastName: true,
-        middleName: true,
         tinNo: true,
         sssNo: true,
         philhealthNo: true,
@@ -217,7 +215,7 @@ router.get('/my', async (req: Request, res: Response, next: NextFunction) => {
       employee: {
         firstName: employee.firstName,
         lastName: employee.lastName,
-        middleName: employee.middleName || '',
+        middleName: '',
         tinNo: employee.tinNo || '',
         sssNo: employee.sssNo || '',
         philhealthNo: employee.philhealthNo || '',
