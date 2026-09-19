@@ -29,7 +29,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
   const fetchSettings = () => {
     api.get('/settings')
-      .then((data: Record<string, string>) => {
+      .then((res: any) => {
+        const data: Record<string, string> = res.data ?? res;
         setSettings({
           useClientsModule: data.useClientsModule !== 'false', // missing key → true
           requireOtp: data.requireOtp === 'true',
