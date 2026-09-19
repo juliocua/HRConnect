@@ -156,7 +156,7 @@ export default function BIRReports() {
 
   const { data, isLoading, isError } = useQuery<BIRData>({
     queryKey: ['bir', year],
-    queryFn: () => api.get(`/bir?year=${year}`),
+    queryFn: () => api.get(`/bir?year=${year}`).then(r => r.data),
   });
 
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);

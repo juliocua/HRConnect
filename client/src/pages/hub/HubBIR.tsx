@@ -162,7 +162,7 @@ export default function HubBIR() {
 
   const { data, isLoading, isError } = useQuery<BIRMyData>({
     queryKey: ['hub-bir-my', year],
-    queryFn: () => api.get(`/bir/my?year=${year}`),
+    queryFn: () => api.get(`/bir/my?year=${year}`).then(r => r.data),
     retry: false,
   });
 
