@@ -29,6 +29,7 @@ import Expenses from '@/pages/Expenses';
 import HubExpenses from '@/pages/hub/HubExpenses';
 import BIRReports from '@/pages/BIRReports';
 import HubBIR from '@/pages/hub/HubBIR';
+import Holidays from '@/pages/Holidays';
 
 // Handles /auth/callback?token=xxx from OAuth redirects
 function OAuthCallback() {
@@ -174,6 +175,10 @@ function AppRoutes() {
         <Route
           path="bir"
           element={<ModuleRoute module="bir"><BIRReports /></ModuleRoute>}
+        />
+        <Route
+          path="holidays"
+          element={<ModuleRoute module="payroll"><Holidays /></ModuleRoute>}
         />
       </Route>
 

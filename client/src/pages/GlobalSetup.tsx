@@ -612,6 +612,8 @@ function CompanySettingsContent() {
     companyName: '', address: '', taxNumber: '', contactNumber: '',
     adminFeeType: '' as string, adminFeeValue: '' as string | number,
     signatoryName: '', signatoryTitle: '',
+    overtimeRate: '' as string | number,
+    nightDifferentialRate: '' as string | number,
   });
   const [saving, setSaving] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
@@ -629,6 +631,8 @@ function CompanySettingsContent() {
         adminFeeValue:  settings.adminFeeValue ?? '',
         signatoryName:  settings.signatoryName ?? '',
         signatoryTitle: settings.signatoryTitle ?? '',
+        overtimeRate:   settings.overtimeRate ?? 1.25,
+        nightDifferentialRate: settings.nightDifferentialRate != null ? (settings.nightDifferentialRate * 100) : 10,
       });
     }
   }, [settings]);
@@ -641,6 +645,8 @@ function CompanySettingsContent() {
         adminFeeValue: data.adminFeeValue !== '' ? Number(data.adminFeeValue) : null,
         signatoryName: data.signatoryName || null,
         signatoryTitle: data.signatoryTitle || null,
+        overtimeRate: data.overtimeRate !== '' ? Number(data.overtimeRate) : null,
+        nightDifferentialRate: data.nightDifferentialRate !== '' ? Number(data.nightDifferentialRate) / 100 : null,
       };
       return api.put('/global-setup/company-settings', payload).then(r => r.data);
     },
@@ -768,6 +774,48 @@ function CompanySettingsContent() {
           <div className="form-group">
             <label className="form-label">Title / Position</label>
             <input className="form-control" value={form.signatoryTitle} onChange={e => setForm(f => ({ ...f, signatoryTitle: e.target.value }))} placeholder="e.g. Operations Manager" />
+          </div>
+        </div>
+      </div>
+
+      {/* Pay Computation Rates */}
+      <div style={{ marginTop: 24, borderTop: '1px solid var(--color-border)', paddingTop: 20 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Pay Computation Rates</h3>
+        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 16 }}>
+          Global defaults. Can be overridden per client in Client Policy settings.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-group">
+            <label className="form-label">Overtime Rate (multiplier)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="1"
+              max="3"
+              className="form-control"
+              value={form.overtimeRate}
+              onChange={e => setForm(f => ({ ...f, overtimeRate: e.target.value }))}
+              placeholder="1.25"
+            />
+            <small style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>
+              Default 1.25× (DOLE standard). Applied as: hourly rate × OT hours × rate.
+            </small>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Night Differential Rate (%)</label>
+            <input
+              type="number"
+              step="1"
+              min="0"
+              max="100"
+              className="form-control"
+              value={form.nightDifferentialRate}
+              onChange={e => setForm(f => ({ ...f, nightDifferentialRate: e.target.value }))}
+              placeholder="10"
+            />
+            <small style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>
+              Default 10% (10PM–5AM window). Applied as: hourly rate × ND hours × rate.
+            </small>
           </div>
         </div>
       </div>

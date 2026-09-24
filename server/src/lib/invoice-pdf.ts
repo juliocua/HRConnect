@@ -15,12 +15,6 @@ export interface CompanyInfo {
   address?: string | null;
   contactNumber?: string | null;
   logoUrl?: string | null;
-  // Admin fee (global)
-  adminFeeType?: string | null;
-  adminFeeValue?: number | null;
-  // SOA signatories
-  signatoryName?: string | null;
-  signatoryTitle?: string | null;
 }
 
 export async function generateInvoicePDF(billing: any, company?: CompanyInfo): Promise<Buffer> {
@@ -165,40 +159,8 @@ export async function generateInvoicePDF(billing: any, company?: CompanyInfo): P
     const empTotal = employees.reduce((s: number, e: any) => s + (e.resourceCost ?? 0), 0);
     const liTotal = lineItems.reduce((s: number, li: { label: string; amount: number }) => s + li.amount, 0);
     const grossSubtotal = empTotal + liTotal;
-
-    // Global admin fee computation (prefer global over per-client legacy rate)
-    let adminFeeAmount = 0;
-    let adminFeeLabel = 'Admin Fee';
-    const globalFeeType = company?.adminFeeType ?? null;
-    const globalFeeValue = company?.adminFeeValue ?? null;
-    if (globalFeeType && globalFeeValue != null) {
-      switch (globalFeeType) {
-        case 'PERCENT_GROSS':
-          adminFeeAmount = grossSubtotal * globalFeeValue / 100;
-          adminFeeLabel = `Admin Fee (${globalFeeValue}%)`;
-          break;
-        case 'FLAT_PER_EMPLOYEE':
-          adminFeeAmount = employees.length * globalFeeValue;
-          adminFeeLabel = `Admin Fee (₱${globalFeeValue}/head × ${employees.length})`;
-          break;
-        case 'FIXED_LUMP':
-          adminFeeAmount = globalFeeValue;
-          adminFeeLabel = 'Admin Fee (fixed)';
-          break;
-        case 'TIERED':
-          // Fallback: treat tiered value as percent
-          adminFeeAmount = grossSubtotal * globalFeeValue / 100;
-          adminFeeLabel = `Admin Fee (tiered ~${globalFeeValue}%)`;
-          break;
-      }
-    } else {
-      // Legacy per-client rate fallback
-      const clientAdminFeeRate: number | null = billing.client?.adminFeeRate ?? null;
-      if (clientAdminFeeRate) {
-        adminFeeAmount = grossSubtotal * clientAdminFeeRate / 100;
-        adminFeeLabel = `Admin Fee (${clientAdminFeeRate}%)`;
-      }
-    }
+    const clientAdminFeeRate: number | null = billing.client?.adminFeeRate ?? null;
+    const adminFeeAmount = clientAdminFeeRate ? grossSubtotal * clientAdminFeeRate / 100 : 0;
     const afterAdminFee = grossSubtotal + adminFeeAmount;
     const clientIsVatable: boolean = !!billing.client?.isVatable;
     const vatAmount = clientIsVatable ? afterAdminFee * 0.12 : 0;
@@ -217,7 +179,7 @@ export async function generateInvoicePDF(billing: any, company?: CompanyInfo): P
 
     if (adminFeeAmount > 0) {
       doc.font('Helvetica').fontSize(10).fillColor(muted)
-        .text(adminFeeLabel, subtotalLabelX - 60, rowY, { width: 120, align: 'right' })
+        .text(`Admin Fee (${clientAdminFeeRate}%)`, subtotalLabelX - 60, rowY, { width: 120, align: 'right' })
         .font('Helvetica').fillColor(dark).text(fmt(adminFeeAmount), col3, rowY, { width: subtotalAmtWidth, align: 'right' });
       rowY += 18;
     }
@@ -299,43 +261,6 @@ export async function generateInvoicePDF(billing: any, company?: CompanyInfo): P
       doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text('Notes:', 50, rowY);
       doc.font('Helvetica').fontSize(10).fillColor(muted).text(billing.notes, 50, rowY + 14);
       rowY += 40;
-    }
-
-    // ── Signatory blocks ──────────────────────────────────────────────────────────
-    const signatoryName = company?.signatoryName ?? null;
-    const signatoryTitle = company?.signatoryTitle ?? null;
-    const clientSignatoryName = billing.client?.clientSignatoryName ?? null;
-    const clientSignatoryTitle = billing.client?.clientSignatoryTitle ?? null;
-    const hasSignatories = !!(signatoryName || clientSignatoryName);
-
-    if (hasSignatories) {
-      rowY += 20;
-      const sigColWidth = (doc.page.width - 100) / 2;
-      const leftX = 50;
-      const rightX = 50 + sigColWidth + 20;
-
-      // Signature lines
-      doc.moveTo(leftX, rowY).lineTo(leftX + sigColWidth - 20, rowY).strokeColor('#374151').lineWidth(0.75).stroke();
-      doc.moveTo(rightX, rowY).lineTo(rightX + sigColWidth - 20, rowY).strokeColor('#374151').lineWidth(0.75).stroke();
-      rowY += 6;
-
-      // Names
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark);
-      if (signatoryName) doc.text(signatoryName, leftX, rowY, { width: sigColWidth - 20 });
-      if (clientSignatoryName) doc.text(clientSignatoryName, rightX, rowY, { width: sigColWidth - 20 });
-      rowY += 14;
-
-      // Titles
-      doc.font('Helvetica').fontSize(9).fillColor(muted);
-      if (signatoryTitle) doc.text(signatoryTitle, leftX, rowY, { width: sigColWidth - 20 });
-      if (clientSignatoryTitle) doc.text(clientSignatoryTitle, rightX, rowY, { width: sigColWidth - 20 });
-      rowY += 14;
-
-      // Labels
-      doc.font('Helvetica').fontSize(8).fillColor(muted);
-      doc.text('Prepared by / Service Provider', leftX, rowY, { width: sigColWidth - 20 });
-      doc.text('Received and Acknowledged by / Client', rightX, rowY, { width: sigColWidth - 20 });
-      rowY += 24;
     }
 
     // ── Footer ────────────────────────────────────────────────────────────────────

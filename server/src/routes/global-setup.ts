@@ -156,6 +156,9 @@ const CompanySettingsSchema = z.object({
   // SOA signatories (company side)
   signatoryName: z.string().nullable().optional(),
   signatoryTitle: z.string().nullable().optional(),
+  // Pay computation rates
+  overtimeRate: z.number().min(0).nullable().optional(),
+  nightDifferentialRate: z.number().min(0).max(1).nullable().optional(),
 });
 
 // GET /api/global-setup/company-settings

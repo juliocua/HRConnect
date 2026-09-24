@@ -565,6 +565,7 @@ function EmployeeModal({
         resourceCost: initial.resourceCost ?? null,
         payrollCost: initial.payrollCost ?? null,
         clientId: initial.clientId ?? null,
+        branchId: initial.branchId ?? null,
         sssNo: initial.sssNo ?? '',
         philhealthNo: initial.philhealthNo ?? '',
         pagibigNo: initial.pagibigNo ?? '',
@@ -583,7 +584,7 @@ function EmployeeModal({
         departmentId: departments[0]?.id ?? '',
         managerId: '', status: 'ACTIVE', hireDate: new Date().toISOString().slice(0, 10),
         basicSalary: 25000, dailyRate: null, useDailyRate: false,
-        resourceCost: null, payrollCost: null, clientId: null,
+        resourceCost: null, payrollCost: null, clientId: null, branchId: null,
         sssNo: '', philhealthNo: '', pagibigNo: '', tinNo: '',
         bankName: '', bankAccountNo: '', bankAccountName: '',
         avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
@@ -1029,10 +1030,29 @@ function EmployeeModal({
                   <ClientCombobox
                     clients={clients.filter(c => c.activeContract)}
                     value={form.clientId ?? ''}
-                    onChange={id => set('clientId', id || null)}
+                    onChange={id => { set('clientId', id || null); set('branchId', null); }}
                     placeholder={isEdit ? '— Not deployed / On bench —' : '— Select client (required) —'}
                   />
                 </div>
+                {form.clientId && (() => {
+                  const clientBranches = (clients.find(c => c.id === form.clientId) as any)?.branches ?? [];
+                  if (!clientBranches.length) return null;
+                  return (
+                    <div className="form-group">
+                      <label>Branch</label>
+                      <select
+                        className="form-control"
+                        value={form.branchId ?? ''}
+                        onChange={e => set('branchId', e.target.value || null)}
+                      >
+                        <option value="">— No specific branch —</option>
+                        {clientBranches.map((b: any) => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })()}
                 <div className="form-grid form-grid-2">
                   <div className="form-group">
                     <label>Resource Cost (₱ billed to client)</label>

@@ -252,6 +252,7 @@ export interface PayrollRecord {
   lateDeduction: number;
   holidayPay: number;
   nightDifferential: number;
+  nightDiffHours?: number;
   silPay?: number;
   priorPeriodDeduction?: number;
   absenceCarryForward?: number;
@@ -438,6 +439,9 @@ export interface CompanySettings {
   // SOA signatories (company side)
   signatoryName?: string | null;
   signatoryTitle?: string | null;
+  // Pay computation rates
+  overtimeRate?: number | null;
+  nightDifferentialRate?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -448,6 +452,37 @@ export interface BillingSummary {
   paidAmount: number;
   paidCount: number;
   dueSoon: (Billing & { client: { id: string; name: string } })[];
+}
+
+// ── Holidays ──────────────────────────────────────────────────────────────────
+export type HolidayType = 'REGULAR' | 'SPECIAL_NON_WORKING' | 'SPECIAL_WORKING';
+
+export interface Holiday {
+  id: string;
+  date: string;
+  name: string;
+  type: HolidayType;
+  year: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Billing Attendance Summary ────────────────────────────────────────────────
+export interface BillingAttendanceSummaryEmployee {
+  employee: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'basicSalary' | 'dailyRate' | 'useDailyRate'> & {
+    branch?: { id: string; name: string } | null;
+  };
+  daysWorked: number;
+  lateMinutes: number;
+  otHours: number;
+  ndHours: number;
+  totalHours: number;
+}
+
+export interface BillingAttendanceSummary {
+  periodStart: string;
+  periodEnd: string;
+  employees: BillingAttendanceSummaryEmployee[];
 }
 
 // ── Expenses ──────────────────────────────────────────────────────────────────

@@ -9,6 +9,33 @@ import { authenticate, requireRole } from '../middleware/authenticate';
 
 const uploadsBase = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
 
+// ── Night differential helper ─────────────────────────────────────────────────
+// Computes hours worked within the ND window (10PM–5AM) for a given shift.
+function computeNightDiffHours(clockIn: Date | null, clockOut: Date | null): number {
+  if (!clockIn || !clockOut) return 0;
+  const shiftStart = clockIn.getTime();
+  const shiftEnd = clockOut.getTime();
+  if (shiftEnd <= shiftStart) return 0;
+
+  let ndMs = 0;
+  // Check ND window relative to the clock-in day: 22:00 → next-day 05:00
+  const base = new Date(clockIn);
+  base.setHours(0, 0, 0, 0);
+
+  // Window A: [base+22h, base+24h)
+  const wA_start = base.getTime() + 22 * 3_600_000;
+  const wA_end   = base.getTime() + 24 * 3_600_000;
+  // Window B: [base+24h, base+29h) — i.e. next day 00:00–05:00
+  const wB_start = base.getTime() + 24 * 3_600_000;
+  const wB_end   = base.getTime() + 29 * 3_600_000;
+
+  const overlapA = Math.max(0, Math.min(shiftEnd, wA_end) - Math.max(shiftStart, wA_start));
+  const overlapB = Math.max(0, Math.min(shiftEnd, wB_end) - Math.max(shiftStart, wB_start));
+  ndMs = overlapA + overlapB;
+
+  return Math.round((ndMs / 3_600_000) * 100) / 100;
+}
+
 const router = Router();
 router.use(authenticate);
 
@@ -601,6 +628,11 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       return res.status(422).json({ error: 'A payroll run for this period and type is already paid' });
     }
 
+    // ── Company settings (OT rate, ND rate) ─────────────────────────────────
+    const companySettings = await (prisma as any).companySettings.findUnique({ where: { id: 'singleton' } });
+    const OT_RATE  = companySettings?.overtimeRate          ?? 1.25;
+    const ND_RATE  = companySettings?.nightDifferentialRate ?? 0.10;
+
     // ── Employee filter ───────────────────────────────────────────────────────
     const employeeWhere: any = { status: { in: ['ACTIVE', 'ON_LEAVE'] } };
     if (payPeriodType === 1 || payPeriodType === 2) {
@@ -719,25 +751,52 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         };
       });
     } else {
-      const allAttendance = await prisma.attendance.findMany({
+      // Fetch all attendance in the period (including ABSENT so holiday pay for absent-on-regular-holiday works)
+      const allAttendanceRaw = await prisma.attendance.findMany({
         where: {
           employeeId: { in: employees.map((e: any) => e.id) },
           date: { gte: periodStart, lte: periodEnd },
-          status: { in: ['PRESENT', 'LATE', 'HALF_DAY'] },
         },
-        select: { employeeId: true, status: true, overtimeHrs: true, lateMinutes: true },
+        select: { employeeId: true, status: true, overtimeHrs: true, lateMinutes: true, clockInAt: true, clockOutAt: true, date: true },
       });
 
-      interface AttTotals { daysWorked: number; minutesLate: number; otHours: number; }
+      // Separate worked records (for days/ot/nd) and all records (for holiday pay lookup)
+      const allAttendance = allAttendanceRaw.filter((a: any) => ['PRESENT', 'LATE', 'HALF_DAY'].includes(a.status));
+
+      // Build a map of employeeId+dateStr → status for holiday pay lookups
+      const attByEmpDate = new Map<string, string>();
+      for (const att of allAttendanceRaw) {
+        const d = att.date instanceof Date ? att.date : new Date(att.date);
+        const dateStr = d.toISOString().split('T')[0];
+        attByEmpDate.set(`${att.employeeId}_${dateStr}`, att.status);
+      }
+
+      interface AttTotals { daysWorked: number; minutesLate: number; otHours: number; ndHours: number; }
       const attendanceMap = new Map<string, AttTotals>();
       for (const att of allAttendance) {
-        const cur = attendanceMap.get(att.employeeId) ?? { daysWorked: 0, minutesLate: 0, otHours: 0 };
+        const cur = attendanceMap.get(att.employeeId) ?? { daysWorked: 0, minutesLate: 0, otHours: 0, ndHours: 0 };
         cur.daysWorked += att.status === 'HALF_DAY' ? 0.5 : 1;
         // lateMinutes is stored on the attendance record by attendance.ts at the time of LATE detection
         cur.minutesLate += (att as any).lateMinutes ?? 0;
         // OT hours stored on the attendance record (HR-set or auto-computed from clock-out)
         cur.otHours += (att as any).overtimeHrs ?? 0;
+        // Night differential hours computed from actual clock in/out times
+        const clockIn  = (att as any).clockInAt  ? new Date((att as any).clockInAt)  : null;
+        const clockOut = (att as any).clockOutAt ? new Date((att as any).clockOutAt) : null;
+        cur.ndHours += computeNightDiffHours(clockIn, clockOut);
         attendanceMap.set(att.employeeId, cur);
+      }
+
+      // ── Holidays in this pay period ────────────────────────────────────────
+      const holidaysInPeriod = await (prisma as any).holiday.findMany({
+        where: { date: { gte: periodStart, lte: periodEnd } },
+        select: { date: true, type: true },
+      });
+      // Map dateStr → holiday type
+      const holidayMap = new Map<string, string>();
+      for (const h of holidaysInPeriod) {
+        const d = h.date instanceof Date ? h.date : new Date(h.date);
+        holidayMap.set(d.toISOString().split('T')[0], h.type);
       }
 
       // SIL pay: approved SIL leave requests overlapping this period (separate payslip line)
@@ -772,7 +831,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       records = employees
         .filter((emp: any) => (attendanceMap.get(emp.id)?.daysWorked ?? 0) > 0 || (silDaysMap.get(emp.id) ?? 0) > 0)
         .map((emp: any) => {
-          const totals  = attendanceMap.get(emp.id) ?? { daysWorked: 0, minutesLate: 0, otHours: 0 };
+          const totals  = attendanceMap.get(emp.id) ?? { daysWorked: 0, minutesLate: 0, otHours: 0, ndHours: 0 };
           const daysWorked = totals.daysWorked;
           const silDays = silDaysMap.get(emp.id) ?? 0;
           const silPay  = silDays > 0 ? (emp.basicSalary / 22) * silDays : 0;
@@ -780,9 +839,34 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           // Daily-rate employees: gross = dailyRate × daysWorked; monthly: basicSalary/22 × daysWorked
           const useDailyRate = emp.useDailyRate && emp.dailyRate > 0;
           const dailyEquiv   = useDailyRate ? (emp.dailyRate as number) : (emp.basicSalary / 22);
+          const hourlyEquiv  = dailyEquiv / 8;
           const otHours      = totals.otHours;
-          const overtimePay  = Math.round(otHours * (dailyEquiv / 8) * 1.25 * 100) / 100;
-          const grossPay     = dailyEquiv * daysWorked + silPay + overtimePay;
+          const overtimePay  = Math.round(otHours * hourlyEquiv * OT_RATE * 100) / 100;
+
+          // ── Holiday pay (Philippine labor law) ──────────────────────────────
+          let holidayPay = 0;
+          for (const [dateStr, hType] of holidayMap) {
+            const attStatus = attByEmpDate.get(`${emp.id}_${dateStr}`) ?? 'ABSENT';
+            const worked = ['PRESENT', 'LATE', 'HALF_DAY'].includes(attStatus);
+            if (hType === 'REGULAR') {
+              // Worked: 200% (already counted 100% in daysWorked → add 100% extra)
+              // Absent: 100% (they were not counted in daysWorked → add 100%)
+              holidayPay += dailyEquiv; // always add 100% for regular holidays
+            } else if (hType === 'SPECIAL_NON_WORKING' || hType === 'SPECIAL_WORKING') {
+              // Worked: 130% (already counted 100% → add 30% extra)
+              // Absent: 0%
+              if (worked) {
+                holidayPay += dailyEquiv * 0.30;
+              }
+            }
+          }
+          holidayPay = Math.round(holidayPay * 100) / 100;
+
+          // ── Night differential ──────────────────────────────────────────────
+          const nightDiffHours = Math.round(totals.ndHours * 100) / 100;
+          const nightDifferential = Math.round(nightDiffHours * hourlyEquiv * ND_RATE * 100) / 100;
+
+          const grossPay = dailyEquiv * daysWorked + silPay + overtimePay + holidayPay + nightDifferential;
           // Late deduction: (minutes late / 480) × daily equivalent rate
           const lateDeduction = Math.round((totals.minutesLate / 480) * dailyEquiv * 100) / 100;
 
@@ -806,8 +890,9 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
             allowances: 0,
             otherDeductions: 0,
             lateDeduction,
-            holidayPay: 0,
-            nightDifferential: 0,
+            holidayPay,
+            nightDifferential,
+            nightDiffHours,
             sssContrib,
             philhealthContrib,
             pagibigContrib,

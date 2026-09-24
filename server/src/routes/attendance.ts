@@ -95,6 +95,8 @@ router.post('/clock-in', async (req: Request, res: Response, next: NextFunction)
     const { employeeId } = req.user!;
     if (!employeeId) return res.status(403).json({ error: 'No linked employee record' });
 
+    const { branchId } = req.body as { branchId?: string | null };
+
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -108,9 +110,16 @@ router.post('/clock-in', async (req: Request, res: Response, next: NextFunction)
     // Determine late status + lateMinutes from shift start policy (default 08:00 PHT)
     const { status, lateMinutes } = await computeStatusFromTimeIn(employeeId, now, 'PRESENT');
 
+    // Resolve branchId: use provided override, or fall back to employee's default branch
+    let resolvedBranchId: string | null = branchId ?? null;
+    if (!resolvedBranchId) {
+      const emp = await prisma.employee.findUnique({ where: { id: employeeId }, select: { branchId: true } });
+      resolvedBranchId = emp?.branchId ?? null;
+    }
+
     const record = await prisma.attendance.upsert({
       where: { employeeId_date: { employeeId, date: today } },
-      update: { clockInAt: now, status: status as any, lateMinutes, isManualEntry: false },
+      update: { clockInAt: now, status: status as any, lateMinutes, isManualEntry: false, branchId: resolvedBranchId },
       create: {
         employeeId,
         date: today,
@@ -118,6 +127,7 @@ router.post('/clock-in', async (req: Request, res: Response, next: NextFunction)
         status: status as any,
         lateMinutes,
         isManualEntry: false,
+        branchId: resolvedBranchId,
       },
     });
     res.json(record);

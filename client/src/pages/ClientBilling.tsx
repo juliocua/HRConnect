@@ -112,6 +112,22 @@ export default function ClientBilling() {
     }
   };
 
+  const downloadExcel = async (billingId: string, clientName: string) => {
+    try {
+      const res = await api.get(`/billing/${billingId}/export-excel`, { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `billing-${clientName.replace(/\s+/g, '-')}-${billingId.slice(-8).toUpperCase()}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast('error', 'Failed to download Excel. ExcelJS may not be installed on the server.');
+    }
+  };
+
   const sendInvoice = async (billingId: string) => {
     setSendingInvoice(billingId);
     setSendMsg(null);
@@ -544,6 +560,7 @@ export default function ClientBilling() {
                                 <td onClick={e => e.stopPropagation()}>
                                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                                     <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => downloadPDF(b.id, b.client.name)}>📄 PDF</button>
+                                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => downloadExcel(b.id, b.client.name)}>📊 Excel</button>
                                     <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} disabled={sendingInvoice === b.id} onClick={() => sendInvoice(b.id)}>
                                       {sendingInvoice === b.id ? '…' : '📧 Email'}
                                     </button>
@@ -718,12 +735,20 @@ function EmployeeAttendanceRow({ emp }: { emp: any }) {
   );
 }
 
-function BillingEmployeesSection({ billingId }: { billingId: string }) {
+function BillingAttendanceSummarySection({ billingId }: { billingId: string }) {
   const [open, setOpen] = useState(true);
   const { data, isLoading } = useQuery({
-    queryKey: ['billing-emp-att', billingId],
-    queryFn: () => api.get(`/billing/${billingId}/employee-attendance`).then(r => r.data),
+    queryKey: ['billing-att-summary', billingId],
+    queryFn: () => api.get(`/billing/${billingId}/attendance-summary`).then(r => r.data),
   });
+
+  const fmtMin = (min: number) => {
+    if (!min) return '—';
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
   return (
     <div style={{ marginTop: 8 }}>
       <div className="divider" style={{ margin: '8px 0' }} />
@@ -733,7 +758,7 @@ function BillingEmployeesSection({ billingId }: { billingId: string }) {
       >
         <span style={{ fontSize: 12, color: 'var(--color-text-muted)', flexShrink: 0 }}>{open ? '▼' : '▶'}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Employee Attendance
+          Attendance Summary
           {data?.periodStart && (
             <span style={{ fontWeight: 400, marginLeft: 6, textTransform: 'none', letterSpacing: 'normal' }}>
               ({fmtBillingDate(data.periodStart)} – {fmtBillingDate(data.periodEnd)})
@@ -750,10 +775,68 @@ function BillingEmployeesSection({ billingId }: { billingId: string }) {
           ) : !data || data.employees.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '6px 0' }}>No employees found.</div>
           ) : (
-            <div style={{ marginTop: 6 }}>
-              {data.employees.map((emp: any) => (
-                <EmployeeAttendanceRow key={emp.id} emp={emp} />
-              ))}
+            <div style={{ overflowX: 'auto', marginTop: 6 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Employee</th>
+                    <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Branch</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Days</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Late</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--color-text-muted)', fontWeight: 600 }}>OT Hrs</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--color-text-muted)', fontWeight: 600 }}>ND Hrs</th>
+                    <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--color-text-muted)', fontWeight: 600 }}>Total Hrs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.employees.map((row: any) => (
+                    <tr key={row.employee.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <td style={{ padding: '5px 8px', fontWeight: 500 }}>
+                        {row.employee.firstName} {row.employee.lastName}
+                        {row.employee.employeeNo && <span style={{ color: 'var(--color-text-muted)', marginLeft: 4 }}>#{row.employee.employeeNo}</span>}
+                      </td>
+                      <td style={{ padding: '5px 8px', color: 'var(--color-text-muted)' }}>
+                        {row.employee.branch?.name ?? '—'}
+                      </td>
+                      <td style={{ padding: '5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {row.daysWorked.toFixed(1)}
+                      </td>
+                      <td style={{ padding: '5px 8px', textAlign: 'right', color: row.lateMinutes > 0 ? '#dc2626' : 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtMin(row.lateMinutes)}
+                      </td>
+                      <td style={{ padding: '5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {row.otHours > 0 ? `${row.otHours.toFixed(1)}h` : '—'}
+                      </td>
+                      <td style={{ padding: '5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {row.ndHours > 0 ? `${row.ndHours.toFixed(1)}h` : '—'}
+                      </td>
+                      <td style={{ padding: '5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {row.totalHours.toFixed(1)}h
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid var(--color-border)', fontWeight: 700 }}>
+                    <td colSpan={2} style={{ padding: '5px 8px', color: 'var(--color-text-muted)' }}>Totals</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {data.employees.reduce((s: number, r: any) => s + r.daysWorked, 0).toFixed(1)}
+                    </td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {fmtMin(data.employees.reduce((s: number, r: any) => s + r.lateMinutes, 0))}
+                    </td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {data.employees.reduce((s: number, r: any) => s + r.otHours, 0).toFixed(1)}h
+                    </td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {data.employees.reduce((s: number, r: any) => s + r.ndHours, 0).toFixed(1)}h
+                    </td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {data.employees.reduce((s: number, r: any) => s + r.totalHours, 0).toFixed(1)}h
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           )}
         </div>
@@ -907,7 +990,7 @@ function InvoiceDetail({ billing }: { billing: any }) {
         </div>
       )}
 
-      <BillingEmployeesSection billingId={b.id} />
+      <BillingAttendanceSummarySection billingId={b.id} />
     </div>
   );
 }

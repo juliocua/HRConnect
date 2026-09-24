@@ -25,6 +25,7 @@ import globalSetupRoutes from './routes/global-setup';
 import settingsRoutes from './routes/settings';
 import expensesRouter from './routes/expenses';
 import birRoutes from './routes/bir';
+import holidayRoutes from './routes/holidays';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -93,6 +94,7 @@ app.use('/api/global-setup', authenticate, globalSetupRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/expenses', authenticate, expensesRouter);
 app.use('/api/bir', birRoutes);
+app.use('/api/holidays', authenticate, rbacGuard('payroll'), holidayRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));

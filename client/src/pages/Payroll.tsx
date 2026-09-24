@@ -386,6 +386,9 @@ export default function Payroll() {
                                 <th style={grpTh}>Basic</th>
                                 <th style={grpTh}>Daily Rate</th>
                                 <th style={grpTh}>OT Pay</th>
+                                <th style={grpTh}>ND Hrs</th>
+                                <th style={grpTh}>Night Diff</th>
+                                <th style={grpTh}>Holiday Pay</th>
                                 <th style={grpTh}>Expenses</th>
                                 <th style={grpTh}>Gross Pay</th>
                                 <th style={grpTh}>SSS</th>
@@ -436,6 +439,15 @@ export default function Payroll() {
                                     </td>
                                     <td style={grpTd}>
                                       <span className="td-mono">{r.overtimePay > 0 ? formatPHP(r.overtimePay) : '—'}</span>
+                                    </td>
+                                    <td style={grpTd}>
+                                      <span className="td-mono text-muted">{(r as any).nightDiffHours > 0 ? `${((r as any).nightDiffHours).toFixed(1)}h` : '—'}</span>
+                                    </td>
+                                    <td style={grpTd}>
+                                      <span className="td-mono">{r.nightDifferential > 0 ? formatPHP(r.nightDifferential) : '—'}</span>
+                                    </td>
+                                    <td style={grpTd}>
+                                      <span className="td-mono">{r.holidayPay > 0 ? formatPHP(r.holidayPay) : '—'}</span>
                                     </td>
                                     <td style={grpTd}>
                                       <span className="td-mono" style={{ color: 'var(--color-success)' }}>

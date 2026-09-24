@@ -75,6 +75,20 @@ export default function HubClock() {
   const [editRequestTarget, setEditRequestTarget] = useState<AttendanceRecord | null>(null);
   const [startDate, setStartDate] = useState(firstOfMonth);
   const [endDate, setEndDate] = useState(todayStr);
+  const [branchOverride, setBranchOverride] = useState<string>('');
+
+  // Employee profile (for branchId + client branches)
+  const { data: myProfile } = useQuery<any>({
+    queryKey: ['hub-profile'],
+    queryFn: () => api.get('/employees/me').then(r => r.data),
+  });
+
+  // Client branches (only when employee has a clientId)
+  const { data: clientBranches = [] } = useQuery<any[]>({
+    queryKey: ['client-branches', myProfile?.clientId],
+    queryFn: () => api.get(`/clients/${myProfile!.clientId}/branches`).then(r => r.data),
+    enabled: !!myProfile?.clientId,
+  });
 
   // Today's attendance
   const { data: todayRecord, isLoading: todayLoading } = useQuery<AttendanceRecord | null>({
@@ -91,7 +105,7 @@ export default function HubClock() {
   });
 
   const clockInMutation = useMutation({
-    mutationFn: () => api.post('/attendance/clock-in'),
+    mutationFn: () => api.post('/attendance/clock-in', { branchId: branchOverride || myProfile?.branchId || null }),
     onSuccess: () => { toast('success', 'Clocked in'); qc.invalidateQueries({ queryKey: ['hub-today'] }); qc.invalidateQueries({ queryKey: ['hub-attendance'] }); },
     onError: (err: any) => toast('error', err?.response?.data?.error ?? 'Failed to clock in'),
   });
@@ -130,6 +144,24 @@ export default function HubClock() {
       {/* Clock card */}
       <div className="card" style={{ textAlign: 'center', padding: '32px 24px', marginBottom: 24 }}>
         <LiveClock />
+
+        {/* Branch override dropdown — shown only when client has multiple branches and not yet clocked in */}
+        {clientBranches.length > 0 && !hasClockedIn && (
+          <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <label style={{ fontSize: 13, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Branch:</label>
+            <select
+              className="form-control"
+              style={{ maxWidth: 220, fontSize: 13 }}
+              value={branchOverride || myProfile?.branchId || ''}
+              onChange={e => setBranchOverride(e.target.value)}
+            >
+              <option value="">— Use my assigned branch —</option>
+              {clientBranches.map((b: any) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div style={{ marginTop: 28, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
           {!hasClockedIn && !todayLoading && (

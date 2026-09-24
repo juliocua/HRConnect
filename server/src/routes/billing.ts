@@ -608,6 +608,279 @@ router.get('/reports/attendance-summary', async (req: Request, res: Response, ne
 
 // ── Invoice PDF & Email ───────────────────────────────────────────────────────
 
+// GET /api/billing/:id/attendance-summary  — aggregated attendance totals per employee for a billing period
+router.get('/:id/attendance-summary', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const billing = await prisma.billing.findUnique({
+      where: { id: req.params.id },
+      include: {
+        client: {
+          include: {
+            employees: {
+              where: { status: { in: ['ACTIVE', 'ON_LEAVE'] as any } },
+              select: { id: true, firstName: true, lastName: true, position: true, basicSalary: true, dailyRate: true, useDailyRate: true, branch: { select: { id: true, name: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!billing) return res.status(404).json({ error: 'Not found' });
+
+    const periodEnd = new Date(billing.billingDate);
+    const periodStart = new Date(periodEnd);
+    periodStart.setDate(periodStart.getDate() - 30);
+
+    const empIds = billing.client.employees.map((e: any) => e.id);
+
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: { employeeId: { in: empIds }, date: { gte: periodStart, lte: periodEnd } },
+      select: { employeeId: true, status: true, overtimeHrs: true, lateMinutes: true, clockInAt: true, clockOutAt: true },
+    });
+
+    // Night diff helper (same 10PM–5AM window as payroll)
+    function ndHoursFromRecord(rec: any): number {
+      if (!rec.clockInAt || !rec.clockOutAt) return 0;
+      const cin  = new Date(rec.clockInAt).getTime();
+      const cout = new Date(rec.clockOutAt).getTime();
+      if (cout <= cin) return 0;
+      const base = new Date(rec.clockInAt);
+      base.setHours(0, 0, 0, 0);
+      const t = base.getTime();
+      const wA = [t + 22 * 3600000, t + 24 * 3600000];
+      const wB = [t + 24 * 3600000, t + 29 * 3600000];
+      const ovA = Math.max(0, Math.min(cout, wA[1]) - Math.max(cin, wA[0]));
+      const ovB = Math.max(0, Math.min(cout, wB[1]) - Math.max(cin, wB[0]));
+      return Math.round(((ovA + ovB) / 3600000) * 100) / 100;
+    }
+
+    const statsMap = new Map<string, { daysWorked: number; lateMinutes: number; otHours: number; ndHours: number; totalHours: number }>();
+    for (const rec of attendanceRecords) {
+      const s = statsMap.get(rec.employeeId) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0, totalHours: 0 };
+      if (rec.status === 'PRESENT' || rec.status === 'LATE') { s.daysWorked += 1; }
+      else if (rec.status === 'HALF_DAY') { s.daysWorked += 0.5; }
+      s.lateMinutes += (rec as any).lateMinutes ?? 0;
+      s.otHours += (rec as any).overtimeHrs ?? 0;
+      s.ndHours += ndHoursFromRecord(rec);
+      // Total hours: daysWorked * 8 + otHours (rough approximation)
+      statsMap.set(rec.employeeId, s);
+    }
+    // Compute totalHours after aggregating
+    for (const [empId, s] of statsMap) {
+      s.totalHours = Math.round((s.daysWorked * 8 + s.otHours) * 100) / 100;
+      s.ndHours = Math.round(s.ndHours * 100) / 100;
+      statsMap.set(empId, s);
+    }
+
+    const rows = billing.client.employees.map((emp: any) => {
+      const s = statsMap.get(emp.id) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0, totalHours: 0 };
+      return { employee: emp, ...s };
+    });
+
+    res.json({ periodStart, periodEnd, employees: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/billing/:id/export-excel  — Excel export with Billing/SOA/Manpower List tabs
+router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Lazy-load ExcelJS so the server still starts even if not installed yet
+    let ExcelJS: any;
+    try { ExcelJS = require('exceljs'); }
+    catch { return res.status(503).json({ error: 'ExcelJS not installed. Run: npm install exceljs in the server directory.' }); }
+
+    const billing = await prisma.billing.findUnique({
+      where: { id: req.params.id },
+      include: {
+        client: {
+          include: {
+            employees: {
+              where: { status: { in: ['ACTIVE', 'ON_LEAVE'] as any } },
+              select: {
+                id: true, firstName: true, lastName: true, position: true,
+                basicSalary: true, dailyRate: true, useDailyRate: true, resourceCost: true,
+                branch: { select: { id: true, name: true } },
+                employeeNo: true, hireDate: true,
+              },
+            },
+            branches: { select: { id: true, name: true }, orderBy: { name: 'asc' } },
+          },
+        },
+      },
+    });
+    if (!billing) return res.status(404).json({ error: 'Billing not found' });
+
+    const companySettings = await (prisma as any).companySettings.findUnique({ where: { id: 'singleton' } });
+    const OT_RATE = companySettings?.overtimeRate ?? 1.25;
+
+    const periodEnd = new Date(billing.billingDate);
+    const periodStart = new Date(periodEnd);
+    periodStart.setDate(periodStart.getDate() - 30);
+
+    const empIds = billing.client.employees.map((e: any) => e.id);
+    const attRecords = await prisma.attendance.findMany({
+      where: { employeeId: { in: empIds }, date: { gte: periodStart, lte: periodEnd } },
+      select: { employeeId: true, status: true, overtimeHrs: true, lateMinutes: true, clockInAt: true, clockOutAt: true },
+    });
+
+    function ndHours(rec: any): number {
+      if (!rec.clockInAt || !rec.clockOutAt) return 0;
+      const cin  = new Date(rec.clockInAt).getTime();
+      const cout = new Date(rec.clockOutAt).getTime();
+      if (cout <= cin) return 0;
+      const base = new Date(rec.clockInAt);
+      base.setHours(0, 0, 0, 0);
+      const t = base.getTime();
+      const ovA = Math.max(0, Math.min(cout, t + 24 * 3600000) - Math.max(cin, t + 22 * 3600000));
+      const ovB = Math.max(0, Math.min(cout, t + 29 * 3600000) - Math.max(cin, t + 24 * 3600000));
+      return Math.round(((ovA + ovB) / 3600000) * 100) / 100;
+    }
+
+    const statsMap = new Map<string, { daysWorked: number; lateMinutes: number; otHours: number; ndHours: number }>();
+    for (const rec of attRecords) {
+      const s = statsMap.get(rec.employeeId) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0 };
+      if (rec.status === 'PRESENT' || rec.status === 'LATE') s.daysWorked += 1;
+      else if (rec.status === 'HALF_DAY') s.daysWorked += 0.5;
+      s.lateMinutes += (rec as any).lateMinutes ?? 0;
+      s.otHours += (rec as any).overtimeHrs ?? 0;
+      s.ndHours += ndHours(rec);
+      statsMap.set(rec.employeeId, s);
+    }
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = companySettings?.companyName ?? 'HRConnect';
+    wb.created = new Date();
+
+    const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+    const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+    function styleHeader(row: any) {
+      row.eachCell((cell: any) => { cell.fill = headerFill; cell.font = headerFont; cell.alignment = { horizontal: 'center' }; });
+    }
+
+    // ── Tab 1: Billing (grouped by branch) ────────────────────────────────────
+    const billingSheet = wb.addWorksheet('Billing');
+    billingSheet.columns = [
+      { header: 'Employee No', key: 'empNo', width: 14 },
+      { header: 'Name', key: 'name', width: 24 },
+      { header: 'Position', key: 'position', width: 20 },
+      { header: 'Branch', key: 'branch', width: 18 },
+      { header: 'Daily Rate', key: 'dailyRate', width: 12 },
+      { header: 'Days Worked', key: 'daysWorked', width: 12 },
+      { header: 'Basic Pay', key: 'basicPay', width: 14 },
+      { header: 'OT Hours', key: 'otHours', width: 10 },
+      { header: 'OT Pay', key: 'otPay', width: 12 },
+      { header: 'Late (min)', key: 'lateMin', width: 10 },
+      { header: 'ND Hours', key: 'ndHours', width: 10 },
+      { header: 'Resource Cost', key: 'resourceCost', width: 14 },
+    ];
+    styleHeader(billingSheet.getRow(1));
+
+    // Group by branch
+    const branchMap = new Map<string, any[]>();
+    for (const emp of billing.client.employees) {
+      const branchName = (emp as any).branch?.name ?? 'Unassigned';
+      if (!branchMap.has(branchName)) branchMap.set(branchName, []);
+      branchMap.get(branchName)!.push(emp);
+    }
+
+    for (const [branchName, emps] of branchMap) {
+      // Branch header row
+      const branchRow = billingSheet.addRow([branchName]);
+      branchRow.font = { bold: true, size: 11 };
+      branchRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+
+      for (const emp of emps) {
+        const s = statsMap.get(emp.id) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0 };
+        const dailyRate = emp.useDailyRate && emp.dailyRate ? emp.dailyRate : emp.basicSalary / 22;
+        const hourlyRate = dailyRate / 8;
+        const basicPay = Math.round(dailyRate * s.daysWorked * 100) / 100;
+        const otPay = Math.round(s.otHours * hourlyRate * OT_RATE * 100) / 100;
+        billingSheet.addRow({
+          empNo: emp.employeeNo,
+          name: `${emp.lastName}, ${emp.firstName}`,
+          position: emp.position,
+          branch: (emp as any).branch?.name ?? '',
+          dailyRate: dailyRate.toFixed(2),
+          daysWorked: s.daysWorked,
+          basicPay: basicPay.toFixed(2),
+          otHours: s.otHours.toFixed(2),
+          otPay: otPay.toFixed(2),
+          lateMin: s.lateMinutes.toFixed(0),
+          ndHours: s.ndHours.toFixed(2),
+          resourceCost: (emp.resourceCost ?? 0).toFixed(2),
+        });
+      }
+    }
+
+    // ── Tab 2: SOA ────────────────────────────────────────────────────────────
+    const soaSheet = wb.addWorksheet('SOA');
+    soaSheet.columns = [
+      { header: 'Description', key: 'desc', width: 30 },
+      { header: 'Amount', key: 'amount', width: 16 },
+    ];
+    styleHeader(soaSheet.getRow(1));
+
+    const grossBill = billing.grossBill ?? billing.amount;
+    const vatAmount = billing.vatAmount ?? 0;
+    const ewtAmount = billing.ewtAmount ?? 0;
+    const netBill = billing.totalNetBill ?? billing.amount;
+
+    soaSheet.addRow({ desc: 'Client', amount: billing.client.name });
+    soaSheet.addRow({ desc: 'Billing Date', amount: new Date(billing.billingDate).toLocaleDateString('en-PH') });
+    soaSheet.addRow({ desc: 'SOA No.', amount: billing.soaNo ?? '' });
+    soaSheet.addRow({});
+    soaSheet.addRow({ desc: 'Gross Billing Amount', amount: grossBill.toFixed(2) });
+    if (vatAmount) soaSheet.addRow({ desc: 'VAT (12%)', amount: vatAmount.toFixed(2) });
+    if (ewtAmount) soaSheet.addRow({ desc: 'EWT', amount: (-ewtAmount).toFixed(2) });
+    soaSheet.addRow({ desc: 'Total Net Bill', amount: netBill.toFixed(2) });
+    soaSheet.addRow({ desc: 'Amount Paid', amount: (billing.amountPaid ?? 0).toFixed(2) });
+    soaSheet.addRow({ desc: 'Balance Due', amount: (netBill - (billing.amountPaid ?? 0)).toFixed(2) });
+
+    // 13th Month (per employee)
+    soaSheet.addRow({});
+    soaSheet.addRow({ desc: '--- 13th Month Reference ---', amount: '' });
+    for (const emp of billing.client.employees) {
+      const s = statsMap.get(emp.id) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0 };
+      const dailyRate = emp.useDailyRate && emp.dailyRate ? emp.dailyRate : emp.basicSalary / 22;
+      const thirteenth = Math.round(s.daysWorked * dailyRate / 12 * 100) / 100;
+      soaSheet.addRow({ desc: `${emp.lastName}, ${emp.firstName} (13th month)`, amount: thirteenth.toFixed(2) });
+    }
+
+    // ── Tab 3: Manpower List ──────────────────────────────────────────────────
+    const mpSheet = wb.addWorksheet('Manpower List');
+    mpSheet.columns = [
+      { header: 'No.', key: 'no', width: 6 },
+      { header: 'Employee No', key: 'empNo', width: 14 },
+      { header: 'Name', key: 'name', width: 26 },
+      { header: 'Position', key: 'position', width: 20 },
+      { header: 'Branch', key: 'branch', width: 18 },
+      { header: 'Hire Date', key: 'hireDate', width: 12 },
+      { header: 'Basic Salary', key: 'basicSalary', width: 14 },
+      { header: 'Resource Cost', key: 'resourceCost', width: 14 },
+    ];
+    styleHeader(mpSheet.getRow(1));
+
+    billing.client.employees.forEach((emp: any, idx: number) => {
+      mpSheet.addRow({
+        no: idx + 1,
+        empNo: emp.employeeNo,
+        name: `${emp.lastName}, ${emp.firstName}`,
+        position: emp.position,
+        branch: (emp as any).branch?.name ?? '',
+        hireDate: emp.hireDate ? new Date(emp.hireDate).toLocaleDateString('en-PH') : '',
+        basicSalary: emp.basicSalary.toFixed(2),
+        resourceCost: (emp.resourceCost ?? 0).toFixed(2),
+      });
+    });
+
+    const invoiceNo = billing.id.slice(-8).toUpperCase();
+    const filename = `billing-${billing.client.name.replace(/[^a-zA-Z0-9]/g, '-')}-${invoiceNo}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) { next(err); }
+});
+
 // GET /api/billing/:id/employee-attendance  — attendance, approved OT, approved leaves for all employees in a billing period
 router.get('/:id/employee-attendance', async (req: Request, res: Response, next: NextFunction) => {
   try {

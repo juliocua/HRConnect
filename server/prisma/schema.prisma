@@ -288,14 +288,15 @@ model ClientPolicy {
 }
 
 model ClientBranch {
-  id        String     @id @default(cuid())
-  clientId  String
-  name      String
-  address   String?
-  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  employees Employee[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id          String       @id @default(cuid())
+  clientId    String
+  name        String
+  address     String?
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  employees   Employee[]
+  attendances Attendance[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@map("client_branches")
 }
@@ -374,6 +375,8 @@ model Attendance {
   manualReason    String?
   clockInAt       DateTime?
   clockOutAt      DateTime?
+  branchId        String?
+  branch          ClientBranch?    @relation(fields: [branchId], references: [id])
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -552,11 +555,33 @@ model PayrollRecord {
   lateDeduction       Float      @default(0)
   holidayPay          Float      @default(0)
   nightDifferential   Float      @default(0)
+  nightDiffHours      Float      @default(0)
   silPay              Float      @default(0)
   expenses            ExpenseRequest[]
 
   @@unique([payrollRunId, employeeId])
   @@map("payroll_records")
+}
+
+// ── Holidays ──────────────────────────────────────────────────────────────────
+
+model Holiday {
+  id        String      @id @default(cuid())
+  date      DateTime    @db.Date
+  name      String
+  type      HolidayType
+  year      Int
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([date])
+  @@map("holidays")
+}
+
+enum HolidayType {
+  REGULAR
+  SPECIAL_NON_WORKING
+  SPECIAL_WORKING
 }
 
 // ── Global Setup ──────────────────────────────────────────────────────────────
@@ -605,6 +630,9 @@ model CompanySettings {
   // SOA signatories (company side)
   signatoryName     String?
   signatoryTitle    String?
+  // Pay computation rates
+  overtimeRate          Float?   @default(1.25)
+  nightDifferentialRate Float?   @default(0.10)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
