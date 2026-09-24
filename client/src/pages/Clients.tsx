@@ -26,6 +26,7 @@ const BLANK: Partial<Client> = {
   servicesOffered: '', specificRequest: '', billingCycle: 'MONTHLY',
   billingDate: null, activeContract: true,
   adminFeeRate: null, isVatable: false, hasEwt: false, billingTerms: '',
+  clientSignatoryName: null, clientSignatoryTitle: null,
 };
 
 export default function Clients() {
@@ -301,6 +302,19 @@ function ClientModal({ client, onClose, onSaved }: {
               </div>
             </div>
           </div>
+
+            <SectionLabel>SOA / Invoice Signatory (Client Side)</SectionLabel>
+            <div className="form-grid form-grid-2" style={{ gap: 12 }}>
+              <div className="form-group">
+                <label>Authorized Signatory Name</label>
+                <input className="form-control" placeholder="e.g. Maria Santos" value={form.clientSignatoryName ?? ''} onChange={e => set('clientSignatoryName', e.target.value || null)} />
+              </div>
+              <div className="form-group">
+                <label>Title / Position</label>
+                <input className="form-control" placeholder="e.g. Finance Manager" value={form.clientSignatoryTitle ?? ''} onChange={e => set('clientSignatoryTitle', e.target.value || null)} />
+              </div>
+            </div>
+
           <div className="modal-footer">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>

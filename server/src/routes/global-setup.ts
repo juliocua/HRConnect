@@ -140,6 +140,8 @@ router.put('/payroll-policies', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
 
 // ── Company Settings ──────────────────────────────────────────────────────────
 
+const ADMIN_FEE_TYPES = ['PERCENT_GROSS', 'FLAT_PER_EMPLOYEE', 'TIERED', 'FIXED_LUMP'] as const;
+
 const CompanySettingsSchema = z.object({
   companyName: z.string().default(''),
   address: z.string().nullable().optional(),
@@ -147,6 +149,13 @@ const CompanySettingsSchema = z.object({
   contactNumber: z.string().nullable().optional(),
   defaultShiftStart: z.string().nullable().optional(),
   defaultShiftEnd: z.string().nullable().optional(),
+  // Admin fee (global)
+  adminFeeType: z.enum(ADMIN_FEE_TYPES).nullable().optional(),
+  adminFeeValue: z.number().min(0).nullable().optional(),
+  adminFeeTiers: z.any().optional(),
+  // SOA signatories (company side)
+  signatoryName: z.string().nullable().optional(),
+  signatoryTitle: z.string().nullable().optional(),
 });
 
 // GET /api/global-setup/company-settings

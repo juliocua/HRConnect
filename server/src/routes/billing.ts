@@ -135,7 +135,11 @@ async function getCompanySettings() {
 
 const invoiceInclude = {
   client: {
-    include: {
+    select: {
+      id: true, name: true, address: true,
+      contactName: true, contactEmail: true, contactPhone: true,
+      adminFeeRate: true, isVatable: true, hasEwt: true, billingCycle: true,
+      clientSignatoryName: true, clientSignatoryTitle: true,
       employees: {
         where: { status: { in: ['ACTIVE', 'ON_LEAVE'] as any } },
         select: {

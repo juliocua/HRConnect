@@ -22,6 +22,13 @@ const ClientSchema = z.object({
   hasEwt: z.boolean().optional(),
   billingTerms: z.string().optional().nullable(),
   activeContract: z.boolean().optional(),
+  clientSignatoryName: z.string().optional().nullable(),
+  clientSignatoryTitle: z.string().optional().nullable(),
+});
+
+const BranchSchema = z.object({
+  name: z.string().min(1),
+  address: z.string().optional().nullable(),
 });
 
 const PolicySchema = z.object({
@@ -51,11 +58,14 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       where: { id: req.params.id },
       include: {
         policies: { orderBy: { createdAt: 'asc' } },
+        branches: { orderBy: { name: 'asc' } },
         employees: {
           select: {
             id: true, firstName: true, lastName: true,
             position: true, avatarColor: true, status: true,
             resourceCost: true, payrollCost: true,
+            branchId: true,
+            branch: { select: { id: true, name: true } },
           },
           where: { status: { not: 'TERMINATED' } },
         },
@@ -151,6 +161,67 @@ router.delete('/:clientId/policies/:policyId', async (req: Request, res: Respons
   try {
     await prisma.clientPolicy.delete({ where: { id: req.params.policyId } });
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── Branches ──────────────────────────────────────────────────────────────────
+
+// GET /api/clients/:id/branches
+router.get('/:id/branches', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const branches = await (prisma as any).clientBranch.findMany({
+      where: { clientId: req.params.id },
+      orderBy: { name: 'asc' },
+    });
+    res.json(branches);
+  } catch (err) { next(err); }
+});
+
+// POST /api/clients/:id/branches
+router.post('/:id/branches', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = BranchSchema.parse(req.body);
+    const branch = await (prisma as any).clientBranch.create({
+      data: { ...body, clientId: req.params.id },
+    });
+    res.status(201).json(branch);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/clients/:clientId/branches/:branchId
+router.put('/:clientId/branches/:branchId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = BranchSchema.partial().parse(req.body);
+    const branch = await (prisma as any).clientBranch.update({
+      where: { id: req.params.branchId },
+      data: body,
+    });
+    res.json(branch);
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/clients/:clientId/branches/:branchId
+router.delete('/:clientId/branches/:branchId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Unassign all employees from this branch first
+    await prisma.employee.updateMany({
+      where: { branchId: req.params.branchId },
+      data: { branchId: null },
+    });
+    await (prisma as any).clientBranch.delete({ where: { id: req.params.branchId } });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/clients/:clientId/employees/:employeeId/branch
+router.patch('/:clientId/employees/:employeeId/branch', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { branchId } = z.object({ branchId: z.string().nullable() }).parse(req.body);
+    const employee = await prisma.employee.update({
+      where: { id: req.params.employeeId },
+      data: { branchId },
+    });
+    res.json(employee);
   } catch (err) { next(err); }
 });
 

@@ -63,6 +63,8 @@ export interface Employee {
   payrollCost?: number | null;
   clientId?: string | null;
   client?: { id: string; name: string } | null;
+  branchId?: string | null;
+  branch?: { id: string; name: string } | null;
   sssNo?: string;
   philhealthNo?: string;
   pagibigNo?: string;
@@ -345,6 +347,15 @@ export interface EmployeeAssignment {
 export type BillingCycle = 'WEEKLY' | 'EVERY_15TH' | 'EVERY_30TH' | 'MONTHLY';
 export type BillingStatus = 'PENDING' | 'PAID' | 'CANCELLED';
 
+export interface ClientBranch {
+  id: string;
+  clientId: string;
+  name: string;
+  address?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ClientPolicy {
   id: string;
   clientId: string;
@@ -373,10 +384,13 @@ export interface Client {
   hasEwt?: boolean;
   billingTerms?: string | null;
   activeContract: boolean;
+  clientSignatoryName?: string | null;
+  clientSignatoryTitle?: string | null;
   createdAt: string;
   policies?: ClientPolicy[];
+  branches?: ClientBranch[];
   billings?: Billing[];
-  employees?: Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor' | 'status' | 'resourceCost' | 'payrollCost'>[];
+  employees?: (Pick<Employee, 'id' | 'firstName' | 'lastName' | 'position' | 'avatarColor' | 'status' | 'resourceCost' | 'payrollCost'> & { branchId?: string | null; branch?: { id: string; name: string } | null })[];
   _count?: { employees: number; billings: number };
 }
 
@@ -406,6 +420,8 @@ export interface Billing {
 }
 
 // ── Company Settings ──────────────────────────────────────────────────────────
+export type AdminFeeType = 'PERCENT_GROSS' | 'FLAT_PER_EMPLOYEE' | 'TIERED' | 'FIXED_LUMP';
+
 export interface CompanySettings {
   id: string;
   companyName: string;
@@ -415,6 +431,13 @@ export interface CompanySettings {
   logoUrl?: string | null;
   defaultShiftStart?: string | null;
   defaultShiftEnd?: string | null;
+  // Admin fee (global)
+  adminFeeType?: AdminFeeType | null;
+  adminFeeValue?: number | null;
+  adminFeeTiers?: unknown | null;
+  // SOA signatories (company side)
+  signatoryName?: string | null;
+  signatoryTitle?: string | null;
   createdAt: string;
   updatedAt: string;
 }

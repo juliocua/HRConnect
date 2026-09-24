@@ -608,7 +608,11 @@ function CompanySettingsContent() {
     queryFn: () => api.get('/global-setup/company-settings').then(r => r.data),
   });
 
-  const [form, setForm] = useState({ companyName: '', address: '', taxNumber: '', contactNumber: '' });
+  const [form, setForm] = useState({
+    companyName: '', address: '', taxNumber: '', contactNumber: '',
+    adminFeeType: '' as string, adminFeeValue: '' as string | number,
+    signatoryName: '', signatoryTitle: '',
+  });
   const [saving, setSaving] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoRemoving, setLogoRemoving] = useState(false);
@@ -617,16 +621,29 @@ function CompanySettingsContent() {
   useEffect(() => {
     if (settings) {
       setForm({
-        companyName:   settings.companyName ?? '',
-        address:       settings.address ?? '',
-        taxNumber:     settings.taxNumber ?? '',
-        contactNumber: settings.contactNumber ?? '',
+        companyName:    settings.companyName ?? '',
+        address:        settings.address ?? '',
+        taxNumber:      settings.taxNumber ?? '',
+        contactNumber:  settings.contactNumber ?? '',
+        adminFeeType:   settings.adminFeeType ?? '',
+        adminFeeValue:  settings.adminFeeValue ?? '',
+        signatoryName:  settings.signatoryName ?? '',
+        signatoryTitle: settings.signatoryTitle ?? '',
       });
     }
   }, [settings]);
 
   const saveMutation = useMutation({
-    mutationFn: (data: typeof form) => api.put('/global-setup/company-settings', data).then(r => r.data),
+    mutationFn: (data: typeof form) => {
+      const payload: Record<string, unknown> = {
+        ...data,
+        adminFeeType: data.adminFeeType || null,
+        adminFeeValue: data.adminFeeValue !== '' ? Number(data.adminFeeValue) : null,
+        signatoryName: data.signatoryName || null,
+        signatoryTitle: data.signatoryTitle || null,
+      };
+      return api.put('/global-setup/company-settings', payload).then(r => r.data);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['company-settings'] }); toast('success', 'Company settings saved.'); },
     onError: () => toast('error', 'Failed to save settings.'),
   });
@@ -704,7 +721,58 @@ function CompanySettingsContent() {
         <input className="form-control" value={form.contactNumber} onChange={e => setForm(f => ({ ...f, contactNumber: e.target.value }))} placeholder="e.g. +63 2 1234 5678" />
       </div>
 
-      <div style={{ marginTop: 8 }}>
+      <div style={{ marginTop: 24, borderTop: '1px solid var(--color-border)', paddingTop: 20 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Admin Fee (Global)</h3>
+        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 16 }}>
+          Applied to all invoices. Leave blank to use per-client admin fee rate, or to exclude.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-group">
+            <label className="form-label">Fee Type</label>
+            <select className="form-control" value={form.adminFeeType} onChange={e => setForm(f => ({ ...f, adminFeeType: e.target.value }))}>
+              <option value="">— None —</option>
+              <option value="PERCENT_GROSS">% of Gross Bill</option>
+              <option value="FLAT_PER_EMPLOYEE">Flat per Employee (headcount)</option>
+              <option value="FIXED_LUMP">Fixed Lump Sum</option>
+              <option value="TIERED">Tiered (% fallback)</option>
+            </select>
+          </div>
+          {form.adminFeeType && (
+            <div className="form-group">
+              <label className="form-label">
+                {form.adminFeeType === 'PERCENT_GROSS' ? 'Rate (%)' :
+                 form.adminFeeType === 'FLAT_PER_EMPLOYEE' ? 'Amount per Employee (₱)' :
+                 form.adminFeeType === 'TIERED' ? 'Effective Rate (%)' : 'Fixed Amount (₱)'}
+              </label>
+              <input
+                type="number" min={0} step="0.01" className="form-control"
+                value={form.adminFeeValue}
+                onChange={e => setForm(f => ({ ...f, adminFeeValue: e.target.value }))}
+                placeholder={form.adminFeeType === 'PERCENT_GROSS' || form.adminFeeType === 'TIERED' ? 'e.g. 15.00' : 'e.g. 500.00'}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 24, borderTop: '1px solid var(--color-border)', paddingTop: 20 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>SOA / Invoice Signatory</h3>
+        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 16 }}>
+          Company signatory for the "Prepared by" signature block on billing documents.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-group">
+            <label className="form-label">Authorized Signatory Name</label>
+            <input className="form-control" value={form.signatoryName} onChange={e => setForm(f => ({ ...f, signatoryName: e.target.value }))} placeholder="e.g. Juan Dela Cruz" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Title / Position</label>
+            <input className="form-control" value={form.signatoryTitle} onChange={e => setForm(f => ({ ...f, signatoryTitle: e.target.value }))} placeholder="e.g. Operations Manager" />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
         <button className="btn btn-primary" onClick={() => { setSaving(true); saveMutation.mutateAsync(form).finally(() => setSaving(false)); }} disabled={saving}>
           {saving ? 'Saving…' : 'Save Settings'}
         </button>
