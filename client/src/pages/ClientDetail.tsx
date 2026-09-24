@@ -56,6 +56,8 @@ export default function ClientDetail() {
   const [quickEmpId, setQuickEmpId] = useState<string | null>(null);
   const [markPaidBillingId, setMarkPaidBillingId] = useState<string | null>(null);
   const [expandedBillingId, setExpandedBillingId] = useState<string | null>(null);
+  const [showBranchModal, setShowBranchModal] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<{ id: string; name: string; address?: string | null } | null>(null);
 
   const { data: client, isLoading } = useQuery<Client>({
     queryKey: ['client', id],
@@ -74,6 +76,20 @@ export default function ClientDetail() {
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['client', id] });
+
+  const createBranch = useMutation({
+    mutationFn: (data: { name: string; address?: string }) => api.post(`/clients/${id}/branches`, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['client', id] }); setShowBranchModal(false); },
+  });
+  const updateBranch = useMutation({
+    mutationFn: ({ branchId, data }: { branchId: string; data: { name: string; address?: string } }) =>
+      api.put(`/clients/${id}/branches/${branchId}`, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['client', id] }); setShowBranchModal(false); },
+  });
+  const deleteBranch = useMutation({
+    mutationFn: (branchId: string) => api.delete(`/clients/${id}/branches/${branchId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['client', id] }),
+  });
 
   if (isLoading) return <div className="loading-center"><div className="spinner" /></div>;
   if (!client) return <div className="empty-state"><div className="empty-state-title">Client not found</div></div>;
@@ -247,6 +263,45 @@ export default function ClientDetail() {
               <span className={`badge ${client.hasEwt ? 'badge-blue' : 'badge-gray'}`}>{client.hasEwt ? '✓ Subject to EWT' : '✗ Not applicable'}</span>
             </div>
           </div>
+        </div>
+
+        {/* Branches */}
+        <div className="card" style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+              Branches ({((client as any).branches ?? []).length})
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => { setEditingBranch(null); setShowBranchModal(true); }}>
+              + Add Branch
+            </button>
+          </div>
+          {((client as any).branches ?? []).length === 0 ? (
+            <div className="empty-state" style={{ padding: '16px 0' }}>
+              <div className="empty-state-icon">🏢</div>
+              <div>No branches yet — add one to assign employees to specific locations</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {((client as any).branches as Array<{ id: string; name: string; address?: string | null }>).map(b => (
+                <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 8, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>🏢 {b.name}</div>
+                    {b.address && <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>📍 {b.address}</div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setEditingBranch(b); setShowBranchModal(true); }}>Edit</button>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      disabled={deleteBranch.isPending}
+                      onClick={() => { if (window.confirm(`Delete branch "${b.name}"? Employees assigned to this branch will be unassigned.`)) deleteBranch.mutate(b.id); }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         </>
       )}
@@ -471,6 +526,18 @@ export default function ClientDetail() {
           billingId={markPaidBillingId}
           onClose={() => setMarkPaidBillingId(null)}
           onSaved={() => { setMarkPaidBillingId(null); invalidate(); }}
+        />
+      )}
+
+      {showBranchModal && (
+        <BranchModal
+          branch={editingBranch}
+          onClose={() => setShowBranchModal(false)}
+          onSave={(data) => {
+            if (editingBranch) updateBranch.mutate({ branchId: editingBranch.id, data });
+            else createBranch.mutate(data);
+          }}
+          isPending={createBranch.isPending || updateBranch.isPending}
         />
       )}
     </div>

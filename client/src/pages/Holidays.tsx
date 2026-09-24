@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { apiClient } from '@/lib/api';
+import api from '@/lib/api';
 import type { Holiday, HolidayType } from '@/types';
-import { toast } from '@/lib/toast';
 
 const HOLIDAY_TYPE_LABELS: Record<HolidayType, string> = {
   REGULAR: 'Regular Holiday',
@@ -47,25 +46,25 @@ export default function Holidays() {
 
   const { data: holidays = [], isLoading } = useQuery<Holiday[]>({
     queryKey: ['holidays', year],
-    queryFn: () => apiClient.get(`/holidays?year=${year}`).then(r => r.data),
+    queryFn: () => api.get(`/holidays?year=${year}`).then((r: { data: Holiday[] }) => r.data),
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: HolidayForm) => apiClient.post('/holidays', data).then(r => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['holidays'] }); setShowModal(false); toast.success('Holiday added'); },
-    onError: (e: any) => toast.error(e?.response?.data?.error ?? 'Failed to add holiday'),
+    mutationFn: (data: HolidayForm) => api.post('/holidays', data).then((r: { data: Holiday }) => r.data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['holidays'] }); setShowModal(false); },
+    onError: () => {},
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: HolidayForm }) => apiClient.put(`/holidays/${id}`, data).then(r => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['holidays'] }); setShowModal(false); toast.success('Holiday updated'); },
-    onError: (e: any) => toast.error(e?.response?.data?.error ?? 'Failed to update holiday'),
+    mutationFn: ({ id, data }: { id: string; data: HolidayForm }) => api.put(`/holidays/${id}`, data).then((r: { data: Holiday }) => r.data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['holidays'] }); setShowModal(false); },
+    onError: () => {},
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/holidays/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['holidays'] }); setDeleting(null); toast.success('Holiday deleted'); },
-    onError: (e: any) => toast.error(e?.response?.data?.error ?? 'Failed to delete holiday'),
+    mutationFn: (id: string) => api.delete(`/holidays/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['holidays'] }); setDeleting(null); },
+    onError: () => {},
   });
 
   function openAdd() {
