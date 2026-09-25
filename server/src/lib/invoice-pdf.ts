@@ -10,6 +10,12 @@ function fmtDate(iso: string | Date) {
   return new Date(iso).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDateAbbrev(iso: string | Date) {
+  const d = new Date(iso);
+  return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
 /** Convert a number to Philippine peso words, e.g. 90935.41 → "Ninety Thousand Nine Hundred Thirty Five Pesos & 41/100 Only." */
 function amountInWords(amount: number): string {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
@@ -179,7 +185,7 @@ export async function generateInvoicePDF(
     const ewtAmount       = billing.ewtAmount ?? (billing.client?.hasEwt ? Math.round(netTotalBill * 0.02 * 100) / 100 : 0);
     const totalAmountDue  = Math.round((netTotalBill + vatAmount - ewtAmount) * 100) / 100;
 
-    const cutOffPeriod = `CUT OFF PERIOD:  ${fmtDate(periodStartDate).toUpperCase()}-${fmtDate(periodEndDate).toUpperCase()}`;
+    const cutOffPeriod = `CUT OFF PERIOD:  ${fmtDateAbbrev(periodStartDate).toUpperCase()}-${fmtDateAbbrev(periodEndDate).toUpperCase()}`;
 
     billingRow('SERVICE RENDERED:', cutOffPeriod, fmt(serviceRendered));
     if (adminFeeAmt > 0) {

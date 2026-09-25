@@ -12,6 +12,7 @@ const CYCLE_LABELS: Record<BillingCycle, string> = {
   EVERY_15TH: 'Every 15th',
   EVERY_30TH: 'Every 30th',
   MONTHLY: 'Monthly',
+  BI_MONTHLY: 'Bi-Monthly',
 };
 
 const PAY_PERIOD_LABELS: Record<number, string> = {
@@ -24,7 +25,10 @@ const PAY_PERIOD_LABELS: Record<number, string> = {
 const BLANK: Partial<Client> = {
   name: '', address: '', contactName: '', contactEmail: '', contactPhone: '',
   servicesOffered: '', specificRequest: '', billingCycle: 'MONTHLY',
-  billingDate: null, activeContract: true,
+  billingDate: null,
+  biMonthlyH1CutFrom: null, biMonthlyH1CutTo: null, biMonthlyH1BillDay: null,
+  biMonthlyH2CutFrom: null, biMonthlyH2CutTo: null, biMonthlyH2BillDay: null,
+  activeContract: true,
   adminFeeRate: null, isVatable: false, hasEwt: false, billingTerms: '',
   clientSignatoryName: null, clientSignatoryTitle: null,
 };
@@ -249,6 +253,7 @@ function ClientModal({ client, onClose, onSaved }: {
                   <option value="EVERY_15TH">Every 15th</option>
                   <option value="EVERY_30TH">Every 30th</option>
                   <option value="MONTHLY">Monthly (specific day)</option>
+                  <option value="BI_MONTHLY">Bi-Monthly (two billing periods/month)</option>
                 </select>
               </div>
               {form.billingCycle === 'MONTHLY' && (
@@ -261,6 +266,80 @@ function ClientModal({ client, onClose, onSaved }: {
                     placeholder="e.g. 1"
                   />
                 </div>
+              )}
+              {form.billingCycle === 'BI_MONTHLY' && (
+                <>
+                  {/* First Half */}
+                  <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+                      First Half
+                    </div>
+                    <div className="form-grid form-grid-3" style={{ gap: 10 }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>Cut-Off From (day)</label>
+                        <input
+                          type="number" min={1} max={31} className="form-control"
+                          placeholder="e.g. 26"
+                          value={form.biMonthlyH1CutFrom ?? ''}
+                          onChange={e => set('biMonthlyH1CutFrom', e.target.value ? parseInt(e.target.value) : null)}
+                        />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>Cut-Off To (day)</label>
+                        <input
+                          type="number" min={1} max={31} className="form-control"
+                          placeholder="e.g. 10"
+                          value={form.biMonthlyH1CutTo ?? ''}
+                          onChange={e => set('biMonthlyH1CutTo', e.target.value ? parseInt(e.target.value) : null)}
+                        />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>Bill Date (day)</label>
+                        <input
+                          type="number" min={1} max={31} className="form-control"
+                          placeholder="e.g. 15"
+                          value={form.biMonthlyH1BillDay ?? ''}
+                          onChange={e => set('biMonthlyH1BillDay', e.target.value ? parseInt(e.target.value) : null)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Second Half */}
+                  <div className="form-group" style={{ gridColumn: '1/-1' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+                      Second Half
+                    </div>
+                    <div className="form-grid form-grid-3" style={{ gap: 10 }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>Cut-Off From (day)</label>
+                        <input
+                          type="number" min={1} max={31} className="form-control"
+                          placeholder="e.g. 11"
+                          value={form.biMonthlyH2CutFrom ?? ''}
+                          onChange={e => set('biMonthlyH2CutFrom', e.target.value ? parseInt(e.target.value) : null)}
+                        />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>Cut-Off To (day)</label>
+                        <input
+                          type="number" min={1} max={31} className="form-control"
+                          placeholder="e.g. 25"
+                          value={form.biMonthlyH2CutTo ?? ''}
+                          onChange={e => set('biMonthlyH2CutTo', e.target.value ? parseInt(e.target.value) : null)}
+                        />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>Bill Date (day)</label>
+                        <input
+                          type="number" min={1} max={31} className="form-control"
+                          placeholder="e.g. 30"
+                          value={form.biMonthlyH2BillDay ?? ''}
+                          onChange={e => set('biMonthlyH2BillDay', e.target.value ? parseInt(e.target.value) : null)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
               <div className="form-group">
                 <label>Admin Fee Rate (%)</label>

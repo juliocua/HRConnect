@@ -348,7 +348,7 @@ export interface EmployeeAssignment {
 }
 
 // ── Clients & Billing ─────────────────────────────────────────────────────────
-export type BillingCycle = 'WEEKLY' | 'EVERY_15TH' | 'EVERY_30TH' | 'MONTHLY';
+export type BillingCycle = 'WEEKLY' | 'EVERY_15TH' | 'EVERY_30TH' | 'MONTHLY' | 'BI_MONTHLY';
 export type BillingStatus = 'PENDING' | 'PAID' | 'CANCELLED';
 
 export interface ClientBranch {
@@ -382,6 +382,12 @@ export interface Client {
   specificRequest?: string;
   billingCycle: BillingCycle;
   billingDate?: number | null;
+  biMonthlyH1CutFrom?: number | null;
+  biMonthlyH1CutTo?: number | null;
+  biMonthlyH1BillDay?: number | null;
+  biMonthlyH2CutFrom?: number | null;
+  biMonthlyH2CutTo?: number | null;
+  biMonthlyH2BillDay?: number | null;
   payPeriodType?: number | null;
   adminFeeRate?: number | null;
   isVatable?: boolean;

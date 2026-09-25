@@ -245,7 +245,13 @@ model Client {
   servicesOffered String?
   specificRequest String?      @db.Text
   billingCycle    BillingCycle @default(MONTHLY)
-  billingDate     Int?
+  billingDate         Int?
+  biMonthlyH1CutFrom  Int?   // First half: cut-off start day (1–31)
+  biMonthlyH1CutTo    Int?   // First half: cut-off end day
+  biMonthlyH1BillDay  Int?   // First half: bill date (day of month)
+  biMonthlyH2CutFrom  Int?   // Second half: cut-off start day
+  biMonthlyH2CutTo    Int?   // Second half: cut-off end day
+  biMonthlyH2BillDay  Int?   // Second half: bill date (day of month)
   payPeriodType   Int?
   adminFeeRate    Float?
   isVatable       Boolean      @default(false)
@@ -271,6 +277,7 @@ enum BillingCycle {
   EVERY_15TH
   EVERY_30TH
   MONTHLY
+  BI_MONTHLY
 }
 
 model ClientPolicy {
