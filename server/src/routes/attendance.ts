@@ -550,6 +550,7 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     const data: Record<string, unknown> = {
       ...(body.status !== undefined ? { status: body.status } : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
+      ...(body.branchId !== undefined ? { branchId: body.branchId } : {}),
       ...(timeIn ? { timeIn, clockInAt: timeIn } : {}),
       ...(timeOut ? { timeOut, clockOutAt: timeOut } : {}),
     };
