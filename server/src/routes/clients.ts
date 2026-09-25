@@ -44,6 +44,7 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
     const clients = await prisma.client.findMany({
       include: {
         _count: { select: { employees: true, billings: true } },
+        branches: { select: { id: true, name: true }, orderBy: { name: 'asc' } },
       },
       orderBy: { name: 'asc' },
     });
