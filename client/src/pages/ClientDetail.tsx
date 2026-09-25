@@ -27,6 +27,17 @@ const POLICY_TYPES = [
 ];
 
 const DEDUCTION_POLICY_TYPES = new Set(['SSS_DEDUCTION', 'PHIC_DEDUCTION', 'HDMF_DEDUCTION', 'TAX_DEDUCTION']);
+const GOVT_DEDUCTION_TYPES = new Set(['SSS_DEDUCTION', 'PHIC_DEDUCTION', 'HDMF_DEDUCTION']);
+function parseDeductionValue(type: string, value: string | undefined | null): { cutoffPeriodId: string; split5050: boolean } {
+  if (!GOVT_DEDUCTION_TYPES.has(type) || !value) return { cutoffPeriodId: value ?? '', split5050: false };
+  try {
+    const parsed = JSON.parse(value);
+    if (typeof parsed === 'object' && parsed !== null) {
+      return { cutoffPeriodId: parsed.cutoffPeriodId ?? '', split5050: parsed.split5050 === true };
+    }
+  } catch { /* backward compat: plain cut-off ID */ }
+  return { cutoffPeriodId: value, split5050: false };
+}
 
 function parseShiftValue(value?: string | null): { shiftStart: string; shiftEnd: string } {
   try {
@@ -796,12 +807,14 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const parsedDed = parseDeductionValue(policy?.type ?? 'EMPLOYEE_PAY_PERIOD', policy?.value);
   const [form, setForm] = useState({
     type: policy?.type ?? 'EMPLOYEE_PAY_PERIOD',
     title: policy?.title ?? '',
     description: policy?.description ?? '',
-    value: policy?.value ?? '',
+    value: parsedDed.cutoffPeriodId,
   });
+  const [split5050, setSplit5050] = useState(parsedDed.split5050);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -818,6 +831,9 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
       const payload: any = { ...form };
       const keepValue = form.type === 'EMPLOYEE_PAY_PERIOD' || DEDUCTION_POLICY_TYPES.has(form.type);
       if (!keepValue) delete payload.value;
+      if (GOVT_DEDUCTION_TYPES.has(form.type)) {
+        payload.value = JSON.stringify({ cutoffPeriodId: form.value, split5050 });
+      }
       if (policy) {
         await api.put(`/clients/${clientId}/policies/${policy.id}`, payload);
       } else {
@@ -843,7 +859,7 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
             {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
             <div className="form-group" style={{ marginBottom: 12 }}>
               <label>Policy Type</label>
-              <select className="form-control" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value, value: '' }))}>
+              <select className="form-control" value={form.type} onChange={e => { setForm(f => ({ ...f, type: e.target.value, value: '' })); setSplit5050(false); }}>
                 {POLICY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
@@ -879,6 +895,22 @@ function PolicyModal({ clientId, policy, onClose, onSaved }: {
                 </select>
                 <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
                   Which cut-off period governs when this deduction is remitted
+                </div>
+              </div>
+            )}
+            {GOVT_DEDUCTION_TYPES.has(form.type) && (
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'normal' }}>
+                  <input
+                    type="checkbox"
+                    checked={split5050}
+                    onChange={e => setSplit5050(e.target.checked)}
+                    style={{ width: 16, height: 16, cursor: 'pointer' }}
+                  />
+                  <span style={{ fontWeight: 600 }}>50/50 Split</span>
+                </label>
+                <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  Deduct 50% in the 1st cutoff and the remaining 50% in the 2nd cutoff each month
                 </div>
               </div>
             )}

@@ -827,6 +827,26 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
 
       // OT hours are taken directly from attendance.overtimeHrs (HR-set or auto-computed from clock-out)
 
+      // ── 50/50 govt deduction split — fetch per-client settings ────────────
+      const uniqueClientIds = [...new Set(employees.map((e: any) => e.clientId).filter(Boolean))];
+      const deductionPols = uniqueClientIds.length > 0
+        ? await prisma.clientPolicy.findMany({
+            where: { clientId: { in: uniqueClientIds as string[] }, type: { in: ['SSS_DEDUCTION', 'PHIC_DEDUCTION', 'HDMF_DEDUCTION'] } },
+            select: { clientId: true, type: true, value: true },
+          })
+        : [];
+      const clientSplitMap = new Map<string, { sss: boolean; phic: boolean; hdmf: boolean }>();
+      for (const pol of deductionPols) {
+        const cur = clientSplitMap.get(pol.clientId) ?? { sss: false, phic: false, hdmf: false };
+        let isSplit = false;
+        try { isSplit = JSON.parse(pol.value ?? '{}')?.split5050 === true; } catch { /* not JSON */ }
+        if (pol.type === 'SSS_DEDUCTION') cur.sss = isSplit;
+        if (pol.type === 'PHIC_DEDUCTION') cur.phic = isSplit;
+        if (pol.type === 'HDMF_DEDUCTION') cur.hdmf = isSplit;
+        clientSplitMap.set(pol.clientId, cur);
+      }
+      const isSemiMonthly = payPeriodType === 1 || payPeriodType === 2;
+
       // Include employees with attendance OR SIL leave in this period
       records = employees
         .filter((emp: any) => (attendanceMap.get(emp.id)?.daysWorked ?? 0) > 0 || (silDaysMap.get(emp.id) ?? 0) > 0)
@@ -870,10 +890,11 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           // Late deduction: (minutes late / 480) × daily equivalent rate
           const lateDeduction = Math.round((totals.minutesLate / 480) * dailyEquiv * 100) / 100;
 
-          // Statutory contributions are based on full monthly salary bracket
-          const sssContrib = computeSSS(emp.basicSalary);
-          const philhealthContrib = computePhilHealth(emp.basicSalary);
-          const pagibigContrib = computePagIBIG(emp.basicSalary);
+          // Statutory contributions — optionally split 50/50 across semi-monthly cutoffs
+          const clientSplit = clientSplitMap.get(emp.clientId) ?? { sss: false, phic: false, hdmf: false };
+          const sssContrib = Math.round(computeSSS(emp.basicSalary) * (clientSplit.sss && isSemiMonthly ? 0.5 : 1));
+          const philhealthContrib = Math.round(computePhilHealth(emp.basicSalary) * (clientSplit.phic && isSemiMonthly ? 0.5 : 1));
+          const pagibigContrib = Math.round(computePagIBIG(emp.basicSalary) * (clientSplit.hdmf && isSemiMonthly ? 0.5 : 1));
           const taxableIncome = Math.max(0, grossPay - sssContrib - philhealthContrib - pagibigContrib);
           const withholdingTax = computeWithholdingTax(taxableIncome);
           const totalDeductions = sssContrib + philhealthContrib + pagibigContrib + withholdingTax;
