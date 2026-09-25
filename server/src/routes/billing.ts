@@ -635,47 +635,59 @@ router.get('/:id/attendance-summary', async (req: Request, res: Response, next: 
 
     const attendanceRecords = await prisma.attendance.findMany({
       where: { employeeId: { in: empIds }, date: { gte: periodStart, lte: periodEnd } },
-      select: { employeeId: true, status: true, overtimeHrs: true, lateMinutes: true, clockInAt: true, clockOutAt: true },
+      select: { employeeId: true, status: true, overtimeHrs: true, lateMinutes: true, clockInAt: true, clockOutAt: true, timeIn: true, timeOut: true, branchId: true, branch: { select: { id: true, name: true } } },
     });
 
-    // Night diff helper (same 10PM–5AM window as payroll)
+    // Night diff helper — anchors to Philippines midnight (UTC+8); falls back to timeIn/timeOut if clockInAt/Out is null
     function ndHoursFromRecord(rec: any): number {
-      if (!rec.clockInAt || !rec.clockOutAt) return 0;
-      const cin  = new Date(rec.clockInAt).getTime();
-      const cout = new Date(rec.clockOutAt).getTime();
+      const rawIn  = rec.clockInAt ?? rec.timeIn;
+      const rawOut = rec.clockOutAt ?? rec.timeOut;
+      if (!rawIn || !rawOut) return 0;
+      const cin  = new Date(rawIn).getTime();
+      const cout = new Date(rawOut).getTime();
       if (cout <= cin) return 0;
-      const base = new Date(rec.clockInAt);
-      base.setHours(0, 0, 0, 0);
-      const t = base.getTime();
-      const wA = [t + 22 * 3600000, t + 24 * 3600000];
-      const wB = [t + 24 * 3600000, t + 29 * 3600000];
+      // Compute midnight in Philippines local time (UTC+8) expressed as a UTC timestamp
+      const PH_OFFSET_MS = 8 * 3600000;
+      const t = Math.floor((cin + PH_OFFSET_MS) / 86400000) * 86400000 - PH_OFFSET_MS;
+      const wA = [t + 22 * 3600000, t + 24 * 3600000]; // 10 PM – midnight PH
+      const wB = [t + 24 * 3600000, t + 29 * 3600000]; // midnight – 5 AM PH (next day)
       const ovA = Math.max(0, Math.min(cout, wA[1]) - Math.max(cin, wA[0]));
       const ovB = Math.max(0, Math.min(cout, wB[1]) - Math.max(cin, wB[0]));
       return Math.round(((ovA + ovB) / 3600000) * 100) / 100;
     }
 
-    const statsMap = new Map<string, { daysWorked: number; lateMinutes: number; otHours: number; ndHours: number; totalHours: number }>();
+    // Key by "employeeId::branchId" so an employee with attendance on multiple branches
+    // appears as separate entries (one per branch) with independent stats
+    const statsMap = new Map<string, { daysWorked: number; lateMinutes: number; otHours: number; ndHours: number; totalHours: number; branchId: string; branchName: string }>();
     for (const rec of attendanceRecords) {
-      const s = statsMap.get(rec.employeeId) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0, totalHours: 0 };
+      const bId   = (rec as any).branchId ?? 'unassigned';
+      const bName = (rec as any).branch?.name ?? 'Unassigned';
+      const key   = `${rec.employeeId}::${bId}`;
+      const s = statsMap.get(key) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0, totalHours: 0, branchId: bId, branchName: bName };
       if (rec.status === 'PRESENT' || rec.status === 'LATE') { s.daysWorked += 1; }
       else if (rec.status === 'HALF_DAY') { s.daysWorked += 0.5; }
       s.lateMinutes += (rec as any).lateMinutes ?? 0;
       s.otHours += (rec as any).overtimeHrs ?? 0;
       s.ndHours += ndHoursFromRecord(rec);
-      // Total hours: daysWorked * 8 + otHours (rough approximation)
-      statsMap.set(rec.employeeId, s);
+      statsMap.set(key, s);
     }
-    // Compute totalHours after aggregating
-    for (const [empId, s] of statsMap) {
+    for (const [key, s] of statsMap) {
       s.totalHours = Math.round((s.daysWorked * 8 + s.otHours) * 100) / 100;
       s.ndHours = Math.round(s.ndHours * 100) / 100;
-      statsMap.set(empId, s);
+      statsMap.set(key, s);
     }
 
-    const rows = billing.client.employees.map((emp: any) => {
-      const s = statsMap.get(emp.id) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0, totalHours: 0 };
-      return { employee: emp, ...s };
-    });
+    // Build one row per (employee, branch) combination; an employee with attendance on
+    // two branches gets two rows, each with stats for that branch only.
+    const empLookup = new Map<string, any>(billing.client.employees.map((e: any) => [e.id, e]));
+    const rows: any[] = [];
+    for (const [key, s] of statsMap) {
+      const [empId] = key.split('::');
+      const emp = empLookup.get(empId);
+      if (!emp) continue;
+      const attBranch = s.branchId === 'unassigned' ? null : { id: s.branchId, name: s.branchName };
+      rows.push({ employee: { ...emp, branch: attBranch }, ...s });
+    }
 
     res.json({ periodStart, periodEnd, employees: rows });
   } catch (err) { next(err); }
@@ -720,31 +732,45 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
     const empIds = billing.client.employees.map((e: any) => e.id);
     const attRecords = await prisma.attendance.findMany({
       where: { employeeId: { in: empIds }, date: { gte: periodStart, lte: periodEnd } },
-      select: { employeeId: true, status: true, overtimeHrs: true, lateMinutes: true, clockInAt: true, clockOutAt: true },
+      select: { employeeId: true, status: true, overtimeHrs: true, lateMinutes: true, clockInAt: true, clockOutAt: true, timeIn: true, timeOut: true, branchId: true, branch: { select: { id: true, name: true } } },
     });
 
     function ndHours(rec: any): number {
-      if (!rec.clockInAt || !rec.clockOutAt) return 0;
-      const cin  = new Date(rec.clockInAt).getTime();
-      const cout = new Date(rec.clockOutAt).getTime();
+      const rawIn  = rec.clockInAt ?? rec.timeIn;
+      const rawOut = rec.clockOutAt ?? rec.timeOut;
+      if (!rawIn || !rawOut) return 0;
+      const cin  = new Date(rawIn).getTime();
+      const cout = new Date(rawOut).getTime();
       if (cout <= cin) return 0;
-      const base = new Date(rec.clockInAt);
-      base.setHours(0, 0, 0, 0);
-      const t = base.getTime();
+      // Anchor to Philippines midnight (UTC+8)
+      const PH_OFFSET_MS = 8 * 3600000;
+      const t = Math.floor((cin + PH_OFFSET_MS) / 86400000) * 86400000 - PH_OFFSET_MS;
       const ovA = Math.max(0, Math.min(cout, t + 24 * 3600000) - Math.max(cin, t + 22 * 3600000));
       const ovB = Math.max(0, Math.min(cout, t + 29 * 3600000) - Math.max(cin, t + 24 * 3600000));
       return Math.round(((ovA + ovB) / 3600000) * 100) / 100;
     }
 
-    const statsMap = new Map<string, { daysWorked: number; lateMinutes: number; otHours: number; ndHours: number }>();
+    // Key by "employeeId::branchId" — one entry per employee per attendance branch
+    const statsMap = new Map<string, { daysWorked: number; lateMinutes: number; otHours: number; ndHours: number; branchName: string }>();
     for (const rec of attRecords) {
-      const s = statsMap.get(rec.employeeId) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0 };
+      const bId   = (rec as any).branchId ?? 'unassigned';
+      const bName = (rec as any).branch?.name ?? 'Unassigned';
+      const key   = `${rec.employeeId}::${bId}`;
+      const s = statsMap.get(key) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0, branchName: bName };
       if (rec.status === 'PRESENT' || rec.status === 'LATE') s.daysWorked += 1;
       else if (rec.status === 'HALF_DAY') s.daysWorked += 0.5;
       s.lateMinutes += (rec as any).lateMinutes ?? 0;
       s.otHours += (rec as any).overtimeHrs ?? 0;
       s.ndHours += ndHours(rec);
-      statsMap.set(rec.employeeId, s);
+      statsMap.set(key, s);
+    }
+    // Per-employee totals (across all branches) — used for SOA 13th month
+    const empTotalMap = new Map<string, { daysWorked: number }>();
+    for (const [key, s] of statsMap) {
+      const [empId] = key.split('::');
+      const t = empTotalMap.get(empId) ?? { daysWorked: 0 };
+      t.daysWorked += s.daysWorked;
+      empTotalMap.set(empId, t);
     }
 
     const wb = new ExcelJS.Workbook();
@@ -784,22 +810,27 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
     ];
     styleHeader(billingSheet.getRow(1));
 
-    // Group by branch
-    const branchMap = new Map<string, any[]>();
-    for (const emp of billing.client.employees) {
-      const branchName = (emp as any).branch?.name ?? 'Unassigned';
+    // Group by attendance branch (not employee profile branch) so an employee with
+    // attendance on multiple branches appears under each branch separately.
+    const xlsxEmpLookup = new Map<string, any>(billing.client.employees.map((e: any) => [e.id, e]));
+    const branchMap = new Map<string, Array<{ emp: any; statsKey: string }>>();
+    for (const [key, s] of statsMap) {
+      const [empId] = key.split('::');
+      const emp = xlsxEmpLookup.get(empId);
+      if (!emp) continue;
+      const branchName = s.branchName;
       if (!branchMap.has(branchName)) branchMap.set(branchName, []);
-      branchMap.get(branchName)!.push(emp);
+      branchMap.get(branchName)!.push({ emp, statsKey: key });
     }
 
-    for (const [branchName, emps] of branchMap) {
+    for (const [branchName, entries] of branchMap) {
       // Branch header row
       const branchRow = billingSheet.addRow([branchName]);
       branchRow.font = { bold: true, size: 11 };
       branchRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
 
-      for (const emp of emps) {
-        const s = statsMap.get(emp.id) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0 };
+      for (const { emp, statsKey } of entries) {
+        const s = statsMap.get(statsKey) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0, branchName };
         const dailyRate = emp.useDailyRate && emp.dailyRate ? emp.dailyRate : emp.basicSalary / 22;
         const hourlyRate = dailyRate / 8;
         const totalHours = s.daysWorked * 8;
@@ -817,7 +848,7 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
         billingSheet.addRow({
           name: `${emp.lastName}, ${emp.firstName}`,
           position: emp.position,
-          branch: (emp as any).branch?.name ?? '',
+          branch: branchName,
           dailyRate: dailyRate.toFixed(2),
           hourlyRate: hourlyRate.toFixed(4),
           totalHours: totalHours.toFixed(1),
@@ -868,9 +899,9 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
     soaSheet.addRow({});
     soaSheet.addRow({ desc: '--- 13th Month Reference ---', amount: '' });
     for (const emp of billing.client.employees) {
-      const s = statsMap.get(emp.id) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0 };
+      const t = empTotalMap.get(emp.id) ?? { daysWorked: 0 };
       const dailyRate = emp.useDailyRate && emp.dailyRate ? emp.dailyRate : emp.basicSalary / 22;
-      const thirteenth = Math.round(s.daysWorked * dailyRate / 12 * 100) / 100;
+      const thirteenth = Math.round(t.daysWorked * dailyRate / 12 * 100) / 100;
       soaSheet.addRow({ desc: `${emp.lastName}, ${emp.firstName} (13th month)`, amount: thirteenth.toFixed(2) });
     }
 
