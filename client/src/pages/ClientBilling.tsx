@@ -21,7 +21,6 @@ export default function ClientBilling() {
   const [generated, setGenerated] = useState<(Billing & { client: { id: string; name: string } })[]>([]);
   const [skipped, setSkipped] = useState<{ clientId: string; name: string; reason: string }[]>([]);
   const [showAll, setShowAll] = useState(false);
-  const [expandedBillingId, setExpandedBillingId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [markPaidBilling, setMarkPaidBilling] = useState<(Billing & { client: { id: string; name: string } }) | null>(null);
 
@@ -509,7 +508,6 @@ export default function ClientBilling() {
               <table className="data-table" style={{ minWidth: '100%' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: 28 }}></th>
                     <th>Billing Date</th>
                     <th>Invoice #</th>
                     <th>Amount</th>
@@ -521,7 +519,7 @@ export default function ClientBilling() {
                 <tbody>
                   {groupedBillings.map(({ clientId, clientName, billings }) => {
                     const isCollapsed = collapsedGroups.has(clientId);
-                    const groupTotal = billings.reduce((s, b) => s + b.amount, 0);
+                    const groupTotal = billings.reduce((s, b) => s + ((b as any).grossBill ?? b.amount), 0);
                     return (
                       <React.Fragment key={clientId}>
                         <tr
@@ -531,7 +529,7 @@ export default function ClientBilling() {
                           <td style={{ padding: '8px 4px', textAlign: 'center' }}>
                             <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{isCollapsed ? '▶' : '▼'}</span>
                           </td>
-                          <td colSpan={5} style={{ fontWeight: 700, fontSize: 13 }}>
+                          <td colSpan={4} style={{ fontWeight: 700, fontSize: 13 }}>
                             {clientName}
                             <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 10 }}>
                               {billings.length} invoice{billings.length !== 1 ? 's' : ''} · {formatPHP(groupTotal)}
@@ -540,19 +538,12 @@ export default function ClientBilling() {
                           <td></td>
                         </tr>
                         {!isCollapsed && billings.map(b => {
-                          const isExpanded = expandedBillingId === b.id;
                           return (
                             <React.Fragment key={b.id}>
-                              <tr
-                                onClick={() => setExpandedBillingId(prev => prev === b.id ? null : b.id)}
-                                style={{ cursor: 'pointer', background: isExpanded ? 'var(--color-surface-2)' : undefined }}
-                              >
-                                <td style={{ width: 28, textAlign: 'center', padding: '0 4px' }}>
-                                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{isExpanded ? '▼' : '▶'}</span>
-                                </td>
+                              <tr>
                                 <td style={{ fontWeight: 600 }}>{fmtDate(b.billingDate)}</td>
                                 <td style={{ fontFamily: 'monospace', fontSize: 12 }}>#{b.id.slice(-8).toUpperCase()}</td>
-                                <td style={{ fontWeight: 700 }}>{formatPHP(b.amount)}</td>
+                                <td style={{ fontWeight: 700 }}>{formatPHP((b as any).grossBill ?? b.amount)}</td>
                                 <td>
                                   <span className={`badge ${b.status === 'PAID' ? 'badge-green' : 'badge-yellow'}`}>{b.status}</span>
                                 </td>
@@ -579,15 +570,6 @@ export default function ClientBilling() {
                                   </div>
                                 </td>
                               </tr>
-                              {isExpanded && (
-                                <tr>
-                                  <td colSpan={7} style={{ padding: 0, background: 'var(--color-surface-2)', borderBottom: '2px solid var(--color-border)' }}>
-                                    <div style={{ padding: '0 16px' }}>
-                                      <InvoiceDetail billing={b} />
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
                             </React.Fragment>
                           );
                         })}

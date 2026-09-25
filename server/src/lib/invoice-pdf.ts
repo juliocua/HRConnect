@@ -17,7 +17,11 @@ export interface CompanyInfo {
   logoUrl?: string | null;
 }
 
-export async function generateInvoicePDF(billing: any, company?: CompanyInfo): Promise<Buffer> {
+export async function generateInvoicePDF(
+  billing: any,
+  company?: CompanyInfo,
+  thirteenthMap?: Map<string, number>,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const chunks: Buffer[] = [];
@@ -25,249 +29,219 @@ export async function generateInvoicePDF(billing: any, company?: CompanyInfo): P
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const invoiceNo = billing.id.slice(-8).toUpperCase();
-    const primary = '#2563EB';
-    const muted = '#6B7280';
-    const dark = '#111827';
+    const primary   = '#1E3A5F';
+    const accent    = '#2563EB';
+    const muted     = '#6B7280';
+    const dark      = '#111827';
+    const lineColor = '#D1D5DB';
 
-    const companyName = company?.companyName || 'HRConnect';
+    const companyName    = company?.companyName || 'HRConnect';
     const companyAddress = company?.address || '';
-    const companyPhone = company?.contactNumber || '';
+    const companyPhone   = company?.contactNumber || '';
 
-    // Try to load logo from disk — logoUrl is stored as a full URL, extract just the filename
+    const pageW  = doc.page.width;
+    const pageH  = doc.page.height;
+    const margin = 50;
+    const contentW = pageW - margin * 2;
+
+    // ── Try to load logo ──────────────────────────────────────────────────────
     let logoBuffer: Buffer | null = null;
     if (company?.logoUrl) {
       try {
-        const filename = path.basename(company.logoUrl); // e.g. 'company-logo.png'
+        const filename  = path.basename(company.logoUrl);
         const uploadsBase = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
-        const logoPath = path.join(uploadsBase, 'logos', filename);
-        if (fs.existsSync(logoPath)) {
-          logoBuffer = fs.readFileSync(logoPath);
-        }
-      } catch {
-        // Logo load failure is non-fatal
-      }
+        const logoPath  = path.join(uploadsBase, 'logos', filename);
+        if (fs.existsSync(logoPath)) logoBuffer = fs.readFileSync(logoPath);
+      } catch { /* non-fatal */ }
     }
 
-    // ── Header bar ──────────────────────────────────────────────────────────────
-    doc.rect(0, 0, doc.page.width, 6).fill(primary);
+    // ── Header bar ────────────────────────────────────────────────────────────
+    doc.rect(0, 0, pageW, 8).fill(primary);
 
-    // Logo + Company name (left) | INVOICE label (right)
-    const logoSize = 56;
-    const textX = logoBuffer ? 50 + logoSize + 12 : 50;
+    const logoSize = 52;
+    const textX = logoBuffer ? margin + logoSize + 14 : margin;
 
     if (logoBuffer) {
-      doc.image(logoBuffer, 50, 22, { width: logoSize, height: logoSize });
+      doc.image(logoBuffer, margin, 20, { width: logoSize, height: logoSize });
     }
 
-    doc.font('Helvetica-Bold').fontSize(22).fillColor(dark).text(companyName, textX, 40);
-    let companySubY = 66;
+    doc.font('Helvetica-Bold').fontSize(18).fillColor(primary).text(companyName, textX, 28);
+    let subY = 50;
     if (companyAddress) {
-      doc.font('Helvetica').fontSize(9).fillColor(muted).text(companyAddress, textX, companySubY);
-      companySubY += 13;
+      doc.font('Helvetica').fontSize(8.5).fillColor(muted).text(companyAddress, textX, subY);
+      subY += 12;
     }
     if (companyPhone) {
-      doc.font('Helvetica').fontSize(9).fillColor(muted).text(companyPhone, textX, companySubY);
-      companySubY += 13;
-    }
-    if (!companyAddress && !companyPhone) {
-      doc.font('Helvetica').fontSize(11).fillColor(muted).text('HR & Staffing Services', textX, 68);
+      doc.font('Helvetica').fontSize(8.5).fillColor(muted).text(companyPhone, textX, subY);
+      subY += 12;
     }
 
-    doc.font('Helvetica-Bold').fontSize(28).fillColor(primary).text('INVOICE', 0, 40, { align: 'right' });
-    doc.font('Helvetica').fontSize(10).fillColor(muted);
-    doc.text(`#${invoiceNo}`, 0, 75, { align: 'right' });
-    doc.text(`Date: ${fmtDate(billing.billingDate)}`, 0, 90, { align: 'right' });
-    if (billing.dueDate) {
-      doc.text(`Due: ${fmtDate(billing.dueDate)}`, 0, 105, { align: 'right' });
+    // SOA label — right side
+    doc.font('Helvetica-Bold').fontSize(22).fillColor(accent)
+      .text('STATEMENT OF ACCOUNT', 0, 30, { align: 'right' });
+
+    // ── Divider ───────────────────────────────────────────────────────────────
+    let y = Math.max(subY + 10, 82);
+    doc.moveTo(margin, y).lineTo(pageW - margin, y).strokeColor(lineColor).lineWidth(1).stroke();
+    y += 16;
+
+    // ── SOA Details block ─────────────────────────────────────────────────────
+    // Left column: client info | Right column: SOA reference
+    const halfW = (contentW - 20) / 2;
+
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('BILLED TO', margin, y);
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('SOA DETAILS', margin + halfW + 20, y);
+    y += 14;
+
+    doc.font('Helvetica-Bold').fontSize(13).fillColor(dark).text(billing.client.name, margin, y, { width: halfW });
+    const soaRightX = margin + halfW + 20;
+
+    // Compute period dates
+    const billingDateObj = new Date(billing.billingDate);
+    const periodEndDate  = billingDateObj;
+    const periodStartDate = new Date(billingDateObj);
+    periodStartDate.setDate(periodStartDate.getDate() - 30);
+
+    const detailRows: { label: string; value: string }[] = [
+      { label: 'SOA No.',       value: billing.soaNo ?? `SOA-${billing.id.slice(-8).toUpperCase()}` },
+      { label: 'Billing Date',  value: fmtDate(billing.billingDate) },
+      { label: 'Period',        value: `${fmtDate(periodStartDate)} – ${fmtDate(periodEndDate)}` },
+      { label: 'Status',        value: billing.status },
+    ];
+
+    let detailY = y;
+    for (const row of detailRows) {
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text(row.label + ':', soaRightX, detailY, { width: 80 });
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(dark).text(row.value, soaRightX + 84, detailY, { width: halfW - 84 });
+      detailY += 14;
     }
 
-    // ── Bill To ──────────────────────────────────────────────────────────────────
-    doc.y = 130;
-    doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).strokeColor('#E5E7EB').lineWidth(1).stroke();
-    doc.y += 16;
+    if (billing.client.address) {
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text(billing.client.address, margin, y + 16, { width: halfW });
+    }
 
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('BILL TO', 50, doc.y);
-    doc.y += 14;
-    doc.font('Helvetica-Bold').fontSize(14).fillColor(dark).text(billing.client.name, 50, doc.y);
-    doc.y += 18;
-    doc.font('Helvetica').fontSize(10).fillColor(muted);
-    if (billing.client.address) { doc.text(billing.client.address, 50, doc.y); doc.y += 14; }
-    if (billing.client.contactName) { doc.text(billing.client.contactName, 50, doc.y); doc.y += 14; }
-    if (billing.client.contactEmail) { doc.text(billing.client.contactEmail, 50, doc.y); doc.y += 14; }
-    if (billing.client.contactPhone) { doc.text(billing.client.contactPhone, 50, doc.y); doc.y += 14; }
+    y = Math.max(detailY, y + 50) + 20;
 
-    // ── Status badge ─────────────────────────────────────────────────────────────
-    const badgeColor = billing.status === 'PAID' ? '#16A34A' : '#D97706';
-    const badgeX = doc.page.width - 130;
-    const badgeY = 150;
-    doc.roundedRect(badgeX, badgeY, 80, 24, 4).fill(badgeColor);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#fff').text(billing.status, badgeX, badgeY + 7, { width: 80, align: 'center' });
+    // ── Financial Summary ─────────────────────────────────────────────────────
+    doc.moveTo(margin, y).lineTo(pageW - margin, y).strokeColor(lineColor).lineWidth(0.5).stroke();
+    y += 0;
 
-    // ── Line items table ──────────────────────────────────────────────────────────
-    const tableTop = Math.max(doc.y + 24, 280);
-    const col1 = 50, col2 = 300, col3 = 400, rightEdge = doc.page.width - 50;
+    // Section header
+    doc.rect(margin, y, contentW, 22).fill('#F1F5F9');
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(primary)
+      .text('BILLING SUMMARY', margin + 8, y + 7);
+    y += 22;
 
-    // Table header
-    doc.rect(50, tableTop, rightEdge - 50, 28).fill('#F3F4F6');
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(muted);
-    doc.text('DESCRIPTION / RESOURCE', col1 + 8, tableTop + 10);
-    doc.text('POSITION', col2, tableTop + 10);
-    doc.text('AMOUNT', col3, tableTop + 10, { width: rightEdge - col3, align: 'right' });
+    const grossBill  = billing.grossBill ?? billing.amount ?? 0;
+    const vatAmount  = billing.vatAmount ?? 0;
+    const ewtAmount  = billing.ewtAmount ?? 0;
+    const totalNetBill = billing.totalNetBill ?? grossBill;
+    const amountPaid = billing.amountPaid ?? 0;
+    const balanceDue = Math.round((totalNetBill - amountPaid) * 100) / 100;
 
-    let rowY = tableTop + 28;
-    const employees = billing.client?.employees ?? [];
+    const labelX   = margin + 8;
+    const amtX     = pageW - margin - 160;
+    const amtWidth = 150;
 
-    if (employees.length > 0) {
-      for (const emp of employees) {
-        const name = `${emp.firstName} ${emp.lastName}`;
-        const amount = emp.resourceCost ?? 0;
-        doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(name, col1 + 8, rowY + 8);
-        doc.font('Helvetica').fontSize(9).fillColor(muted).text(emp.position ?? '', col2, rowY + 8);
-        if (amount > 0) {
-          doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(fmt(amount), col3, rowY + 8, { width: rightEdge - col3, align: 'right' });
+    function summaryRow(label: string, amount: number, bold = false, highlight = false) {
+      if (bold || highlight) {
+        const rowH = 26;
+        if (highlight) {
+          doc.rect(margin, y, contentW, rowH).fill(primary);
+          doc.font('Helvetica-Bold').fontSize(11).fillColor('#FFFFFF')
+            .text(label, labelX, y + 8)
+            .text(fmt(amount), amtX, y + 8, { width: amtWidth, align: 'right' });
         } else {
-          doc.font('Helvetica').fontSize(9).fillColor(muted).text('—', col3, rowY + 8, { width: rightEdge - col3, align: 'right' });
+          doc.font('Helvetica-Bold').fontSize(10).fillColor(dark)
+            .text(label, labelX, y + 6)
+            .text(fmt(amount), amtX, y + 6, { width: amtWidth, align: 'right' });
         }
-        rowY += 30;
-        doc.moveTo(50, rowY).lineTo(rightEdge, rowY).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
-      }
-    } else {
-      doc.font('Helvetica').fontSize(10).fillColor(dark).text('Staffing services', col1 + 8, rowY + 8);
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(fmt(billing.amount), col3, rowY + 8, { width: rightEdge - col3, align: 'right' });
-      rowY += 30;
-      doc.moveTo(50, rowY).lineTo(rightEdge, rowY).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
-    }
-
-    // ── Additional charges (line items) ──────────────────────────────────────────
-    const lineItems: { label: string; amount: number }[] = (billing.lineItems as any) ?? [];
-    if (lineItems.length > 0) {
-      doc.font('Helvetica').fontSize(9).fillColor(muted).text('ADDITIONAL CHARGES', col1 + 8, rowY + 6);
-      rowY += 24;
-      for (const li of lineItems) {
-        doc.font('Helvetica').fontSize(10).fillColor(dark).text(li.label, col1 + 8, rowY + 8);
-        doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text(fmt(li.amount), col3, rowY + 8, { width: rightEdge - col3, align: 'right' });
-        rowY += 30;
-        doc.moveTo(50, rowY).lineTo(rightEdge, rowY).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
-      }
-    }
-
-    // ── Subtotals & fee breakdown ─────────────────────────────────────────────────
-    rowY += 8;
-
-    // Compute breakdown from employee resource costs + line items
-    const empTotal = employees.reduce((s: number, e: any) => s + (e.resourceCost ?? 0), 0);
-    const liTotal = lineItems.reduce((s: number, li: { label: string; amount: number }) => s + li.amount, 0);
-    const grossSubtotal = empTotal + liTotal;
-    const clientAdminFeeRate: number | null = billing.client?.adminFeeRate ?? null;
-    const adminFeeAmount = clientAdminFeeRate ? grossSubtotal * clientAdminFeeRate / 100 : 0;
-    const afterAdminFee = grossSubtotal + adminFeeAmount;
-    const clientIsVatable: boolean = !!billing.client?.isVatable;
-    const vatAmount = clientIsVatable ? afterAdminFee * 0.12 : 0;
-    const grandTotal = afterAdminFee + vatAmount;
-
-    const subtotalLabelX = col3 - 60;
-    const subtotalAmtWidth = rightEdge - col3 - 8;
-
-    // Show subtotal line only when there are fee additions
-    if (adminFeeAmount > 0 || vatAmount > 0) {
-      doc.font('Helvetica').fontSize(10).fillColor(muted)
-        .text('Subtotal', subtotalLabelX, rowY, { width: 60, align: 'right' })
-        .font('Helvetica').fillColor(dark).text(fmt(grossSubtotal), col3, rowY, { width: subtotalAmtWidth, align: 'right' });
-      rowY += 18;
-    }
-
-    if (adminFeeAmount > 0) {
-      doc.font('Helvetica').fontSize(10).fillColor(muted)
-        .text(`Admin Fee (${clientAdminFeeRate}%)`, subtotalLabelX - 60, rowY, { width: 120, align: 'right' })
-        .font('Helvetica').fillColor(dark).text(fmt(adminFeeAmount), col3, rowY, { width: subtotalAmtWidth, align: 'right' });
-      rowY += 18;
-    }
-
-    if (vatAmount > 0) {
-      doc.font('Helvetica').fontSize(10).fillColor(muted)
-        .text('VAT (12%)', subtotalLabelX, rowY, { width: 60, align: 'right' })
-        .font('Helvetica-Bold').fillColor('#0369A1').text(fmt(vatAmount), col3, rowY, { width: subtotalAmtWidth, align: 'right' });
-      rowY += 18;
-    }
-
-    rowY += 4;
-
-    // ── Total row ─────────────────────────────────────────────────────────────────
-    doc.rect(col3 - 10, rowY, rightEdge - col3 + 10, 36).fill(primary);
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('#fff').text('TOTAL', col3, rowY + 12, { width: rightEdge - col3 - 8, align: 'right' });
-    rowY += 36;
-    doc.rect(col3 - 10, rowY, rightEdge - col3 + 10, 36).fill('#1D4ED8');
-    doc.font('Helvetica-Bold').fontSize(14).fillColor('#fff').text(fmt(grandTotal), col3, rowY + 11, { width: rightEdge - col3 - 8, align: 'right' });
-    rowY += 50;
-
-    // ── Payment section ───────────────────────────────────────────────────────────
-    const bankName = process.env.BANK_NAME;
-    const bankAccountName = process.env.BANK_ACCOUNT_NAME;
-    const bankAccountNumber = process.env.BANK_ACCOUNT_NUMBER;
-    const hasBankDetails = !!(bankName || bankAccountName || bankAccountNumber);
-
-    if (billing.paymentLinkUrl || hasBankDetails) {
-      // Section header bar
-      doc.rect(50, rowY, doc.page.width - 100, 4).fill(primary);
-      rowY += 12;
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text('PAYMENT INSTRUCTIONS', 50, rowY);
-      rowY += 18;
-    }
-
-    // Online payment link (PayMongo)
-    if (billing.paymentLinkUrl) {
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('Online Payment', 50, rowY);
-      rowY += 12;
-      doc.font('Helvetica').fontSize(10).fillColor(primary)
-        .text(billing.paymentLinkUrl, 50, rowY, { link: billing.paymentLinkUrl, underline: true });
-      rowY += 22;
-    }
-
-    // Bank transfer details (shown alongside PayMongo link when both are set)
-    if (hasBankDetails) {
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('Bank Transfer / Deposit', 50, rowY);
-      rowY += 14;
-      if (bankName) {
+        y += rowH;
+      } else {
         doc.font('Helvetica').fontSize(10).fillColor(dark)
-          .text('Bank:', 50, rowY)
-          .font('Helvetica-Bold').text(bankName, 110, rowY);
-        rowY += 14;
+          .text(label, labelX, y + 5)
+          .font('Helvetica').text(fmt(amount), amtX, y + 5, { width: amtWidth, align: 'right' });
+        y += 22;
       }
-      if (bankAccountName) {
-        doc.font('Helvetica').fontSize(10).fillColor(dark)
-          .text('Account Name:', 50, rowY)
-          .font('Helvetica-Bold').text(bankAccountName, 150, rowY);
-        rowY += 14;
-      }
-      if (bankAccountNumber) {
-        doc.font('Helvetica').fontSize(10).fillColor(dark)
-          .text('Account Number:', 50, rowY)
-          .font('Helvetica-Bold').fontSize(12).fillColor(primary).text(bankAccountNumber, 165, rowY);
-        rowY += 14;
-      }
-      rowY += 12;
+      doc.moveTo(margin, y).lineTo(pageW - margin, y).strokeColor(lineColor).lineWidth(0.3).stroke();
     }
 
-    if (!billing.paymentLinkUrl && !hasBankDetails) {
-      // Minimal fallback — neither PayMongo nor bank env vars configured
-      doc.font('Helvetica').fontSize(10).fillColor(muted)
-        .text('To arrange payment, please reply to the invoice email or contact us directly.', 50, rowY);
-      rowY += 24;
+    summaryRow('Gross Billing Amount', grossBill);
+    if (vatAmount) summaryRow('VAT (12%)', vatAmount);
+    if (ewtAmount) summaryRow('EWT (2%)', -ewtAmount);
+    summaryRow('Total Net Bill', totalNetBill, true);
+    summaryRow('Amount Paid', amountPaid);
+    summaryRow('Balance Due', balanceDue, false, true);
+
+    y += 24;
+
+    // ── 13th Month Reference ─────────────────────────────────────────────────
+    const employees: any[] = billing.client?.employees ?? [];
+    const hasTwelfths = thirteenthMap && thirteenthMap.size > 0;
+
+    if (hasTwelfths && employees.length > 0) {
+      // Section header
+      doc.rect(margin, y, contentW, 22).fill('#F1F5F9');
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(primary)
+        .text('13TH MONTH REFERENCE', margin + 8, y + 7);
+      y += 22;
+
+      for (const emp of employees) {
+        const amt = thirteenthMap!.get(emp.id) ?? 0;
+        const name = `${emp.lastName}, ${emp.firstName}`;
+        doc.font('Helvetica').fontSize(9.5).fillColor(dark)
+          .text(name, labelX, y + 4, { width: contentW - 170 })
+          .text(fmt(amt), amtX, y + 4, { width: amtWidth, align: 'right' });
+        y += 20;
+        doc.moveTo(margin, y).lineTo(pageW - margin, y).strokeColor(lineColor).lineWidth(0.2).stroke();
+      }
+      y += 16;
     }
 
-    // ── Notes ─────────────────────────────────────────────────────────────────────
-    if (billing.notes) {
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(dark).text('Notes:', 50, rowY);
-      doc.font('Helvetica').fontSize(10).fillColor(muted).text(billing.notes, 50, rowY + 14);
-      rowY += 40;
+    // ── Signatories ───────────────────────────────────────────────────────────
+    // Ensure signatories fit on the page; add page if needed
+    const sigBlockH = 80;
+    if (y + sigBlockH > pageH - 60) {
+      doc.addPage();
+      y = 50;
     }
 
-    // ── Footer ────────────────────────────────────────────────────────────────────
-    const footerY = doc.page.height - doc.page.margins.bottom - 16;
-    doc.moveTo(50, footerY - 10).lineTo(doc.page.width - 50, footerY - 10).strokeColor('#E5E7EB').lineWidth(1).stroke();
-    doc.font('Helvetica').fontSize(9).fillColor(muted)
-      .text(`Generated by ${companyName} · Thank you for your business`, 0, footerY, { align: 'center' });
+    y += 10;
+    doc.moveTo(margin, y).lineTo(pageW - margin, y).strokeColor(lineColor).lineWidth(1).stroke();
+    y += 20;
+
+    const sigColW  = contentW / 3;
+    const sigLabels = ['Prepared by:', 'Approved by:', 'Received by:'];
+
+    for (let i = 0; i < 3; i++) {
+      const sx = margin + i * sigColW;
+      doc.font('Helvetica').fontSize(9).fillColor(muted).text(sigLabels[i], sx, y);
+    }
+
+    y += 30;
+
+    // Signature line + name space for each
+    for (let i = 0; i < 3; i++) {
+      const sx = margin + i * sigColW;
+      const lineEndX = sx + sigColW - 20;
+      doc.moveTo(sx, y).lineTo(lineEndX, y).strokeColor(dark).lineWidth(0.75).stroke();
+    }
+
+    y += 6;
+
+    // Name / title placeholders
+    const clientSignatoryName  = billing.client?.clientSignatoryName ?? '';
+    const clientSignatoryTitle = billing.client?.clientSignatoryTitle ?? '';
+    const companySignatory     = company?.companyName ?? companyName;
+
+    const sigNames = [companySignatory, companySignatory, clientSignatoryName || billing.client?.name];
+    const sigTitles = ['Prepared by', 'Authorized Signatory', clientSignatoryTitle || 'Client Representative'];
+
+    for (let i = 0; i < 3; i++) {
+      const sx = margin + i * sigColW;
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(dark).text(sigNames[i], sx, y, { width: sigColW - 20 });
+      doc.font('Helvetica').fontSize(8).fillColor(muted).text(sigTitles[i], sx, y + 12, { width: sigColW - 20 });
+    }
 
     doc.end();
   });

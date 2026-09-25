@@ -145,7 +145,7 @@ const invoiceInclude = {
         where: { status: { in: ['ACTIVE', 'ON_LEAVE'] as any } },
         select: {
           id: true, firstName: true, lastName: true, position: true,
-          resourceCost: true,
+          resourceCost: true, basicSalary: true, dailyRate: true, useDailyRate: true,
         },
       },
     },
@@ -814,6 +814,7 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
     // attendance on multiple branches appears under each branch separately.
     const xlsxEmpLookup = new Map<string, any>(billing.client.employees.map((e: any) => [e.id, e]));
     const branchMap = new Map<string, Array<{ emp: any; statsKey: string }>>();
+    let computedGrossBill = 0;
     for (const [key, s] of statsMap) {
       const [empId] = key.split('::');
       const emp = xlsxEmpLookup.get(empId);
@@ -845,6 +846,7 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
         const philhealth = computePhilHealth(emp.basicSalary);
         const hdmf = computePagIBIG(emp.basicSalary);
         const netBillEmp = Math.round((grossBillEmp + thirteenth + sss + ec + philhealth + hdmf) * 100) / 100;
+        computedGrossBill += netBillEmp;
         billingSheet.addRow({
           name: `${emp.lastName}, ${emp.firstName}`,
           position: emp.position,
@@ -870,6 +872,12 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
         });
       }
     }
+
+    // Persist computed billing total back to the record so the list shows the correct amount
+    await prisma.billing.update({
+      where: { id: billing.id },
+      data: { grossBill: Math.round(computedGrossBill * 100) / 100 },
+    });
 
     // ── Tab 2: SOA ────────────────────────────────────────────────────────────
     const soaSheet = wb.addWorksheet('SOA');
@@ -1010,11 +1018,35 @@ router.get('/:id/pdf', async (req: Request, res: Response, next: NextFunction) =
     });
     if (!billing) return res.status(404).json({ error: 'Billing not found' });
 
+    // Compute 13th month per employee using attendance in the billing period
+    const pdfPeriodEnd = new Date(billing.billingDate);
+    const pdfPeriodStart = new Date(pdfPeriodEnd);
+    pdfPeriodStart.setDate(pdfPeriodStart.getDate() - 30);
+    const pdfEmpIds = billing.client.employees.map((e: any) => e.id);
+    const pdfAttRecords = await prisma.attendance.findMany({
+      where: { employeeId: { in: pdfEmpIds }, date: { gte: pdfPeriodStart, lte: pdfPeriodEnd } },
+      select: { employeeId: true, status: true },
+    });
+    const pdfDaysWorkedMap = new Map<string, number>();
+    for (const rec of pdfAttRecords) {
+      const d = pdfDaysWorkedMap.get(rec.employeeId) ?? 0;
+      if (rec.status === 'PRESENT' || rec.status === 'LATE') pdfDaysWorkedMap.set(rec.employeeId, d + 1);
+      else if (rec.status === 'HALF_DAY') pdfDaysWorkedMap.set(rec.employeeId, d + 0.5);
+    }
+    const thirteenthMap = new Map<string, number>();
+    for (const emp of billing.client.employees) {
+      const dw = pdfDaysWorkedMap.get((emp as any).id) ?? 0;
+      const dr = (emp as any).useDailyRate && (emp as any).dailyRate
+        ? (emp as any).dailyRate
+        : ((emp as any).basicSalary ?? 0) / 22;
+      thirteenthMap.set((emp as any).id, Math.round(dw * dr / 12 * 100) / 100);
+    }
+
     const companySettings = await getCompanySettings();
-    const pdf = await generateInvoicePDF(billing, companySettings ?? undefined);
+    const pdf = await generateInvoicePDF(billing, companySettings ?? undefined, thirteenthMap);
     const invoiceNo = billing.id.slice(-8).toUpperCase();
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoiceNo}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="soa-${invoiceNo}.pdf"`);
     res.send(pdf);
   } catch (err) { next(err); }
 });
@@ -1033,8 +1065,32 @@ router.post('/:id/send-invoice', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async
       return res.status(422).json({ error: 'No contact email on this client. Add one in Client Records first.' });
     }
 
+    // Compute 13th month per employee for email PDF
+    const emailPeriodEnd = new Date(billing.billingDate);
+    const emailPeriodStart = new Date(emailPeriodEnd);
+    emailPeriodStart.setDate(emailPeriodStart.getDate() - 30);
+    const emailEmpIds = billing.client.employees.map((e: any) => e.id);
+    const emailAttRecords = await prisma.attendance.findMany({
+      where: { employeeId: { in: emailEmpIds }, date: { gte: emailPeriodStart, lte: emailPeriodEnd } },
+      select: { employeeId: true, status: true },
+    });
+    const emailDaysWorkedMap = new Map<string, number>();
+    for (const rec of emailAttRecords) {
+      const d = emailDaysWorkedMap.get(rec.employeeId) ?? 0;
+      if (rec.status === 'PRESENT' || rec.status === 'LATE') emailDaysWorkedMap.set(rec.employeeId, d + 1);
+      else if (rec.status === 'HALF_DAY') emailDaysWorkedMap.set(rec.employeeId, d + 0.5);
+    }
+    const emailThirteenthMap = new Map<string, number>();
+    for (const emp of billing.client.employees) {
+      const dw = emailDaysWorkedMap.get((emp as any).id) ?? 0;
+      const dr = (emp as any).useDailyRate && (emp as any).dailyRate
+        ? (emp as any).dailyRate
+        : ((emp as any).basicSalary ?? 0) / 22;
+      emailThirteenthMap.set((emp as any).id, Math.round(dw * dr / 12 * 100) / 100);
+    }
+
     const companySettings = await getCompanySettings();
-    const pdf = await generateInvoicePDF(billing, companySettings ?? undefined);
+    const pdf = await generateInvoicePDF(billing, companySettings ?? undefined, emailThirteenthMap);
     await sendInvoiceEmail(toEmail, billing, pdf);
 
     res.json({ sent: true, email: toEmail });
