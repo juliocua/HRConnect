@@ -279,6 +279,7 @@ export default function Attendance() {
       {showModal && (
         <AttendanceModal
           employees={employees}
+          clients={clients}
           defaultDate={startDate}
           initial={editTarget}
           onClose={() => setShowModal(false)}
@@ -298,8 +299,9 @@ function computeLocalOT(timeOut: string): number {
   return Math.max(0, parseFloat((outDecimal - 17.0).toFixed(2)));
 }
 
-function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: {
+function AttendanceModal({ employees, clients, defaultDate, initial, onClose, onSaved }: {
   employees: Employee[];
+  clients: Client[];
   defaultDate: string;
   initial: AttendanceRecord | null;
   onClose: () => void;
@@ -417,12 +419,25 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
             </div>
             <div className="form-group">
               <label>Branch</label>
-              <input
-                className="form-control"
-                disabled
-                value={selectedEmployee?.branch?.name ?? (selectedEmployee?.branchId ? selectedEmployee.branchId : 'Unassigned')}
-                style={{ background: 'var(--color-bg-muted, #f5f5f5)', color: 'var(--color-text-muted)' }}
-              />
+              {(() => {
+                const clientBranches = clients.find(c => c.id === selectedEmployee?.clientId)?.branches ?? [];
+                return (
+                  <select
+                    className="form-control"
+                    value={form.branchId ?? ''}
+                    onChange={e => set('branchId', e.target.value || null)}
+                  >
+                    <option value="">— No specific branch —</option>
+                    {clientBranches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                    {/* If the employee's branch isn't in the client's list (edge case), still show it */}
+                    {form.branchId && !clientBranches.find(b => b.id === form.branchId) && selectedEmployee?.branch && (
+                      <option value={form.branchId}>{selectedEmployee.branch.name}</option>
+                    )}
+                  </select>
+                );
+              })()}
             </div>
             <div className="form-group">
               <label>Notes</label>
