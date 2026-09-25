@@ -132,6 +132,98 @@ async function getCompanySettings() {
   }
 }
 
+// ── Night differential helper (shared) ───────────────────────────────────────
+function computeNdHours(rec: { clockInAt?: any; clockOutAt?: any; timeIn?: any; timeOut?: any }): number {
+  const rawIn  = rec.clockInAt ?? rec.timeIn;
+  const rawOut = rec.clockOutAt ?? rec.timeOut;
+  if (!rawIn || !rawOut) return 0;
+  const cin  = new Date(rawIn).getTime();
+  const cout = new Date(rawOut).getTime();
+  if (cout <= cin) return 0;
+  const PH_OFFSET_MS = 8 * 3600000;
+  const t   = Math.floor((cin + PH_OFFSET_MS) / 86400000) * 86400000 - PH_OFFSET_MS;
+  const ovA = Math.max(0, Math.min(cout, t + 24 * 3600000) - Math.max(cin, t + 22 * 3600000));
+  const ovB = Math.max(0, Math.min(cout, t + 29 * 3600000) - Math.max(cin, t + 24 * 3600000));
+  return Math.round(((ovA + ovB) / 3600000) * 100) / 100;
+}
+
+// ── Compute attendance-based grossBill (same formula as Excel export) ─────────
+// Used at billing generate time and on Excel download so both are always in sync.
+async function computeBillingGrossBill(
+  employees: Array<{ id: string; basicSalary: number | null; dailyRate?: number | null; useDailyRate?: boolean | null }>,
+  periodStart: Date,
+  periodEnd: Date,
+  otRate: number,
+): Promise<number> {
+  const empIds = employees.map((e: any) => e.id);
+  if (!empIds.length) return 0;
+
+  const attRecs = await prisma.attendance.findMany({
+    where: { employeeId: { in: empIds }, date: { gte: periodStart, lte: periodEnd } },
+    select: {
+      employeeId: true, status: true, overtimeHrs: true, lateMinutes: true,
+      clockInAt: true, clockOutAt: true, timeIn: true, timeOut: true, branchId: true,
+    },
+  });
+
+  // Key by "employeeId::branchId" — one entry per employee per branch
+  const sMap = new Map<string, { daysWorked: number; lateMinutes: number; otHours: number; ndHours: number }>();
+  for (const rec of attRecs) {
+    const bId = (rec as any).branchId ?? 'unassigned';
+    const key = `${rec.employeeId}::${bId}`;
+    const s   = sMap.get(key) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0 };
+    if (rec.status === 'PRESENT' || rec.status === 'LATE') s.daysWorked += 1;
+    else if (rec.status === 'HALF_DAY') s.daysWorked += 0.5;
+    s.lateMinutes += (rec as any).lateMinutes ?? 0;
+    s.otHours     += (rec as any).overtimeHrs ?? 0;
+    s.ndHours     += computeNdHours(rec as any);
+    sMap.set(key, s);
+  }
+
+  const empLookup = new Map(employees.map((e: any) => [e.id, e]));
+
+  // Total earned basicPay per employee across ALL branches — basis for govt mandated benefits
+  const empTotalBP = new Map<string, number>();
+  for (const [key, s] of sMap) {
+    const [empId] = key.split('::');
+    const emp = empLookup.get(empId);
+    if (!emp) continue;
+    const bs = emp.basicSalary ?? 0;
+    const dr = emp.useDailyRate && emp.dailyRate ? emp.dailyRate : bs / 22;
+    empTotalBP.set(empId, (empTotalBP.get(empId) ?? 0) + Math.round(s.daysWorked * dr * 100) / 100);
+  }
+
+  // Govt benefits appear only once per employee (on first branch row)
+  const seenEmpIds = new Set<string>();
+  let total = 0;
+
+  for (const [key, s] of sMap) {
+    const [empId] = key.split('::');
+    const emp = empLookup.get(empId);
+    if (!emp) continue;
+    const bs    = emp.basicSalary ?? 0;
+    const dr    = emp.useDailyRate && emp.dailyRate ? emp.dailyRate : bs / 22;
+    const hr    = dr / 8;
+    const bp    = Math.round(s.daysWorked * 8 * hr * 100) / 100;
+    const otAmt = Math.round(s.otHours * hr * otRate * 100) / 100;
+    const ndAmt = Math.round(s.ndHours * hr * 1.1 * 100) / 100;
+    const gbe   = Math.round((bp + otAmt + ndAmt) * 100) / 100;
+    const th13  = Math.round(bp / 12 * 100) / 100;
+
+    const isFirst   = !seenEmpIds.has(empId);
+    seenEmpIds.add(empId);
+    const govtBasis = empTotalBP.get(empId) ?? bs;
+    const sss       = isFirst ? computeSSS(govtBasis) : 0;
+    const ec        = isFirst ? 15 : 0;
+    const ph        = isFirst ? computePhilHealth(govtBasis) : 0;
+    const hdmf      = isFirst ? computePagIBIG(govtBasis) : 0;
+
+    total += Math.round((gbe + th13 + sss + ec + ph + hdmf) * 100) / 100;
+  }
+
+  return Math.round(total * 100) / 100;
+}
+
 // ── Shared includes ───────────────────────────────────────────────────────────
 
 const invoiceInclude = {
@@ -278,7 +370,7 @@ router.post(
           include: {
             employees: {
               where: { status: { in: ['ACTIVE', 'ON_LEAVE'] } },
-              select: { id: true, firstName: true, lastName: true, resourceCost: true, basicSalary: true },
+              select: { id: true, firstName: true, lastName: true, resourceCost: true, basicSalary: true, dailyRate: true, useDailyRate: true },
             },
           },
         });
@@ -340,6 +432,32 @@ router.post(
           });
           billing.paymentLinkId = link.id;
           billing.paymentLinkUrl = link.url;
+        }
+
+        // Compute and persist attendance-based grossBill immediately at generation time
+        // This ensures the billing list and PDF show a correct amount before anyone downloads Excel.
+        try {
+          const gbPeriodEnd   = new Date(date);
+          const gbPeriodStart = new Date(date);
+          gbPeriodStart.setDate(gbPeriodStart.getDate() - 30);
+          const csForBilling  = await getCompanySettings();
+          const otRate        = (csForBilling as any)?.overtimeRate ?? 1.25;
+          const computedGross = await computeBillingGrossBill(
+            client.employees,
+            gbPeriodStart,
+            gbPeriodEnd,
+            otRate,
+          );
+          if (computedGross > 0) {
+            await prisma.billing.update({
+              where: { id: billing.id },
+              data: { grossBill: computedGross },
+            });
+            (billing as any).grossBill = computedGross;
+          }
+        } catch (gbErr) {
+          // Non-fatal — billing record is already created; grossBill will be set on first Excel download
+          console.error(`computeBillingGrossBill failed for billing ${billing.id}:`, gbErr);
         }
 
         // Auto-send invoice email if client has a contact email
@@ -824,6 +942,20 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
       branchMap.get(branchName)!.push({ emp, statsKey: key });
     }
 
+    // Pre-compute each employee's total earned basicPay across ALL branches —
+    // this is the basis for govt mandated benefit calculations (SSS, EC, PhilHealth, HDMF).
+    const empTotalBasicPay = new Map<string, number>();
+    for (const [key, s] of statsMap) {
+      const [empId] = key.split('::');
+      const emp2 = xlsxEmpLookup.get(empId);
+      if (!emp2) continue;
+      const dr2 = emp2.useDailyRate && emp2.dailyRate ? emp2.dailyRate : emp2.basicSalary / 22;
+      empTotalBasicPay.set(empId, (empTotalBasicPay.get(empId) ?? 0) + Math.round(s.daysWorked * dr2 * 100) / 100);
+    }
+    // Track first occurrence per employee so govt benefits appear only ONCE per employee
+    // (subsequent branch rows for the same employee get blank cells).
+    const seenEmpIds = new Set<string>();
+
     for (const [branchName, entries] of branchMap) {
       // Branch header row
       const branchRow = billingSheet.addRow([branchName]);
@@ -841,10 +973,14 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
         const ndAmt = Math.round(s.ndHours * hourlyRate * 1.1 * 100) / 100;
         const grossBillEmp = Math.round((basicPay + otAmt + ndAmt) * 100) / 100;
         const thirteenth = Math.round(basicPay / 12 * 100) / 100;
-        const sss = computeSSS(emp.basicSalary);
-        const ec = 15;
-        const philhealth = computePhilHealth(emp.basicSalary);
-        const hdmf = computePagIBIG(emp.basicSalary);
+        // Govt mandated benefits: only on FIRST branch occurrence per employee
+        const isFirstOccurrence = !seenEmpIds.has(emp.id);
+        seenEmpIds.add(emp.id);
+        const govtBasis  = empTotalBasicPay.get(emp.id) ?? emp.basicSalary;
+        const sss        = isFirstOccurrence ? computeSSS(govtBasis) : 0;
+        const ec         = isFirstOccurrence ? 15 : 0;
+        const philhealth = isFirstOccurrence ? computePhilHealth(govtBasis) : 0;
+        const hdmf       = isFirstOccurrence ? computePagIBIG(govtBasis) : 0;
         const netBillEmp = Math.round((grossBillEmp + thirteenth + sss + ec + philhealth + hdmf) * 100) / 100;
         computedGrossBill += netBillEmp;
         billingSheet.addRow({
@@ -864,10 +1000,10 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
           ndAmt: ndAmt.toFixed(2),
           grossBill: grossBillEmp.toFixed(2),
           thirteenth: thirteenth.toFixed(2),
-          sss: sss.toFixed(2),
-          ec: ec.toFixed(2),
-          philhealth: philhealth.toFixed(2),
-          hdmf: hdmf.toFixed(2),
+          sss:        isFirstOccurrence ? sss.toFixed(2) : '',
+          ec:         isFirstOccurrence ? ec.toFixed(2) : '',
+          philhealth: isFirstOccurrence ? philhealth.toFixed(2) : '',
+          hdmf:       isFirstOccurrence ? hdmf.toFixed(2) : '',
           netBill: netBillEmp.toFixed(2),
         });
       }
@@ -887,7 +1023,7 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
     ];
     styleHeader(soaSheet.getRow(1));
 
-    const grossBill = billing.grossBill ?? billing.amount;
+    const grossBill = computedGrossBill;  // use the freshly-computed value, not the stale billing object
     const vatAmount = billing.vatAmount ?? 0;
     const ewtAmount = billing.ewtAmount ?? 0;
     const netBill = billing.totalNetBill ?? billing.amount;
