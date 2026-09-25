@@ -93,6 +93,7 @@ const EmployeeSchema = z.object({
   resourceCost: z.number().nonnegative().optional().nullable(),
   payrollCost: z.number().nonnegative().optional().nullable(),
   clientId: z.string().optional().nullable(),
+  branchId: z.string().optional().nullable(),
   address: z.string().optional().nullable(),
   emergencyContactName: z.string().optional().nullable(),
   emergencyContactPhone: z.string().optional().nullable(),
@@ -123,6 +124,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
         manager: { select: { firstName: true, lastName: true } },
         user: { select: { id: true, email: true, role: true, isActive: true } },
         client: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true } },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });
@@ -410,6 +412,8 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
         manager: { select: { id: true, firstName: true, lastName: true, position: true } },
         subordinates: { select: { id: true, firstName: true, lastName: true, position: true } },
         user: { select: { id: true, email: true, role: true, isActive: true } },
+        client: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true } },
       },
     });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
@@ -527,6 +531,8 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
       include: {
         department: true,
         user: { select: { id: true, email: true, role: true, isActive: true } },
+        client: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true } },
       },
     });
 

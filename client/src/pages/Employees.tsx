@@ -1944,6 +1944,13 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
           {activeTab === 'Organization' && (
             <>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                Deployment
+              </div>
+              <InfoRow label="Deployed To" value={e.client?.name ?? '— Not deployed —'} />
+              {e.client && (
+                <InfoRow label="Branch" value={(e as any).branch?.name ?? '— No specific branch —'} />
+              )}
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '16px 0 8px' }}>
                 Manager
               </div>
               {e.manager ? (
