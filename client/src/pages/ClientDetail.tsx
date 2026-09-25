@@ -1230,3 +1230,43 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+function BranchModal({ branch, onClose, onSave, isPending }: {
+  branch: { id: string; name: string; address?: string | null } | null;
+  onClose: () => void;
+  onSave: (data: { name: string; address?: string }) => void;
+  isPending: boolean;
+}) {
+  const [name, setName] = useState(branch?.name ?? '');
+  const [address, setAddress] = useState(branch?.address ?? '');
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 420 }}>
+        <div className="modal-header">
+          <h2 className="modal-title">{branch ? 'Edit Branch' : 'Add Branch'}</h2>
+          <button className="icon-btn" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div className="form-group">
+            <label>Branch Name *</label>
+            <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Makati Office" />
+          </div>
+          <div className="form-group" style={{ marginTop: 12 }}>
+            <label>Address</label>
+            <input className="form-control" value={address} onChange={e => setAddress(e.target.value)} placeholder="Optional" />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            disabled={!name.trim() || isPending}
+            onClick={() => onSave({ name: name.trim(), address: address.trim() || undefined })}
+          >
+            {isPending ? 'Saving…' : branch ? 'Save Changes' : 'Add Branch'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
