@@ -827,7 +827,17 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
 
       // OT hours are taken directly from attendance.overtimeHrs (HR-set or auto-computed from clock-out)
 
-      // ── 50/50 govt deduction split — fetch per-client settings ────────────
+      // ── 50/50 govt deduction split — fetch global + per-client settings ─────
+      const globalPolicies = await (prisma as any).globalPayrollPolicy.findMany({
+        where: { type: { in: ['SSS_DEDUCTION', 'PHIC_DEDUCTION', 'HDMF_DEDUCTION'] } },
+        select: { type: true, splitHalf: true },
+      });
+      const globalSplit = {
+        sss: globalPolicies.find((p: any) => p.type === 'SSS_DEDUCTION')?.splitHalf ?? false,
+        phic: globalPolicies.find((p: any) => p.type === 'PHIC_DEDUCTION')?.splitHalf ?? false,
+        hdmf: globalPolicies.find((p: any) => p.type === 'HDMF_DEDUCTION')?.splitHalf ?? false,
+      };
+
       const uniqueClientIds = [...new Set(employees.map((e: any) => e.clientId).filter(Boolean))];
       const deductionPols = uniqueClientIds.length > 0
         ? await prisma.clientPolicy.findMany({
@@ -891,7 +901,8 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           const lateDeduction = Math.round((totals.minutesLate / 480) * dailyEquiv * 100) / 100;
 
           // Statutory contributions — optionally split 50/50 across semi-monthly cutoffs
-          const clientSplit = clientSplitMap.get(emp.clientId) ?? { sss: false, phic: false, hdmf: false };
+          // Per-client override takes priority; falls back to global splitHalf setting
+          const clientSplit = clientSplitMap.get(emp.clientId) ?? globalSplit;
           const sssContrib = Math.round(computeSSS(emp.basicSalary) * (clientSplit.sss && isSemiMonthly ? 0.5 : 1));
           const philhealthContrib = Math.round(computePhilHealth(emp.basicSalary) * (clientSplit.phic && isSemiMonthly ? 0.5 : 1));
           const pagibigContrib = Math.round(computePagIBIG(emp.basicSalary) * (clientSplit.hdmf && isSemiMonthly ? 0.5 : 1));

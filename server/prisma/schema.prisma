@@ -604,12 +604,13 @@ model CutOffPeriod {
 }
 
 model GlobalPayrollPolicy {
-  id              String       @id @default(cuid())
-  type            String       @unique
+  id              String        @id @default(cuid())
+  type            String        @unique
   cutOffPeriodId  String?
+  splitHalf       Boolean       @default(false)
   cutOffPeriod    CutOffPeriod? @relation(fields: [cutOffPeriodId], references: [id])
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@map("global_payroll_policies")
 }

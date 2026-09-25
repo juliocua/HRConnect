@@ -419,6 +419,7 @@ const AttendanceSchema = z.object({
   status: z.enum(['PRESENT', 'LATE', 'ABSENT', 'HALF_DAY', 'ON_LEAVE', 'HOLIDAY', 'WEEKEND']),
   overtimeHrs: z.number().optional(),
   notes: z.string().optional(),
+  branchId: z.string().nullable().optional(),
 });
 
 /** Convert a "YYYY-MM-DD" date string + "HH:MM" time string to a Date (PST = UTC+8). */
@@ -500,6 +501,7 @@ function buildAttendanceData(body: z.infer<typeof AttendanceSchema>) {
     status: body.status,
     overtimeHrs: body.overtimeHrs,
     notes: body.notes ?? '',
+    ...(body.branchId !== undefined ? { branchId: body.branchId } : {}),
     ...(timeIn ? { timeIn, clockInAt: timeIn } : {}),
     ...(timeOut ? { timeOut, clockOutAt: timeOut } : {}),
   };

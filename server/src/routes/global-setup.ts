@@ -118,6 +118,7 @@ router.put('/payroll-policies', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
     const schema = z.object({
       type: z.enum(POLICY_TYPES),
       cutOffPeriodId: z.string().nullable().optional(),
+      splitHalf: z.boolean().optional(),
     });
     const payload = schema.parse(req.body);
 
@@ -125,10 +126,12 @@ router.put('/payroll-policies', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
       where: { type: payload.type },
       create: {
         type: payload.type,
-        cutOffPeriodId: payload.cutOffPeriodId ?? null,
+        cutOffPeriodId: payload.splitHalf ? null : (payload.cutOffPeriodId ?? null),
+        splitHalf: payload.splitHalf ?? false,
       },
       update: {
-        cutOffPeriodId: payload.cutOffPeriodId ?? null,
+        cutOffPeriodId: payload.splitHalf ? null : (payload.cutOffPeriodId ?? null),
+        splitHalf: payload.splitHalf ?? false,
       },
       include: { cutOffPeriod: true },
     });

@@ -157,6 +157,8 @@ export interface AttendanceRecord {
   manualReason?: string;
   clockInAt?: string;
   clockOutAt?: string;
+  branchId?: string | null;
+  branch?: { id: string; name: string } | null;
 }
 
 export type AttendanceEditRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -280,6 +282,7 @@ export interface GlobalPayrollPolicy {
   id: string;
   type: GlobalPolicyType;
   cutOffPeriodId: string | null;
+  splitHalf: boolean;
   cutOffPeriod: CutOffPeriod | null;
   createdAt: string;
   updatedAt: string;

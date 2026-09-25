@@ -307,6 +307,7 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
 }) {
   const toast = useToast();
   const isEdit = !!initial;
+  const initialEmployee = employees.find(e => e.id === (initial?.employeeId ?? ''));
   const [form, setForm] = useState({
     employeeId: initial?.employeeId ?? '',
     date: toDateInput(initial?.date, defaultDate),
@@ -315,7 +316,9 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
     timeOut: toTimeInput(initial?.timeOut, '17:00'),
     overtimeHrs: initial?.overtimeHrs ?? 0,
     notes: initial?.notes ?? '',
+    branchId: initial?.branchId ?? initialEmployee?.branchId ?? null as string | null,
   });
+  const selectedEmployee = employees.find(e => e.id === form.employeeId);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
@@ -360,7 +363,10 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
                 : <EmployeeCombobox
                     employees={employees}
                     value={form.employeeId}
-                    onChange={v => set('employeeId', v)}
+                    onChange={v => {
+                      const emp = employees.find(e => e.id === v);
+                      setForm(f => ({ ...f, employeeId: v, branchId: emp?.branchId ?? null }));
+                    }}
                     placeholder="Select employee…"
                     required
                   />
@@ -408,6 +414,15 @@ function AttendanceModal({ employees, defaultDate, initial, onClose, onSaved }: 
                 </span>
               </label>
               <input type="text" inputMode="decimal" className="form-control" placeholder="0" value={form.overtimeHrs} onChange={e => set('overtimeHrs', parseFloat(e.target.value) || 0)} />
+            </div>
+            <div className="form-group">
+              <label>Branch</label>
+              <input
+                className="form-control"
+                disabled
+                value={selectedEmployee?.branch?.name ?? (selectedEmployee?.branchId ? selectedEmployee.branchId : 'Unassigned')}
+                style={{ background: 'var(--color-bg-muted, #f5f5f5)', color: 'var(--color-text-muted)' }}
+              />
             </div>
             <div className="form-group">
               <label>Notes</label>

@@ -450,9 +450,14 @@ function PayrollSetupContent() {
     }
   }
 
-  async function handlePolicyChange(type: string, cutOffPeriodId: string | null) {
+  async function handlePolicyChange(type: string, value: string) {
     try {
-      await api.put('/global-setup/payroll-policies', { type, cutOffPeriodId });
+      const splitHalf = value === '__split50__';
+      await api.put('/global-setup/payroll-policies', {
+        type,
+        cutOffPeriodId: splitHalf ? null : (value || null),
+        splitHalf,
+      });
       qc.invalidateQueries({ queryKey: ['global-payroll-policies'] });
       toast('success', 'Policy updated');
     } catch {
@@ -460,8 +465,12 @@ function PayrollSetupContent() {
     }
   }
 
-  const getPolicyPeriodId = (type: string) =>
-    policies.find((p: GlobalPayrollPolicy) => p.type === type)?.cutOffPeriodId ?? '';
+  const getPolicyValue = (type: string) => {
+    const policy = policies.find((p: GlobalPayrollPolicy) => p.type === type);
+    if (!policy) return '';
+    if ((policy as GlobalPayrollPolicy).splitHalf) return '__split50__';
+    return policy.cutOffPeriodId ?? '';
+  };
 
   const setField = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }));
 
@@ -527,10 +536,11 @@ function PayrollSetupContent() {
               <label className="form-label">{label}</label>
               <select
                 className="form-control"
-                value={getPolicyPeriodId(type)}
-                onChange={e => handlePolicyChange(type, e.target.value || null)}
+                value={getPolicyValue(type)}
+                onChange={e => handlePolicyChange(type, e.target.value)}
               >
                 <option value="">— No override —</option>
+                <option value="__split50__">50/50 Split (both cut-offs)</option>
                 {periods.filter(p => p.isActive).map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
