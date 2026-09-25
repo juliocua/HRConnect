@@ -185,32 +185,32 @@ export default function Holidays() {
               <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
             </div>
             <form onSubmit={handleSubmit}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div>
-                  <label className="form-label">Date</label>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label>Date</label>
                   <input
                     type="date"
-                    className="form-input"
+                    className="form-control"
                     value={form.date}
                     onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
                     required
                   />
                 </div>
-                <div>
-                  <label className="form-label">Holiday Name</label>
+                <div className="form-group">
+                  <label>Holiday Name</label>
                   <input
                     type="text"
-                    className="form-input"
+                    className="form-control"
                     placeholder="e.g. New Year's Day"
                     value={form.name}
                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                     required
                   />
                 </div>
-                <div>
-                  <label className="form-label">Type</label>
+                <div className="form-group">
+                  <label>Type</label>
                   <select
-                    className="form-input"
+                    className="form-control"
                     value={form.type}
                     onChange={e => setForm(f => ({ ...f, type: e.target.value as HolidayType }))}
                   >

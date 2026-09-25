@@ -5,6 +5,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { prisma } from '../lib/prisma';
+import { computeSSS, computePhilHealth, computePagIBIG } from '../lib/payroll';
 import { authenticate, requireRole } from '../middleware/authenticate';
 import { generateInvoicePDF } from '../lib/invoice-pdf';
 import { sendInvoiceEmail } from '../lib/email';
@@ -759,18 +760,27 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
     // ── Tab 1: Billing (grouped by branch) ────────────────────────────────────
     const billingSheet = wb.addWorksheet('Billing');
     billingSheet.columns = [
-      { header: 'Employee No', key: 'empNo', width: 14 },
-      { header: 'Name', key: 'name', width: 24 },
+      { header: 'Employee Name', key: 'name', width: 26 },
       { header: 'Position', key: 'position', width: 20 },
       { header: 'Branch', key: 'branch', width: 18 },
       { header: 'Daily Rate', key: 'dailyRate', width: 12 },
-      { header: 'Days Worked', key: 'daysWorked', width: 12 },
-      { header: 'Basic Pay', key: 'basicPay', width: 14 },
-      { header: 'OT Hours', key: 'otHours', width: 10 },
-      { header: 'OT Pay', key: 'otPay', width: 12 },
-      { header: 'Late (min)', key: 'lateMin', width: 10 },
-      { header: 'ND Hours', key: 'ndHours', width: 10 },
-      { header: 'Resource Cost', key: 'resourceCost', width: 14 },
+      { header: 'Hourly Rate', key: 'hourlyRate', width: 12 },
+      { header: 'Total Hours Worked', key: 'totalHours', width: 18 },
+      { header: 'No. of Days Worked', key: 'daysWorked', width: 18 },
+      { header: 'Total Basic Pay', key: 'basicPay', width: 15 },
+      { header: 'Late/Undertime (min)', key: 'lateMin', width: 20 },
+      { header: 'Late/Undertime Amount', key: 'lateAmt', width: 20 },
+      { header: 'Overtime Hours', key: 'otHours', width: 14 },
+      { header: 'Overtime Amount', key: 'otAmt', width: 15 },
+      { header: 'Night Diff Hours', key: 'ndHours', width: 15 },
+      { header: 'Night Diff Amount', key: 'ndAmt', width: 15 },
+      { header: 'Gross Bill', key: 'grossBill', width: 13 },
+      { header: '13th Month', key: 'thirteenth', width: 13 },
+      { header: 'SSS', key: 'sss', width: 11 },
+      { header: 'EC', key: 'ec', width: 8 },
+      { header: 'PhilHealth', key: 'philhealth', width: 12 },
+      { header: 'HDMF', key: 'hdmf', width: 10 },
+      { header: 'Net Bill', key: 'netBill', width: 13 },
     ];
     styleHeader(billingSheet.getRow(1));
 
@@ -792,21 +802,40 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
         const s = statsMap.get(emp.id) ?? { daysWorked: 0, lateMinutes: 0, otHours: 0, ndHours: 0 };
         const dailyRate = emp.useDailyRate && emp.dailyRate ? emp.dailyRate : emp.basicSalary / 22;
         const hourlyRate = dailyRate / 8;
-        const basicPay = Math.round(dailyRate * s.daysWorked * 100) / 100;
-        const otPay = Math.round(s.otHours * hourlyRate * OT_RATE * 100) / 100;
+        const totalHours = s.daysWorked * 8;
+        const basicPay = Math.round(totalHours * hourlyRate * 100) / 100;
+        const lateAmt = Math.round((s.lateMinutes / 60) * hourlyRate * 100) / 100;
+        const otAmt = Math.round(s.otHours * hourlyRate * OT_RATE * 100) / 100;
+        const ndAmt = Math.round(s.ndHours * hourlyRate * 1.1 * 100) / 100;
+        const grossBillEmp = Math.round((basicPay + otAmt + ndAmt) * 100) / 100;
+        const thirteenth = Math.round(basicPay / 12 * 100) / 100;
+        const sss = computeSSS(emp.basicSalary);
+        const ec = 15;
+        const philhealth = computePhilHealth(emp.basicSalary);
+        const hdmf = computePagIBIG(emp.basicSalary);
+        const netBillEmp = Math.round((grossBillEmp + thirteenth + sss + ec + philhealth + hdmf) * 100) / 100;
         billingSheet.addRow({
-          empNo: emp.employeeNo,
           name: `${emp.lastName}, ${emp.firstName}`,
           position: emp.position,
           branch: (emp as any).branch?.name ?? '',
           dailyRate: dailyRate.toFixed(2),
+          hourlyRate: hourlyRate.toFixed(4),
+          totalHours: totalHours.toFixed(1),
           daysWorked: s.daysWorked,
           basicPay: basicPay.toFixed(2),
-          otHours: s.otHours.toFixed(2),
-          otPay: otPay.toFixed(2),
           lateMin: s.lateMinutes.toFixed(0),
+          lateAmt: lateAmt.toFixed(2),
+          otHours: s.otHours.toFixed(2),
+          otAmt: otAmt.toFixed(2),
           ndHours: s.ndHours.toFixed(2),
-          resourceCost: (emp.resourceCost ?? 0).toFixed(2),
+          ndAmt: ndAmt.toFixed(2),
+          grossBill: grossBillEmp.toFixed(2),
+          thirteenth: thirteenth.toFixed(2),
+          sss: sss.toFixed(2),
+          ec: ec.toFixed(2),
+          philhealth: philhealth.toFixed(2),
+          hdmf: hdmf.toFixed(2),
+          netBill: netBillEmp.toFixed(2),
         });
       }
     }
