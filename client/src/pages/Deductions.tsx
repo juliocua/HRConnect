@@ -202,7 +202,7 @@ export default function Deductions() {
               ) : (
                 <>
                   {/* Summary totals */}
-                  <div style={{ display: 'flex', gap: 16, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', gap: 16, padding: '16px 20px', borderBottom: '1px solid var(--color-border)' }}>
                     {[
                       { label: 'SSS Total', value: statTotals.sss },
                       { label: 'PhilHealth Total', value: statTotals.phic },
@@ -292,35 +292,35 @@ export default function Deductions() {
                               </span>
                             </div>
                             {loan.description && (
-                              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+                              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4 }}>
                                 {loan.description}
                               </div>
                             )}
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>
                               Created {fmtDate(loan.createdAt)}
                             </div>
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Principal</div>
+                            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Principal</div>
                             <div style={{ fontWeight: 700, fontSize: 16 }}>{peso(loan.principal)}</div>
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Balance</div>
-                            <div style={{ fontWeight: 700, fontSize: 16, color: loan.balance > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Balance</div>
+                            <div style={{ fontWeight: 700, fontSize: 16, color: loan.balance > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
                               {peso(loan.balance)}
                             </div>
                           </div>
                         </div>
 
                         {/* Progress bar */}
-                        <div style={{ height: 6, background: 'var(--border)', borderRadius: 3, marginBottom: 12 }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: 'var(--success)', borderRadius: 3, transition: 'width .3s' }} />
+                        <div style={{ height: 6, background: 'var(--color-border)', borderRadius: 3, marginBottom: 12 }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: 'var(--color-success)', borderRadius: 3, transition: 'width .3s' }} />
                         </div>
 
                         {/* Payments ledger */}
                         {loan.payments.length > 0 && (
                           <div style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
                               Payment History
                             </div>
                             <table className="data-table" style={{ fontSize: 12 }}>
@@ -336,7 +336,7 @@ export default function Deductions() {
                                   <tr key={p.id}>
                                     <td>{fmtDate(p.paidAt)}</td>
                                     <td style={{ textAlign: 'right' }}>{peso(p.amount)}</td>
-                                    <td style={{ color: 'var(--text-secondary)' }}>{p.note ?? '—'}</td>
+                                    <td style={{ color: 'var(--color-text-secondary)' }}>{p.note ?? '—'}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -403,7 +403,7 @@ export default function Deductions() {
                             {periodLabel(r.payrollRun.periodStart, r.payrollRun.periodEnd)}
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>{peso(r.otherDeductions)}</td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{r.otherDeductionsNote ?? '—'}</td>
+                          <td style={{ color: 'var(--color-text-secondary)' }}>{r.otherDeductionsNote ?? '—'}</td>
                         </tr>
                       ))}
                     </tbody>

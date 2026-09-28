@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 
-type ImportType = 'client' | 'employee' | 'time';
+type ImportType = 'client' | 'employee' | 'time' | 'dtr';
 
 interface ImportResult {
   total: number;
@@ -62,6 +62,20 @@ const TYPE_META: Record<ImportType, { label: string; icon: string; desc: string;
       { col: 'notes', desc: 'Optional notes' },
     ],
   },
+  dtr: {
+    label: 'DTR (Attendance)', icon: '⏱️', desc: 'Import daily time records via the DTR format. Matches by EmployeeID or EmployeeNo; existing records for the same employee + date are updated.',
+    fields: [
+      { col: 'EmployeeID', desc: 'Employee UUID (preferred for exact matching)' },
+      { col: 'EmployeeNo', desc: 'Employee number (fallback)', required: true },
+      { col: 'Date', desc: 'Attendance date', required: true, values: 'YYYY-MM-DD' },
+      { col: 'Status', desc: 'Attendance status', required: true, values: 'PRESENT, LATE, ABSENT, HALF_DAY, ON_LEAVE, HOLIDAY, WEEKEND' },
+      { col: 'TimeIn', desc: 'Time in (for PRESENT, LATE, HALF_DAY)', values: 'HH:MM (24-hour)' },
+      { col: 'TimeOut', desc: 'Time out (for PRESENT, LATE, HALF_DAY)', values: 'HH:MM (24-hour)' },
+      { col: 'OvertimeHrs', desc: 'Overtime hours (numeric, default 0)' },
+      { col: 'LateMinutes', desc: 'Late minutes (numeric, default 0)' },
+      { col: 'Notes', desc: 'Optional notes' },
+    ],
+  },
 };
 
 export default function BulkImport() {
@@ -83,15 +97,24 @@ export default function BulkImport() {
   const downloadTemplate = async () => {
     if (!type) return;
     try {
-      const res = await api.get(`/import/template/${type}`, { responseType: 'blob' });
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `hrconnect-${type}-template.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      if (type === 'dtr') {
+        const base = ((import.meta.env.VITE_API_URL as string) ?? '').replace(/\/$/, '');
+        const res = await fetch(`${base}/api/attendance/export/template`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'dtr-template.csv';
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+      } else {
+        const res = await api.get(`/import/template/${type}`, { responseType: 'blob' });
+        const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = `hrconnect-${type}-template.csv`;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+      }
     } catch {
       setError('Failed to download template. Please try again.');
     }
@@ -115,16 +138,41 @@ export default function BulkImport() {
     setLoading(true);
     setError(null);
     try {
-      const form = new FormData();
-      form.append('file', file);
-      const res = await api.post(`/import/${type}`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setResult(res.data);
-      setStep(3);
-      toast('success', 'Import complete');
+      if (type === 'dtr') {
+        const base = ((import.meta.env.VITE_API_URL as string) ?? '').replace(/\/$/, '');
+        const fd = new FormData();
+        fd.append('csv', file);
+        const res = await fetch(`${base}/api/attendance/import`, {
+          method: 'POST', credentials: 'include', body: fd,
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? 'Import failed');
+        const upserted: number = json.upserted ?? 0;
+        const skipped: number = json.skipped ?? 0;
+        const errs: string[] = json.errors ?? [];
+        const importResult: ImportResult = {
+          total: upserted + skipped + errs.length,
+          imported: upserted, created: upserted, updated: 0, failed: errs.length,
+          results: [
+            ...Array.from({ length: upserted }, (_, i) => ({ row: i + 1, status: 'ok' as const, action: 'created' as const, name: `Record ${i + 1}` })),
+            ...errs.map((e, i) => ({ row: upserted + i + 1, status: 'error' as const, name: `Row ${upserted + i + 1}`, error: e })),
+          ],
+        };
+        setResult(importResult);
+        setStep(3);
+        toast('success', `${upserted} record${upserted !== 1 ? 's' : ''} imported`);
+      } else {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await api.post(`/import/${type}`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        setResult(res.data);
+        setStep(3);
+        toast('success', 'Import complete');
+      }
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? 'Import failed. Check the file and try again.';
+      const msg = (err instanceof Error ? err.message : null) ?? err?.response?.data?.error ?? 'Import failed. Check the file and try again.';
       setError(msg);
       toast('error', msg);
     } finally {

@@ -101,21 +101,33 @@ export default function Attendance() {
   // DTR helpers
   const base = ((import.meta.env.VITE_API_URL as string) ?? '').replace(/\/$/, '');
 
-  const downloadTemplate = () => {
-    const a = document.createElement('a');
-    a.href = `${base}/api/attendance/export/template`;
-    a.download = 'dtr-template.csv';
-    a.click();
+  const downloadTemplate = async () => {
+    try {
+      const res = await fetch(`${base}/api/attendance/export/template`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Unauthorized');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'dtr-template.csv';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch { toast('error', 'Failed to download template'); }
   };
 
-  const downloadExport = () => {
-    const p = new URLSearchParams({ start: startDate, end: endDate });
-    if (empFilter) p.set('employeeId', empFilter);
-    if (clientFilter) p.set('clientId', clientFilter);
-    const a = document.createElement('a');
-    a.href = `${base}/api/attendance/export?${p}`;
-    a.download = `dtr-${startDate}-to-${endDate}.csv`;
-    a.click();
+  const downloadExport = async () => {
+    try {
+      const p = new URLSearchParams({ start: startDate, end: endDate });
+      if (empFilter) p.set('employeeId', empFilter);
+      if (clientFilter) p.set('clientId', clientFilter);
+      const res = await fetch(`${base}/api/attendance/export?${p}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Unauthorized');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `dtr-${startDate}-to-${endDate}.csv`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch { toast('error', 'Failed to export DTR'); }
   };
 
   const handleImportSubmit = async () => {
@@ -242,9 +254,6 @@ export default function Attendance() {
           <p className="page-desc">Track daily time & attendance records</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost" onClick={downloadTemplate} title="Download blank DTR template">
-            ⬇ Template
-          </button>
           <button className="btn btn-ghost" onClick={downloadExport} title="Export current view as CSV">
             ⬇ Export DTR
           </button>
