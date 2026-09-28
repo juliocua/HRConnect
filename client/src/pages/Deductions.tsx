@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import type { Employee, EmployeeLoan, DeductionRecord, OtherDeductionRecord } from '@/types';
+import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const peso = (v: number) =>
@@ -50,7 +51,6 @@ export default function Deductions() {
 
   const [tab, setTab] = useState<Tab>('statutory');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
-  const [employeeSearch, setEmployeeSearch] = useState('');
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [paymentModal, setPaymentModal] = useState<PaymentFormState | null>(null);
   const [loanForm, setLoanForm] = useState<LoanFormState>({ type: 'CASH_ADVANCE', description: '', principal: '' });
@@ -124,16 +124,6 @@ export default function Deductions() {
   });
 
   // ── Derived ────────────────────────────────────────────────────────────────
-  const filteredEmployees = employees.filter(e => {
-    const q = employeeSearch.toLowerCase();
-    return (
-      `${e.firstName} ${e.lastName}`.toLowerCase().includes(q) ||
-      e.employeeNo.toLowerCase().includes(q)
-    );
-  });
-
-  const selectedEmployee = employees.find(e => e.id === selectedEmployeeId);
-
   const statTotals = statutory.reduce(
     (acc, r) => ({
       sss: acc.sss + r.sssContrib,
@@ -173,35 +163,14 @@ export default function Deductions() {
       </div>
 
       {/* Employee picker */}
-      <div className="card" style={{ marginBottom: 20, padding: '16px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>Select Employee</label>
-          <input
-            className="form-input"
-            style={{ maxWidth: 260 }}
-            placeholder="Search by name or ID…"
-            value={employeeSearch}
-            onChange={e => setEmployeeSearch(e.target.value)}
-          />
-          <select
-            className="form-input"
-            style={{ maxWidth: 320 }}
-            value={selectedEmployeeId}
-            onChange={e => setSelectedEmployeeId(e.target.value)}
-          >
-            <option value="">— choose employee —</option>
-            {filteredEmployees.map(e => (
-              <option key={e.id} value={e.id}>
-                {e.lastName}, {e.firstName} ({e.employeeNo})
-              </option>
-            ))}
-          </select>
-          {selectedEmployee && (
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              {selectedEmployee.position}
-            </span>
-          )}
-        </div>
+      <div style={{ marginBottom: 20, maxWidth: 380 }}>
+        <EmployeeCombobox
+          employees={employees}
+          value={selectedEmployeeId}
+          onChange={setSelectedEmployeeId}
+          placeholder="Select employee…"
+          required
+        />
       </div>
 
       {/* Tabs */}
