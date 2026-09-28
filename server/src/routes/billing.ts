@@ -301,9 +301,13 @@ router.get('/summary', async (_req: Request, res: Response, next: NextFunction) 
 });
 
 // GET /api/billing/clients-due  — clients whose billing cycle hits today or overdue
-router.get('/clients-due', async (_req: Request, res: Response, next: NextFunction) => {
+// Accepts optional ?date=YYYY-MM-DD; defaults to today. Computes expectedGrossBill
+// from actual attendance for the 30-day window ending on the given date.
+router.get('/clients-due', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const today = new Date();
+    // Parse optional date param; default to today
+    const dateParam = typeof req.query.date === 'string' ? req.query.date : null;
+    const today = dateParam ? new Date(dateParam + 'T00:00:00') : new Date();
 
     // Find client IDs that already have a PENDING invoice
     const pendingBillings = await prisma.billing.findMany({
@@ -326,31 +330,19 @@ router.get('/clients-due', async (_req: Request, res: Response, next: NextFuncti
     // Exclude clients that already have a pending invoice
     const billableClients = clients.filter(c => !clientsWithPending.has(c.id));
 
-    // Fetch the most recent grossBill per client (attendance-based from last billing run)
-    const clientIds = billableClients.map(c => c.id);
-    const recentBillings = clientIds.length > 0
-      ? await prisma.billing.findMany({
-          where: { clientId: { in: clientIds }, grossBill: { not: null } },
-          select: { clientId: true, grossBill: true, billingDate: true },
-          orderBy: { billingDate: 'desc' },
-        })
-      : [];
+    // Compute expectedGrossBill from attendance for each client using the billing date
+    const gbPeriodEnd = new Date(today);
+    const gbPeriodStart = new Date(today);
+    gbPeriodStart.setDate(gbPeriodStart.getDate() - 30);
 
-    // Keep only the most recent grossBill per client
-    const lastGrossBillMap = new Map<string, number>();
-    for (const b of recentBillings) {
-      if (!lastGrossBillMap.has(b.clientId) && b.grossBill != null) {
-        lastGrossBillMap.set(b.clientId, b.grossBill);
-      }
-    }
+    const billableClientsWithGross = await Promise.all(
+      billableClients.map(async c => {
+        const expectedGrossBill = await computeBillingGrossBill(c.id, gbPeriodStart, gbPeriodEnd);
+        return { ...c, expectedGrossBill };
+      })
+    );
 
-    // Attach lastGrossBill to each billable client
-    const billableClientsWithGross = billableClients.map(c => ({
-      ...c,
-      lastGrossBill: lastGrossBillMap.get(c.id) ?? null,
-    }));
-
-    // Determine which clients are due for billing today
+    // Determine which clients are due for billing on the selected date
     const due = billableClientsWithGross.filter(c => {
       const day = today.getDate();
       const dow = today.getDay(); // 0 = Sunday

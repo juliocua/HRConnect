@@ -7,7 +7,7 @@ import type { Client, Billing, BillingSummary, BillingCycle } from '@/types';
 
 const CYCLE_LABELS: Record<BillingCycle, string> = {
   WEEKLY: 'Weekly', EVERY_15TH: 'Every 15th',
-  EVERY_30TH: 'Every 30th', MONTHLY: 'Monthly', BI_MONTHLY: 'Bi-Monthly',
+  EVERY_30TH: 'Every 30th', MONTHLY: 'Monthly',
 };
 
 export default function ClientBilling() {
@@ -40,8 +40,8 @@ export default function ClientBilling() {
     due: Client[];
     all: Client[];
   }>({
-    queryKey: ['billing-clients-due'],
-    queryFn: () => api.get('/billing/clients-due').then(r => r.data),
+    queryKey: ['billing-clients-due', billingDate],
+    queryFn: () => api.get(`/billing/clients-due?date=${billingDate}`).then(r => r.data),
   });
 
   const { data: allBillings = [], isLoading: billingsLoading } = useQuery<(Billing & { client: { id: string; name: string } })[]>({
@@ -158,10 +158,10 @@ export default function ClientBilling() {
 
   const selectAll = () => setSelected(new Set(displayClients.map(c => c.id)));
 
-  // Use attendance-based grossBill from last billing run when available;
-  // fall back to resourceCost sum only if no prior billing exists.
+  // Use attendance-based expectedGrossBill computed from the selected billing date;
+  // fall back to resourceCost sum only if attendance yields zero.
   const clientAmount = (c: any) => {
-    if (c.lastGrossBill != null) return c.lastGrossBill as number;
+    if ((c.expectedGrossBill ?? 0) > 0) return c.expectedGrossBill as number;
     return (c.employees ?? []).reduce((sum: number, e: any) => sum + (e.resourceCost ?? 0), 0);
   };
 
@@ -292,9 +292,17 @@ export default function ClientBilling() {
                   : 'No clients due today by schedule'}
               </div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowAll(v => !v)}>
-              {showAll ? 'Show Due Only' : `Show All (${allClients.length})`}
-            </button>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Refresh client amounts"
+                onClick={() => qc.invalidateQueries({ queryKey: ['billing-clients-due', billingDate] })}
+                style={{ fontSize: 16, lineHeight: 1, padding: '4px 8px' }}
+              >↻</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowAll(v => !v)}>
+                {showAll ? 'Show Due Only' : `Show All (${allClients.length})`}
+              </button>
+            </div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
@@ -368,16 +376,15 @@ export default function ClientBilling() {
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        {amount > 0 ? (
-                          <>
-                            <span style={{ fontWeight: 700, fontSize: 14 }}>{formatPHP(amount)}</span>
-                            <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 1 }}>
-                              {(c as any).lastGrossBill != null ? 'last billing' : 'est. resource cost'}
-                            </div>
-                          </>
-                        ) : (
-                          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>No rate set</span>
-                        )}
+                        {amount > 0
+                          ? <>
+                              <span style={{ fontWeight: 700, fontSize: 14 }}>{formatPHP(amount)}</span>
+                              <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 1 }}>
+                                {(c as any).expectedGrossBill > 0 ? 'expected gross bill' : 'est. resource cost'}
+                              </div>
+                            </>
+                          : <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>No rate set</span>
+                        }
                       </div>
                     </label>
                   );
@@ -518,7 +525,6 @@ export default function ClientBilling() {
               <table className="data-table" style={{ minWidth: '100%' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: 32, padding: '8px 4px' }}></th>
                     <th>Billing Date</th>
                     <th>Invoice #</th>
                     <th>Amount</th>
@@ -540,7 +546,7 @@ export default function ClientBilling() {
                           <td style={{ padding: '8px 4px', textAlign: 'center' }}>
                             <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{isCollapsed ? '▶' : '▼'}</span>
                           </td>
-                          <td colSpan={5} style={{ fontWeight: 700, fontSize: 13 }}>
+                          <td colSpan={4} style={{ fontWeight: 700, fontSize: 13 }}>
                             {clientName}
                             <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 10 }}>
                               {billings.length} invoice{billings.length !== 1 ? 's' : ''} · {formatPHP(groupTotal)}
@@ -552,7 +558,6 @@ export default function ClientBilling() {
                           return (
                             <React.Fragment key={b.id}>
                               <tr>
-                                <td style={{ width: 32 }}></td>
                                 <td style={{ fontWeight: 600 }}>{fmtDate(b.billingDate)}</td>
                                 <td style={{ fontFamily: 'monospace', fontSize: 12 }}>#{b.id.slice(-8).toUpperCase()}</td>
                                 <td style={{ fontWeight: 700 }}>{formatPHP((b as any).grossBill ?? b.amount)}</td>
