@@ -28,11 +28,11 @@ const NAV_ITEMS: Array<{
   {
     section: 'Finance',
     links: [
-      { to: '/payroll',  label: 'Payroll',         icon: IconPayroll,  module: 'payroll'  },
-      { to: '/holidays', label: 'Holiday Calendar', icon: IconHoliday,  module: 'payroll'  },
-      { to: '/expenses', label: 'Expenses',         icon: IconExpenses, module: 'expenses' },
-      { to: '/billing',  label: 'Client Billing',  icon: IconBilling,  module: 'billing', clientsOnly: true },
-      { to: '/bir',      label: 'BIR Reports',     icon: IconBIR,      module: 'bir'      },
+      { to: '/payroll',     label: 'Payroll',          icon: IconPayroll,     module: 'payroll'  },
+      { to: '/deductions',  label: 'Deductions',       icon: IconDeductions,  module: 'payroll'  },
+      { to: '/expenses',    label: 'Expenses',          icon: IconExpenses,    module: 'expenses' },
+      { to: '/billing',     label: 'Client Billing',   icon: IconBilling,     module: 'billing', clientsOnly: true },
+      { to: '/bir',         label: 'BIR Reports',      icon: IconBIR,         module: 'bir'      },
     ],
   },
   {
@@ -50,8 +50,9 @@ const NAV_ITEMS: Array<{
   {
     section: 'Tools',
     links: [
-      { to: '/import',       label: 'Bulk Import',     icon: IconImport,     module: 'import'     },
-      { to: '/global-setup', label: 'Global Setup',    icon: IconLeaveSetup, module: 'leaveSetup' },
+      { to: '/import',       label: 'Bulk Import',       icon: IconImport,     module: 'import'     },
+      { to: '/holidays',     label: 'Holiday Calendar', icon: IconHoliday,    module: 'payroll'    },
+      { to: '/global-setup', label: 'Global Setup',     icon: IconLeaveSetup, module: 'leaveSetup' },
     ],
   },
 ];
@@ -272,6 +273,17 @@ function IconSettings() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3"/>
       <path d="M19.07 4.93l-1.41 1.41M4.93 19.07l-1.41 1.41M19.07 19.07l-1.41-1.41M4.93 4.93l-1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2"/>
+    </svg>
+  );
+}
+
+function IconDeductions() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+      <line x1="12" y1="8" x2="12" y2="16"/>
+      <line x1="8" y1="12" x2="16" y2="12"/>
+      <line x1="8" y1="8" x2="16" y2="16"/>
     </svg>
   );
 }

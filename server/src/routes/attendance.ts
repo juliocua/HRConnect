@@ -593,6 +593,210 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
+// ── DTR CSV export ────────────────────────────────────────────────────────────
+// GET /api/attendance/export?start=YYYY-MM-DD&end=YYYY-MM-DD&clientId=
+router.get('/export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { start, end, clientId, employeeId } = req.query as Record<string, string>;
+    if (!start || !end) return res.status(400).json({ error: 'start and end dates are required' });
+
+    const startDate = new Date(start + 'T00:00:00');
+    const endDate   = new Date(end   + 'T23:59:59');
+
+    const where: Record<string, unknown> = { date: { gte: startDate, lte: endDate } };
+    if (employeeId) where.employeeId = employeeId;
+    if (clientId) where.employee = { clientId };
+
+    const records = await prisma.attendance.findMany({
+      where: where as any,
+      orderBy: [{ date: 'asc' }, { employee: { lastName: 'asc' } }],
+      include: {
+        employee: {
+          select: {
+            id: true, employeeNo: true, firstName: true, lastName: true,
+            client: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    const fmt = (dt: Date | null | undefined) =>
+      dt ? dt.toISOString().slice(11, 16) : '';
+
+    const header = 'EmployeeID,EmployeeNo,LastName,FirstName,Client,Date,Status,TimeIn,TimeOut,OvertimeHrs,LateMinutes,Notes';
+    const rows = records.map(r =>
+      [
+        r.employee.id,
+        r.employee.employeeNo,
+        r.employee.lastName,
+        r.employee.firstName,
+        r.employee.client?.name ?? '',
+        r.date.toISOString().slice(0, 10),
+        r.status,
+        fmt(r.timeIn),
+        fmt(r.timeOut),
+        r.overtimeHrs ?? 0,
+        r.lateMinutes ?? 0,
+        (r.notes ?? '').replace(/,/g, ';'),
+      ].join(',')
+    );
+
+    const csv = [header, ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="dtr-${start}-to-${end}.csv"`);
+    res.send(csv);
+  } catch (err) { next(err); }
+});
+
+// ── DTR CSV template download ─────────────────────────────────────────────────
+// GET /api/attendance/export/template
+router.get('/export/template', (_req: Request, res: Response) => {
+  const header = 'EmployeeID,EmployeeNo,LastName,FirstName,Client,Date,Status,TimeIn,TimeOut,OvertimeHrs,LateMinutes,Notes';
+  const example = ',EMP-001,Dela Cruz,Juan,Acme Corp,2026-09-01,PRESENT,08:00,17:00,0,0,';
+  const csv = [header, example].join('\n');
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="dtr-template.csv"');
+  res.send(csv);
+});
+
+// ── DTR CSV import ────────────────────────────────────────────────────────────
+// POST /api/attendance/import  — multipart: file field "csv"
+const csvUploadStorage = multer.memoryStorage();
+const csvUpload = multer({
+  storage: csvUploadStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) cb(null, true);
+    else cb(new Error('Only CSV files are allowed'));
+  },
+});
+
+const VALID_STATUSES = ['PRESENT','LATE','ABSENT','HALF_DAY','ON_LEAVE','HOLIDAY','WEEKEND'] as const;
+
+router.post('/import', csvUpload.single('csv'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No CSV file uploaded' });
+
+    const text = req.file.buffer.toString('utf-8');
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) return res.status(400).json({ error: 'CSV has no data rows' });
+
+    // Parse header (case-insensitive)
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const col = (name: string) => headers.indexOf(name);
+
+    const idxEmpId     = col('employeeid');
+    const idxEmpNo     = col('employeeno');
+    const idxDate      = col('date');
+    const idxStatus    = col('status');
+    const idxTimeIn    = col('timein');
+    const idxTimeOut   = col('timeout');
+    const idxOTHrs     = col('overtimehrs');
+    const idxLate      = col('lateminutes');
+    const idxNotes     = col('notes');
+
+    if (idxDate < 0 || idxStatus < 0) {
+      return res.status(400).json({ error: 'CSV must have Date and Status columns' });
+    }
+    if (idxEmpId < 0 && idxEmpNo < 0) {
+      return res.status(400).json({ error: 'CSV must have EmployeeID or EmployeeNo column' });
+    }
+
+    // Load all active employees for lookup
+    const allEmployees = await prisma.employee.findMany({
+      where: { status: { in: ['ACTIVE', 'ON_LEAVE'] } },
+      select: { id: true, employeeNo: true },
+    });
+    const byId  = new Map(allEmployees.map(e => [e.id, e.id]));
+    const byNo  = new Map(allEmployees.map(e => [e.employeeNo.toLowerCase(), e.id]));
+
+    const errors: string[] = [];
+    const toUpsert: Array<{
+      employeeId: string; date: Date; status: string;
+      timeIn?: Date; timeOut?: Date;
+      overtimeHrs: number; lateMinutes: number; notes?: string;
+    }> = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      const get = (idx: number) => (idx >= 0 ? (cols[idx] ?? '').trim() : '');
+
+      const rawEmpId = get(idxEmpId);
+      const rawEmpNo = get(idxEmpNo);
+      const rawDate  = get(idxDate);
+      const rawStatus = get(idxStatus).toUpperCase();
+
+      // Resolve employee
+      let resolvedId: string | undefined;
+      if (rawEmpId) resolvedId = byId.get(rawEmpId);
+      if (!resolvedId && rawEmpNo) resolvedId = byNo.get(rawEmpNo.toLowerCase());
+      if (!resolvedId) { errors.push(`Row ${i + 1}: employee not found (ID="${rawEmpId}", No="${rawEmpNo}")`); continue; }
+
+      // Validate date
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) { errors.push(`Row ${i + 1}: invalid date "${rawDate}"`); continue; }
+      const date = new Date(rawDate + 'T00:00:00');
+      if (isNaN(date.getTime())) { errors.push(`Row ${i + 1}: invalid date "${rawDate}"`); continue; }
+
+      // Validate status
+      if (!VALID_STATUSES.includes(rawStatus as any)) {
+        errors.push(`Row ${i + 1}: unknown status "${rawStatus}"`); continue;
+      }
+
+      const toDateTime = (dateStr: string, timeStr: string) => {
+        if (!timeStr || !/^\d{1,2}:\d{2}$/.test(timeStr)) return undefined;
+        const dt = new Date(`${dateStr}T${timeStr}:00`);
+        return isNaN(dt.getTime()) ? undefined : dt;
+      };
+
+      toUpsert.push({
+        employeeId: resolvedId,
+        date,
+        status: rawStatus,
+        timeIn:  toDateTime(rawDate, get(idxTimeIn)),
+        timeOut: toDateTime(rawDate, get(idxTimeOut)),
+        overtimeHrs: parseFloat(get(idxOTHrs)) || 0,
+        lateMinutes: parseFloat(get(idxLate))  || 0,
+        notes: get(idxNotes) || undefined,
+      });
+    }
+
+    if (errors.length > 0 && toUpsert.length === 0) {
+      return res.status(422).json({ error: 'No valid rows found', details: errors });
+    }
+
+    // Upsert all valid rows
+    let upserted = 0;
+    for (const row of toUpsert) {
+      await prisma.attendance.upsert({
+        where: { employeeId_date: { employeeId: row.employeeId, date: row.date } },
+        update: {
+          status: row.status as any,
+          timeIn: row.timeIn ?? null,
+          timeOut: row.timeOut ?? null,
+          overtimeHrs: row.overtimeHrs,
+          lateMinutes: row.lateMinutes,
+          notes: row.notes ?? null,
+          isManualEntry: true,
+        },
+        create: {
+          employeeId: row.employeeId,
+          date: row.date,
+          status: row.status as any,
+          timeIn: row.timeIn ?? null,
+          timeOut: row.timeOut ?? null,
+          overtimeHrs: row.overtimeHrs,
+          lateMinutes: row.lateMinutes,
+          notes: row.notes ?? null,
+          isManualEntry: true,
+        },
+      });
+      upserted++;
+    }
+
+    res.json({ upserted, skipped: errors.length, errors: errors.slice(0, 20) });
+  } catch (err) { next(err); }
+});
+
 // POST /api/attendance/bulk  — bulk upsert for a pay period
 router.post('/bulk', async (req: Request, res: Response, next: NextFunction) => {
   try {

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import jsPDF from 'jspdf';
@@ -58,6 +58,13 @@ export default function Attendance() {
   const [showModal, setShowModal] = useState(false);
   const [editTarget, setEditTarget] = useState<AttendanceRecord | null>(null);
 
+  // DTR import state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importResult, setImportResult] = useState<{ upserted: number; skipped: number; errors: string[] } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
   const { data: records = [], isLoading } = useQuery<AttendanceRecord[]>({
     queryKey: ['attendance', startDate, endDate, empFilter, clientFilter],
     queryFn: () => {
@@ -90,6 +97,49 @@ export default function Attendance() {
     onSuccess: () => { toast('success', 'Record deleted'); qc.invalidateQueries({ queryKey: ['attendance'] }); },
     onError: () => toast('error', 'Failed to delete record'),
   });
+
+  // DTR helpers
+  const base = ((import.meta.env.VITE_API_URL as string) ?? '').replace(/\/$/, '');
+
+  const downloadTemplate = () => {
+    const a = document.createElement('a');
+    a.href = `${base}/api/attendance/export/template`;
+    a.download = 'dtr-template.csv';
+    a.click();
+  };
+
+  const downloadExport = () => {
+    const p = new URLSearchParams({ start: startDate, end: endDate });
+    if (empFilter) p.set('employeeId', empFilter);
+    if (clientFilter) p.set('clientId', clientFilter);
+    const a = document.createElement('a');
+    a.href = `${base}/api/attendance/export?${p}`;
+    a.download = `dtr-${startDate}-to-${endDate}.csv`;
+    a.click();
+  };
+
+  const handleImportSubmit = async () => {
+    if (!importFile) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('csv', importFile);
+      const res = await fetch(`${base}/api/attendance/import`, {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Import failed');
+      setImportResult(json);
+      qc.invalidateQueries({ queryKey: ['attendance'] });
+    } catch (e: unknown) {
+      toast('error', e instanceof Error ? e.message : 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const columns = useMemo<ColumnDef<AttendanceRecord>[]>(() => [
     {
@@ -192,7 +242,15 @@ export default function Attendance() {
           <p className="page-desc">Track daily time & attendance records</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <a href="/import?type=time" className="btn btn-ghost">⬆ Import CSV</a>
+          <button className="btn btn-ghost" onClick={downloadTemplate} title="Download blank DTR template">
+            ⬇ Template
+          </button>
+          <button className="btn btn-ghost" onClick={downloadExport} title="Export current view as CSV">
+            ⬇ Export DTR
+          </button>
+          <button className="btn btn-secondary" onClick={() => { setImportFile(null); setImportResult(null); setShowImportModal(true); }}>
+            ⬆ Import DTR
+          </button>
           <button className="btn btn-primary" onClick={() => { setEditTarget(null); setShowModal(true); }}>
             ＋ Log Attendance
           </button>
@@ -285,6 +343,76 @@ export default function Attendance() {
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); qc.invalidateQueries({ queryKey: ['attendance'] }); }}
         />
+      )}
+
+      {/* ── DTR Import Modal ──────────────────────────────────────────────── */}
+      {showImportModal && (
+        <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Import DTR (CSV)</h2>
+              <button className="icon-btn" onClick={() => setShowImportModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: 0 }}>
+                Upload a CSV with columns: <strong>EmployeeID</strong> or <strong>EmployeeNo</strong>, <strong>Date</strong> (YYYY-MM-DD), <strong>Status</strong>,
+                optionally TimeIn, TimeOut, OvertimeHrs, LateMinutes, Notes.
+                Rows with valid EmployeeID + Date will be upserted; unrecognized employees are skipped.
+              </p>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ alignSelf: 'flex-start' }}
+                onClick={downloadTemplate}
+              >
+                ⬇ Download Template
+              </button>
+
+              <div>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  style={{ display: 'none' }}
+                  onChange={e => { setImportFile(e.target.files?.[0] ?? null); setImportResult(null); }}
+                />
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  {importFile ? `📄 ${importFile.name}` : 'Choose CSV file…'}
+                </button>
+              </div>
+
+              {importResult && (
+                <div style={{ background: 'var(--bg-muted)', borderRadius: 6, padding: '10px 14px', fontSize: 13 }}>
+                  <div style={{ color: 'var(--color-success)', fontWeight: 600 }}>
+                    ✅ {importResult.upserted} record{importResult.upserted !== 1 ? 's' : ''} imported
+                    {importResult.skipped > 0 ? `, ${importResult.skipped} skipped` : ''}
+                  </div>
+                  {importResult.errors.length > 0 && (
+                    <ul style={{ margin: '8px 0 0', paddingLeft: 16, color: 'var(--color-danger)' }}>
+                      {importResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowImportModal(false)}>
+                {importResult ? 'Close' : 'Cancel'}
+              </button>
+              {!importResult && (
+                <button
+                  className="btn btn-primary"
+                  disabled={!importFile || importing}
+                  onClick={handleImportSubmit}
+                >
+                  {importing ? 'Importing…' : 'Import'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

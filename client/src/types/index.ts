@@ -518,3 +518,66 @@ export interface ExpenseRequest {
   createdAt: string;
   employee?: { id: string; firstName: string; lastName: string; client: { id: string; name: string } | null };
 }
+
+// ── Deductions ────────────────────────────────────────────────────────────────
+export type LoanType = 'CASH_ADVANCE' | 'LOAN';
+export type LoanStatus = 'ACTIVE' | 'SETTLED';
+
+export interface EmployeeLoanPayment {
+  id: string;
+  loanId: string;
+  payrollRunId: string | null;
+  amount: number;
+  note: string | null;
+  paidAt: string;
+}
+
+export interface EmployeeLoan {
+  id: string;
+  employeeId: string;
+  type: LoanType;
+  description: string | null;
+  principal: number;
+  balance: number;
+  status: LoanStatus;
+  createdAt: string;
+  updatedAt: string;
+  payments: EmployeeLoanPayment[];
+}
+
+// Statutory / other deductions record from PayrollRecord
+export interface DeductionRecord {
+  id: string;
+  basicSalary: number;
+  grossPay: number;
+  sssContrib: number;
+  philhealthContrib: number;
+  pagibigContrib: number;
+  withholdingTax: number;
+  totalDeductions: number;
+  otherDeductions: number;
+  otherDeductionsNote: string | null;
+  lateDeduction: number;
+  netPay: number;
+  daysWorked: number;
+  payrollRun: {
+    id: string;
+    period: string;
+    periodStart: string;
+    periodEnd: string;
+    payPeriodType: number;
+    status: string;
+  };
+}
+
+export interface OtherDeductionRecord {
+  id: string;
+  otherDeductions: number;
+  otherDeductionsNote: string | null;
+  payrollRun: {
+    id: string;
+    period: string;
+    periodStart: string;
+    periodEnd: string;
+  };
+}

@@ -140,6 +140,7 @@ model Employee {
   user                    User?
   expenseRequests         ExpenseRequest[]
   approvedExpenses        ExpenseRequest[]       @relation("ExpenseApprovals")
+  loans                   EmployeeLoan[]
 
   @@map("employees")
 }
@@ -695,4 +696,44 @@ enum ExpenseStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// ── Employee Loans & Cash Advances ────────────────────────────────────────────
+
+model EmployeeLoan {
+  id          String               @id @default(cuid())
+  employeeId  String
+  employee    Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type        LoanType             @default(CASH_ADVANCE)
+  description String?
+  principal   Float
+  balance     Float
+  status      LoanStatus           @default(ACTIVE)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  payments    EmployeeLoanPayment[]
+
+  @@map("employee_loans")
+}
+
+model EmployeeLoanPayment {
+  id           String       @id @default(cuid())
+  loanId       String
+  loan         EmployeeLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  payrollRunId String?
+  amount       Float
+  note         String?
+  paidAt       DateTime     @default(now())
+
+  @@map("employee_loan_payments")
+}
+
+enum LoanType {
+  CASH_ADVANCE
+  LOAN
+}
+
+enum LoanStatus {
+  ACTIVE
+  SETTLED
 }
