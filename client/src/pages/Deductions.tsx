@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/api';
+import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import type { Employee, EmployeeLoan, DeductionRecord, OtherDeductionRecord } from '@/types';
 
@@ -16,16 +16,16 @@ const periodLabel = (start: string, end: string) =>
 
 // ── API calls ─────────────────────────────────────────────────────────────────
 const fetchEmployees = (): Promise<Employee[]> =>
-  apiFetch('/api/employees?status=ACTIVE,ON_LEAVE');
+  api.get('/employees?status=ACTIVE,ON_LEAVE').then(r => r.data);
 
 const fetchStatutory = (eid: string): Promise<DeductionRecord[]> =>
-  apiFetch(`/api/deductions/${eid}/statutory?limit=24`);
+  api.get(`/deductions/${eid}/statutory?limit=24`).then(r => r.data);
 
 const fetchOther = (eid: string): Promise<OtherDeductionRecord[]> =>
-  apiFetch(`/api/deductions/${eid}/other`);
+  api.get(`/deductions/${eid}/other`).then(r => r.data);
 
 const fetchLoans = (eid: string): Promise<EmployeeLoan[]> =>
-  apiFetch(`/api/deductions/${eid}/loans`);
+  api.get(`/deductions/${eid}/loans`).then(r => r.data);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Tab = 'statutory' | 'loans' | 'other';
@@ -46,7 +46,7 @@ interface PaymentFormState {
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Deductions() {
   const qc = useQueryClient();
-  const { addToast } = useToast();
+  const toast = useToast();
 
   const [tab, setTab] = useState<Tab>('statutory');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
@@ -82,45 +82,45 @@ export default function Deductions() {
   // ── Mutations ──────────────────────────────────────────────────────────────
   const createLoan = useMutation({
     mutationFn: (body: object) =>
-      apiFetch(`/api/deductions/${selectedEmployeeId}/loans`, { method: 'POST', body: JSON.stringify(body) }),
+      api.post(`/deductions/${selectedEmployeeId}/loans`, body).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['deductions-loans', selectedEmployeeId] });
       setShowLoanModal(false);
       setLoanForm({ type: 'CASH_ADVANCE', description: '', principal: '' });
-      addToast('Loan / advance created', 'success');
+      toast('success', 'Loan / advance created');
     },
-    onError: (e: Error) => addToast(e.message, 'error'),
+    onError: (e: Error) => toast('error', e.message),
   });
 
   const addPayment = useMutation({
     mutationFn: ({ loanId, body }: { loanId: string; body: object }) =>
-      apiFetch(`/api/deductions/loans/${loanId}/payment`, { method: 'POST', body: JSON.stringify(body) }),
+      api.post(`/deductions/loans/${loanId}/payment`, body).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['deductions-loans', selectedEmployeeId] });
       setPaymentModal(null);
-      addToast('Payment recorded', 'success');
+      toast('success', 'Payment recorded');
     },
-    onError: (e: Error) => addToast(e.message, 'error'),
+    onError: (e: Error) => toast('error', e.message),
   });
 
   const markSettled = useMutation({
     mutationFn: (loanId: string) =>
-      apiFetch(`/api/deductions/loans/${loanId}`, { method: 'PATCH', body: JSON.stringify({ status: 'SETTLED' }) }),
+      api.patch(`/deductions/loans/${loanId}`, { status: 'SETTLED' }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['deductions-loans', selectedEmployeeId] });
-      addToast('Marked as settled', 'success');
+      toast('success', 'Marked as settled');
     },
-    onError: (e: Error) => addToast(e.message, 'error'),
+    onError: (e: Error) => toast('error', e.message),
   });
 
   const deleteLoan = useMutation({
     mutationFn: (loanId: string) =>
-      apiFetch(`/api/deductions/loans/${loanId}`, { method: 'DELETE' }),
+      api.delete(`/deductions/loans/${loanId}`).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['deductions-loans', selectedEmployeeId] });
-      addToast('Loan removed', 'success');
+      toast('success', 'Loan removed');
     },
-    onError: (e: Error) => addToast(e.message, 'error'),
+    onError: (e: Error) => toast('error', e.message),
   });
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -147,14 +147,14 @@ export default function Deductions() {
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleCreateLoan = () => {
     const principal = parseFloat(loanForm.principal);
-    if (!principal || principal <= 0) { addToast('Enter a valid principal amount', 'error'); return; }
+    if (!principal || principal <= 0) { toast('error', 'Enter a valid principal amount'); return; }
     createLoan.mutate({ type: loanForm.type, description: loanForm.description || undefined, principal });
   };
 
   const handleAddPayment = () => {
     if (!paymentModal) return;
     const amount = parseFloat(paymentModal.amount);
-    if (!amount || amount <= 0) { addToast('Enter a valid amount', 'error'); return; }
+    if (!amount || amount <= 0) { toast('error', 'Enter a valid amount'); return; }
     addPayment.mutate({
       loanId: paymentModal.loanId,
       body: { amount, note: paymentModal.note || undefined, paidAt: paymentModal.paidAt || undefined },
