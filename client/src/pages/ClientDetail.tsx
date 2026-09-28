@@ -7,7 +7,7 @@ import type { Client, ClientPolicy, Billing, BillingCycle, Employee } from '@/ty
 
 const CYCLE_LABELS: Record<BillingCycle, string> = {
   WEEKLY: 'Weekly', EVERY_15TH: 'Every 15th',
-  EVERY_30TH: 'Every 30th', MONTHLY: 'Monthly',
+  EVERY_30TH: 'Every 30th', MONTHLY: 'Monthly', BI_MONTHLY: 'Bi-Monthly',
 };
 
 const POLICY_TYPES = [
