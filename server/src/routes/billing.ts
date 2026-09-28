@@ -326,8 +326,32 @@ router.get('/clients-due', async (_req: Request, res: Response, next: NextFuncti
     // Exclude clients that already have a pending invoice
     const billableClients = clients.filter(c => !clientsWithPending.has(c.id));
 
+    // Fetch the most recent grossBill per client (attendance-based from last billing run)
+    const clientIds = billableClients.map(c => c.id);
+    const recentBillings = clientIds.length > 0
+      ? await prisma.billing.findMany({
+          where: { clientId: { in: clientIds }, grossBill: { not: null } },
+          select: { clientId: true, grossBill: true, billingDate: true },
+          orderBy: { billingDate: 'desc' },
+        })
+      : [];
+
+    // Keep only the most recent grossBill per client
+    const lastGrossBillMap = new Map<string, number>();
+    for (const b of recentBillings) {
+      if (!lastGrossBillMap.has(b.clientId) && b.grossBill != null) {
+        lastGrossBillMap.set(b.clientId, b.grossBill);
+      }
+    }
+
+    // Attach lastGrossBill to each billable client
+    const billableClientsWithGross = billableClients.map(c => ({
+      ...c,
+      lastGrossBill: lastGrossBillMap.get(c.id) ?? null,
+    }));
+
     // Determine which clients are due for billing today
-    const due = billableClients.filter(c => {
+    const due = billableClientsWithGross.filter(c => {
       const day = today.getDate();
       const dow = today.getDay(); // 0 = Sunday
       switch (c.billingCycle) {
@@ -339,7 +363,7 @@ router.get('/clients-due', async (_req: Request, res: Response, next: NextFuncti
       }
     });
 
-    res.json({ due, all: billableClients });
+    res.json({ due, all: billableClientsWithGross });
   } catch (err) { next(err); }
 });
 

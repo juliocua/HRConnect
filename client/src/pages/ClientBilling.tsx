@@ -158,8 +158,12 @@ export default function ClientBilling() {
 
   const selectAll = () => setSelected(new Set(displayClients.map(c => c.id)));
 
-  const clientAmount = (c: any) =>
-    (c.employees ?? []).reduce((sum: number, e: any) => sum + (e.resourceCost ?? 0), 0);
+  // Use attendance-based grossBill from last billing run when available;
+  // fall back to resourceCost sum only if no prior billing exists.
+  const clientAmount = (c: any) => {
+    if (c.lastGrossBill != null) return c.lastGrossBill as number;
+    return (c.employees ?? []).reduce((sum: number, e: any) => sum + (e.resourceCost ?? 0), 0);
+  };
 
   const resourceTotal = displayClients
     .filter(c => selected.has(c.id))
@@ -364,10 +368,16 @@ export default function ClientBilling() {
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        {amount > 0
-                          ? <span style={{ fontWeight: 700, fontSize: 14 }}>{formatPHP(amount)}</span>
-                          : <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>No rate set</span>
-                        }
+                        {amount > 0 ? (
+                          <>
+                            <span style={{ fontWeight: 700, fontSize: 14 }}>{formatPHP(amount)}</span>
+                            <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 1 }}>
+                              {(c as any).lastGrossBill != null ? 'last billing' : 'est. resource cost'}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>No rate set</span>
+                        )}
                       </div>
                     </label>
                   );
@@ -508,6 +518,7 @@ export default function ClientBilling() {
               <table className="data-table" style={{ minWidth: '100%' }}>
                 <thead>
                   <tr>
+                    <th style={{ width: 32, padding: '8px 4px' }}></th>
                     <th>Billing Date</th>
                     <th>Invoice #</th>
                     <th>Amount</th>
@@ -529,7 +540,7 @@ export default function ClientBilling() {
                           <td style={{ padding: '8px 4px', textAlign: 'center' }}>
                             <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{isCollapsed ? '▶' : '▼'}</span>
                           </td>
-                          <td colSpan={4} style={{ fontWeight: 700, fontSize: 13 }}>
+                          <td colSpan={5} style={{ fontWeight: 700, fontSize: 13 }}>
                             {clientName}
                             <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 10 }}>
                               {billings.length} invoice{billings.length !== 1 ? 's' : ''} · {formatPHP(groupTotal)}
@@ -541,6 +552,7 @@ export default function ClientBilling() {
                           return (
                             <React.Fragment key={b.id}>
                               <tr>
+                                <td style={{ width: 32 }}></td>
                                 <td style={{ fontWeight: 600 }}>{fmtDate(b.billingDate)}</td>
                                 <td style={{ fontFamily: 'monospace', fontSize: 12 }}>#{b.id.slice(-8).toUpperCase()}</td>
                                 <td style={{ fontWeight: 700 }}>{formatPHP((b as any).grossBill ?? b.amount)}</td>
