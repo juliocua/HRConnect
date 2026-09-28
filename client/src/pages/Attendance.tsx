@@ -101,17 +101,16 @@ export default function Attendance() {
   // DTR helpers
   const base = ((import.meta.env.VITE_API_URL as string) ?? '').replace(/\/$/, '');
 
-  const downloadTemplate = async () => {
-    try {
-      const res = await fetch(`${base}/api/attendance/export/template`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Unauthorized');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'dtr-template.csv';
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a); URL.revokeObjectURL(url);
-    } catch { toast('error', 'Failed to download template'); }
+  const downloadTemplate = () => {
+    const header = 'EmployeeID,EmployeeNo,LastName,FirstName,Client,Date,Status,TimeIn,TimeOut,OvertimeHrs,LateMinutes,Notes';
+    const example = ',EMP-001,Dela Cruz,Juan,Acme Corp,2026-09-01,PRESENT,08:00,17:00,0,0,';
+    const csv = [header, example].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'dtr-template.csv';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
   const downloadExport = async () => {
