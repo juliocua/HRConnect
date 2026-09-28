@@ -147,6 +147,22 @@ function computeNdHours(rec: { clockInAt?: any; clockOutAt?: any; timeIn?: any; 
   return Math.round(((ovA + ovB) / 3600000) * 100) / 100;
 }
 
+// ── Compute billing period from client cutoff day ────────────────────────────
+/** Returns the correct periodStart/periodEnd for attendance queries.
+ *  cutoffDay: client.billingDate (day of month, e.g. 10).
+ *  periodEnd = billingDate as-is; periodStart = cutoffDay+1 of the previous month.
+ *  Falls back to billingDate-30 when no cutoffDay is set. */
+function cutoffPeriod(referenceDate: Date, cutoffDay: number | null | undefined): { periodStart: Date; periodEnd: Date } {
+  const periodEnd = new Date(referenceDate);
+  if (cutoffDay) {
+    const periodStart = new Date(periodEnd.getFullYear(), periodEnd.getMonth() - 1, cutoffDay + 1);
+    return { periodStart, periodEnd };
+  }
+  const periodStart = new Date(periodEnd);
+  periodStart.setDate(periodStart.getDate() - 30);
+  return { periodStart, periodEnd };
+}
+
 // ── Compute attendance-based grossBill (same formula as Excel export) ─────────
 // Used at billing generate time and on Excel download so both are always in sync.
 async function computeBillingGrossBill(
@@ -231,7 +247,7 @@ const invoiceInclude = {
     select: {
       id: true, name: true, address: true,
       contactName: true, contactEmail: true, contactPhone: true,
-      adminFeeRate: true, isVatable: true, hasEwt: true, billingCycle: true,
+      adminFeeRate: true, isVatable: true, hasEwt: true, billingCycle: true, billingDate: true,
       clientSignatoryName: true, clientSignatoryTitle: true,
       employees: {
         where: { status: { in: ['ACTIVE', 'ON_LEAVE'] as any } },
@@ -330,16 +346,14 @@ router.get('/clients-due', async (req: Request, res: Response, next: NextFunctio
     // Exclude clients that already have a pending invoice
     const billableClients = clients.filter(c => !clientsWithPending.has(c.id));
 
-    // Compute expectedGrossBill from attendance for each client using the billing date
-    const gbPeriodEnd = new Date(today);
-    const gbPeriodStart = new Date(today);
-    gbPeriodStart.setDate(gbPeriodStart.getDate() - 30);
+    // Compute expectedGrossBill from attendance for each client using their billing cutoff day
     const csForDue = await getCompanySettings();
     const otRateForDue = (csForDue as any)?.overtimeRate ?? 1.25;
 
     const billableClientsWithGross = await Promise.all(
       billableClients.map(async c => {
-        const expectedGrossBill = await computeBillingGrossBill(c.employees, gbPeriodStart, gbPeriodEnd, otRateForDue);
+        const { periodStart: cStart, periodEnd: cEnd } = cutoffPeriod(today, (c as any).billingDate as number | null);
+        const expectedGrossBill = await computeBillingGrossBill(c.employees, cStart, cEnd, otRateForDue);
         return { ...c, expectedGrossBill };
       })
     );
@@ -455,9 +469,7 @@ router.post(
         // Compute and persist attendance-based grossBill immediately at generation time
         // This ensures the billing list and PDF show a correct amount before anyone downloads Excel.
         try {
-          const gbPeriodEnd   = new Date(date);
-          const gbPeriodStart = new Date(date);
-          gbPeriodStart.setDate(gbPeriodStart.getDate() - 30);
+          const { periodStart: gbPeriodStart, periodEnd: gbPeriodEnd } = cutoffPeriod(date, (client as any).billingDate as number | null);
           const csForBilling  = await getCompanySettings();
           const otRate        = (csForBilling as any)?.overtimeRate ?? 1.25;
           const computedGross = await computeBillingGrossBill(
@@ -763,9 +775,7 @@ router.get('/:id/attendance-summary', async (req: Request, res: Response, next: 
     });
     if (!billing) return res.status(404).json({ error: 'Not found' });
 
-    const periodEnd = new Date(billing.billingDate);
-    const periodStart = new Date(periodEnd);
-    periodStart.setDate(periodStart.getDate() - 30);
+    const { periodStart, periodEnd } = cutoffPeriod(new Date(billing.billingDate), (billing.client as any).billingDate as number | null);
 
     const empIds = billing.client.employees.map((e: any) => e.id);
 
@@ -861,9 +871,7 @@ router.get('/:id/export-excel', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async 
     const companySettings = await (prisma as any).companySettings.findUnique({ where: { id: 'singleton' } });
     const OT_RATE = companySettings?.overtimeRate ?? 1.25;
 
-    const periodEnd = new Date(billing.billingDate);
-    const periodStart = new Date(periodEnd);
-    periodStart.setDate(periodStart.getDate() - 30);
+    const { periodStart, periodEnd } = cutoffPeriod(new Date(billing.billingDate), (billing.client as any).billingDate as number | null);
 
     const empIds = billing.client.employees.map((e: any) => e.id);
     const attRecords = await prisma.attendance.findMany({
@@ -1120,9 +1128,7 @@ router.get('/:id/employee-attendance', async (req: Request, res: Response, next:
       },
     });
     if (!billing) return res.status(404).json({ error: 'Not found' });
-    const periodEnd = new Date(billing.billingDate);
-    const periodStart = new Date(periodEnd);
-    periodStart.setDate(periodStart.getDate() - 30);
+    const { periodStart, periodEnd } = cutoffPeriod(new Date(billing.billingDate), (billing.client as any).billingDate as number | null);
     const employeeData = await Promise.all(
       billing.client.employees.map(async (emp: any) => {
         const [attendance, overtime, leaves] = await Promise.all([
@@ -1173,9 +1179,7 @@ router.get('/:id/pdf', async (req: Request, res: Response, next: NextFunction) =
     if (!billing) return res.status(404).json({ error: 'Billing not found' });
 
     // Compute 13th month per employee using attendance in the billing period
-    const pdfPeriodEnd = new Date(billing.billingDate);
-    const pdfPeriodStart = new Date(pdfPeriodEnd);
-    pdfPeriodStart.setDate(pdfPeriodStart.getDate() - 30);
+    const { periodStart: pdfPeriodStart, periodEnd: pdfPeriodEnd } = cutoffPeriod(new Date(billing.billingDate), (billing.client as any).billingDate as number | null);
     const pdfEmpIds = billing.client.employees.map((e: any) => e.id);
     const pdfAttRecords = await prisma.attendance.findMany({
       where: { employeeId: { in: pdfEmpIds }, date: { gte: pdfPeriodStart, lte: pdfPeriodEnd } },
@@ -1220,9 +1224,7 @@ router.post('/:id/send-invoice', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async
     }
 
     // Compute 13th month per employee for email PDF
-    const emailPeriodEnd = new Date(billing.billingDate);
-    const emailPeriodStart = new Date(emailPeriodEnd);
-    emailPeriodStart.setDate(emailPeriodStart.getDate() - 30);
+    const { periodStart: emailPeriodStart, periodEnd: emailPeriodEnd } = cutoffPeriod(new Date(billing.billingDate), (billing.client as any).billingDate as number | null);
     const emailEmpIds = billing.client.employees.map((e: any) => e.id);
     const emailAttRecords = await prisma.attendance.findMany({
       where: { employeeId: { in: emailEmpIds }, date: { gte: emailPeriodStart, lte: emailPeriodEnd } },

@@ -10,6 +10,20 @@ const CYCLE_LABELS: Record<BillingCycle, string> = {
   EVERY_30TH: 'Every 30th', MONTHLY: 'Monthly', BI_MONTHLY: 'Bi-Monthly',
 };
 
+/** Compute the most recent occurrence of cutoffDay on or before referenceDate. */
+function computePeriodEnd(referenceDate: Date, cutoffDay: number): Date {
+  const thisMonthCutoff = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), cutoffDay);
+  if (referenceDate >= thisMonthCutoff) return thisMonthCutoff;
+  return new Date(referenceDate.getFullYear(), referenceDate.getMonth() - 1, cutoffDay);
+}
+
+/** Compute the period start = cutoffDay+1 of the month before periodEnd. */
+function computePeriodStart(periodEnd: Date, cutoffDay: number): Date {
+  return new Date(periodEnd.getFullYear(), periodEnd.getMonth() - 1, cutoffDay + 1);
+}
+
+function toISO(d: Date): string { return d.toISOString().slice(0, 10); }
+
 export default function ClientBilling() {
   const qc = useQueryClient();
   const toast = useToast();
@@ -17,6 +31,7 @@ export default function ClientBilling() {
   const [billingTab, setBillingTab] = useState<'generate' | 'invoices'>('generate');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [billingDate, setBillingDate] = useState(today);
+  const autoSetRef = useRef(false);
   const [notes, setNotes] = useState('');
   const [generated, setGenerated] = useState<(Billing & { client: { id: string; name: string } })[]>([]);
   const [skipped, setSkipped] = useState<{ clientId: string; name: string; reason: string }[]>([]);
@@ -48,6 +63,21 @@ export default function ClientBilling() {
     queryKey: ['billing-all'],
     queryFn: () => api.get('/billing').then(r => r.data),
   });
+
+  // Auto-set billingDate to the correct cutoff date once clients load (one-time only)
+  useEffect(() => {
+    if (autoSetRef.current) return;
+    if (!clientsData) return;
+    const clients = [...(clientsData.due ?? []), ...(clientsData.all ?? [])];
+    if (clients.length === 0) return;
+    // Find the most common billing cutoff day
+    const cutoffDay = (clients[0] as any).billingDate as number | null;
+    if (!cutoffDay) return;
+    const ref = new Date();
+    const periodEnd = computePeriodEnd(ref, cutoffDay);
+    setBillingDate(toISO(periodEnd));
+    autoSetRef.current = true;
+  }, [clientsData]);
 
   const generateMutation = useMutation({
     mutationFn: () => {
@@ -308,13 +338,25 @@ export default function ClientBilling() {
           <div style={{ marginBottom: 16 }}>
             <div className="form-grid form-grid-2" style={{ gap: 12, marginBottom: 12 }}>
               <div className="form-group">
-                <label style={{ fontSize: 12 }}>Billing Date</label>
+                <label style={{ fontSize: 12 }}>Period End / Billing Date</label>
                 <input
                   type="date"
                   className="form-control"
                   value={billingDate}
-                  onChange={e => setBillingDate(e.target.value)}
+                  onChange={e => { setBillingDate(e.target.value); autoSetRef.current = true; }}
                 />
+                {(() => {
+                  const allC = clientsData?.all ?? [];
+                  const cutoffDay = (allC[0] as any)?.billingDate as number | undefined;
+                  if (!cutoffDay || !billingDate) return null;
+                  const pEnd = new Date(billingDate + 'T00:00:00');
+                  const pStart = computePeriodStart(pEnd, cutoffDay);
+                  return (
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 3 }}>
+                      Coverage: {toISO(pStart)} → {toISO(pEnd)}
+                    </div>
+                  );
+                })()}
               </div>
               <div className="form-group">
                 <label style={{ fontSize: 12 }}>Notes (optional)</label>
