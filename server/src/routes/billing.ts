@@ -321,7 +321,7 @@ router.get('/clients-due', async (req: Request, res: Response, next: NextFunctio
       include: {
         employees: {
           where: { status: { in: ['ACTIVE', 'ON_LEAVE'] } },
-          select: { id: true, resourceCost: true },
+          select: { id: true, resourceCost: true, basicSalary: true, dailyRate: true, useDailyRate: true },
         },
         _count: { select: { employees: true } },
       },
@@ -334,10 +334,12 @@ router.get('/clients-due', async (req: Request, res: Response, next: NextFunctio
     const gbPeriodEnd = new Date(today);
     const gbPeriodStart = new Date(today);
     gbPeriodStart.setDate(gbPeriodStart.getDate() - 30);
+    const csForDue = await getCompanySettings();
+    const otRateForDue = (csForDue as any)?.overtimeRate ?? 1.25;
 
     const billableClientsWithGross = await Promise.all(
       billableClients.map(async c => {
-        const expectedGrossBill = await computeBillingGrossBill(c.id, gbPeriodStart, gbPeriodEnd);
+        const expectedGrossBill = await computeBillingGrossBill(c.employees, gbPeriodStart, gbPeriodEnd, otRateForDue);
         return { ...c, expectedGrossBill };
       })
     );
