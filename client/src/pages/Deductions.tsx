@@ -17,7 +17,7 @@ const periodLabel = (start: string, end: string) =>
 
 // ── API calls ─────────────────────────────────────────────────────────────────
 const fetchEmployees = (): Promise<Employee[]> =>
-  api.get('/employees?status=ACTIVE,ON_LEAVE').then(r => r.data);
+  api.get('/employees?status=ACTIVE').then(r => r.data);
 
 const fetchStatutory = (eid: string): Promise<DeductionRecord[]> =>
   api.get(`/deductions/${eid}/statutory?limit=24`).then(r => r.data);
