@@ -85,8 +85,8 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     // Find user by email or by linked employee code
     let user = await prisma.user.findUnique({
       where: { email: identifier },
-      include: { employee: { select: { id: true, phone: true, employeeNo: true } } },
-    });
+      include: { employee: { select: { id: true, phone: true, employeeNo: true } }, clientRef: { select: { id: true } } },
+    }) as any;
 
     if (!user) {
       // Try employee code lookup
@@ -115,6 +115,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         email: user.email,
         role: user.role,
         employeeId: user.employeeId ?? undefined,
+        clientId: user.clientId ?? undefined,
       });
       return res.json({
         token,
@@ -212,7 +213,7 @@ router.get('/me', authenticate, async (req: Request, res: Response, next: NextFu
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.userId },
-      select: { id: true, name: true, email: true, role: true, avatarUrl: true, provider: true, employeeId: true },
+      select: { id: true, name: true, email: true, role: true, avatarUrl: true, provider: true, employeeId: true, clientId: true },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);

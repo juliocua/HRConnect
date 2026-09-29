@@ -23,6 +23,8 @@ model User {
   employee   Employee?    @relation(fields: [employeeId], references: [id])
   companyId  String?
   company    Company?     @relation(fields: [companyId], references: [id])
+  clientId   String?      @unique
+  clientRef  Client?      @relation("ClientUser", fields: [clientId], references: [id])
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
@@ -38,6 +40,7 @@ enum UserRole {
   ACCOUNTS_MANAGEMENT
   BILLING_COLLECTION
   ACCOUNTING
+  CLIENT
 }
 
 enum AuthProvider {
@@ -271,6 +274,7 @@ model Client {
   billings            Billing[]
   employees           Employee[]
   employeeAssignments EmployeeAssignment[]
+  clientUser          User?                @relation("ClientUser")
 
   @@map("clients")
 }

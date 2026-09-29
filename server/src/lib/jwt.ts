@@ -8,6 +8,7 @@ export interface JwtPayload {
   email: string;
   role: string;
   employeeId?: string;
+  clientId?: string;
 }
 
 export function signToken(payload: JwtPayload): string {

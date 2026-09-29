@@ -28,6 +28,7 @@ import birRoutes from './routes/bir';
 import holidayRoutes from './routes/holidays';
 import deductionsRoutes from './routes/deductions';
 import lastPayRoutes from './routes/last-pay';
+import clientHubRoutes from './routes/client-hub';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -99,6 +100,7 @@ app.use('/api/bir', birRoutes);
 app.use('/api/holidays',    authenticate, rbacGuard('payroll'),    holidayRoutes);
 app.use('/api/deductions', authenticate, rbacGuard('payroll'),    deductionsRoutes);
 app.use('/api/last-pay', authenticate, rbacGuard('lastPay'), lastPayRoutes);
+app.use('/api/client-hub', authenticate, rbacGuard('clientHub'), clientHubRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));

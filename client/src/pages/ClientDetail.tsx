@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { formatPHP } from '@/lib/payroll';
 import type { Client, ClientPolicy, Billing, BillingCycle, Employee } from '@/types';
+import { useAuth } from '@/context/AuthContext';
 
 const CYCLE_LABELS: Record<BillingCycle, string> = {
   WEEKLY: 'Weekly', EVERY_15TH: 'Every 15th',
@@ -53,7 +54,15 @@ const PAY_PERIOD_VALUES = [
   { value: 'MONTHLY', label: 'Monthly (paid once a month)' },
 ];
 
-type Tab = 'overview' | 'policies' | 'billing';
+type Tab = 'overview' | 'policies' | 'billing' | 'access';
+
+interface ClientAccessUser {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+  createdAt: string;
+}
 
 export default function ClientDetail() {
   const { id } = useParams<{ id: string }>();
@@ -70,6 +79,10 @@ export default function ClientDetail() {
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [showDeductionBasisModal, setShowDeductionBasisModal] = useState(false);
   const [editingBranch, setEditingBranch] = useState<{ id: string; name: string; address?: string | null } | null>(null);
+  const [showGrantModal, setShowGrantModal] = useState(false);
+  const [accessPassword, setAccessPassword] = useState('');
+  const [accessError, setAccessError] = useState('');
+  const { user: authUser } = useAuth();
 
   const { data: client, isLoading } = useQuery<Client>({
     queryKey: ['client', id],
@@ -101,6 +114,33 @@ export default function ClientDetail() {
   const deleteBranch = useMutation({
     mutationFn: (branchId: string) => api.delete(`/clients/${id}/branches/${branchId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['client', id] }),
+  });
+
+  const { data: accessData, isLoading: accessLoading } = useQuery<{ user: ClientAccessUser | null }>({
+    queryKey: ['client-access', id],
+    queryFn: () => api.get(`/clients/${id}/access`).then(r => r.data),
+    enabled: !!id && tab === 'access',
+  });
+
+  const grantAccess = useMutation({
+    mutationFn: (password: string) => api.post(`/clients/${id}/access`, { password }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-access', id] });
+      setShowGrantModal(false);
+      setAccessPassword('');
+      setAccessError('');
+    },
+    onError: (err: any) => setAccessError(err?.response?.data?.error ?? 'Failed to grant access'),
+  });
+
+  const revokeAccess = useMutation({
+    mutationFn: () => api.delete(`/clients/${id}/access`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['client-access', id] }),
+  });
+
+  const restoreAccess = useMutation({
+    mutationFn: () => api.post(`/clients/${id}/access/restore`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['client-access', id] }),
   });
 
   if (isLoading) return <div className="loading-center"><div className="spinner" /></div>;
@@ -154,7 +194,7 @@ export default function ClientDetail() {
       {/* Tabs + Content Container */}
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
         <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 2 }}>
-          {(['overview', 'policies', 'billing'] as Tab[]).map(t => (
+          {(['overview', 'policies', 'billing', 'access'] as Tab[]).map(t => (
             <button
               key={t}
               type="button"
@@ -172,7 +212,10 @@ export default function ClientDetail() {
                 transition: 'background 0.12s, color 0.12s',
               }}
             >
-              {t === 'overview' ? 'Overview' : t === 'policies' ? `Policies (${client.policies?.length ?? 0})` : `Billing History (${client.billings?.length ?? 0})`}
+              {t === 'overview' ? 'Overview'
+                : t === 'policies' ? `Policies (${client.policies?.length ?? 0})`
+                : t === 'billing' ? `Billing History (${client.billings?.length ?? 0})`
+                : 'Access'}
             </button>
           ))}
         </div>
@@ -519,6 +562,142 @@ export default function ClientDetail() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Access */}
+      {tab === 'access' && (
+        <div style={{ maxWidth: 560 }}>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Client Portal Access</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+              Grant this client a login to the Client Hub portal. They can approve DTR and OT requests for their employees. One account per client, using the contact email.
+            </div>
+          </div>
+
+          {accessLoading ? (
+            <div className="loading-center" style={{ padding: 40 }}><div className="spinner" /></div>
+          ) : !accessData?.user ? (
+            /* No account yet */
+            <div className="card" style={{ textAlign: 'center', padding: 40 }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>No Login Account</div>
+              <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 20 }}>
+                {client.contactEmail
+                  ? <>Account will be created for <strong>{client.contactEmail}</strong></>
+                  : <span style={{ color: '#ef4444' }}>No contact email set. Edit the client to add one first.</span>}
+              </div>
+              {(['SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'] as const).includes(authUser?.role as any) && client.contactEmail && (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => { setShowGrantModal(true); setAccessError(''); setAccessPassword(''); }}
+                >
+                  Grant Access
+                </button>
+              )}
+            </div>
+          ) : (
+            /* Account exists */
+            <div className="card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: '50%',
+                  background: accessData.user.isActive ? '#dcfce7' : '#fee2e2',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 22, flexShrink: 0,
+                }}>
+                  {accessData.user.isActive ? '✅' : '🚫'}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{accessData.user.name}</div>
+                  <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{accessData.user.email}</div>
+                  <div style={{ marginTop: 4 }}>
+                    <span className={`badge ${accessData.user.isActive ? 'badge-green' : 'badge-red'}`}>
+                      {accessData.user.isActive ? 'Active' : 'Revoked'}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'right', flexShrink: 0 }}>
+                  Created<br />{new Date(accessData.user.createdAt).toLocaleDateString('en-PH')}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {(['SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'] as const).includes(authUser?.role as any) && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => { setShowGrantModal(true); setAccessError(''); setAccessPassword(''); }}
+                  >
+                    🔑 Reset Password
+                  </button>
+                )}
+                {(['SUPER_ADMIN', 'HR_MANAGER'] as const).includes(authUser?.role as any) && (
+                  accessData.user.isActive ? (
+                    <button
+                      className="btn btn-sm"
+                      style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }}
+                      disabled={revokeAccess.isPending}
+                      onClick={() => revokeAccess.mutate()}
+                    >
+                      🚫 Revoke Access
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-sm"
+                      style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #86efac' }}
+                      disabled={restoreAccess.isPending}
+                      onClick={() => restoreAccess.mutate()}
+                    >
+                      ✅ Restore Access
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Grant / Reset modal */}
+          {showGrantModal && (
+            <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowGrantModal(false)}>
+              <div className="modal" style={{ maxWidth: 400 }}>
+                <div className="modal-header">
+                  <h2 className="modal-title">{accessData?.user ? 'Reset Password' : 'Grant Client Access'}</h2>
+                  <button className="icon-btn" onClick={() => setShowGrantModal(false)}>✕</button>
+                </div>
+                <div className="modal-body">
+                  {!accessData?.user && (
+                    <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--color-text-muted)' }}>
+                      An account will be created for <strong>{client.contactEmail}</strong>.
+                    </div>
+                  )}
+                  <div className="form-group">
+                    <label className="form-label">{accessData?.user ? 'New Password' : 'Initial Password'}</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      value={accessPassword}
+                      onChange={e => setAccessPassword(e.target.value)}
+                      placeholder="Min. 8 characters"
+                      autoFocus
+                    />
+                  </div>
+                  {accessError && (
+                    <div style={{ color: '#dc2626', fontSize: 13, marginTop: 6 }}>{accessError}</div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button className="btn btn-ghost" onClick={() => setShowGrantModal(false)}>Cancel</button>
+                  <button
+                    className="btn btn-primary"
+                    disabled={accessPassword.length < 8 || grantAccess.isPending}
+                    onClick={() => grantAccess.mutate(accessPassword)}
+                  >
+                    {accessData?.user ? 'Reset Password' : 'Grant Access'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

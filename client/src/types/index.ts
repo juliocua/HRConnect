@@ -7,7 +7,8 @@ export type UserRole =
   | 'EMPLOYEE_RELATIONS'
   | 'ACCOUNTS_MANAGEMENT'
   | 'BILLING_COLLECTION'
-  | 'ACCOUNTING';
+  | 'ACCOUNTING'
+  | 'CLIENT';
 
 export type AuthProvider = 'LOCAL' | 'GOOGLE' | 'MICROSOFT';
 
@@ -19,6 +20,7 @@ export interface AuthUser {
   avatarUrl?: string;
   provider?: AuthProvider;
   employeeId?: string;
+  clientId?: string;
 }
 
 // ── Company ───────────────────────────────────────────────────────────────────

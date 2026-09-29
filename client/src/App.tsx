@@ -6,6 +6,9 @@ import { AppSettingsProvider } from '@/context/AppSettingsContext';
 import { canAccess, type Module } from '@/lib/permissions';
 import Layout from '@/components/Layout';
 import EmployeeHubLayout from '@/components/EmployeeHubLayout';
+import ClientHubLayout from '@/pages/client-hub/ClientHubLayout';
+import ClientHubDTR from '@/pages/client-hub/ClientHubDTR';
+import ClientHubOT from '@/pages/client-hub/ClientHubOT';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Employees from '@/pages/Employees';
@@ -84,6 +87,7 @@ function ModuleRoute({ module, children }: { module: Module; children: React.Rea
 function AppRoutes() {
   const { user } = useAuth();
   const isEmployee = user?.role === 'EMPLOYEE';
+  const isClient = user?.role === 'CLIENT';
 
   return (
     <Routes>
@@ -111,12 +115,26 @@ function AppRoutes() {
         <Route path="bir" element={<HubBIR />} />
       </Route>
 
-      {/* HR Portal — for all non-EMPLOYEE roles */}
+      {/* Client Hub — for CLIENT role */}
+      <Route
+        path="/client-hub"
+        element={
+          <ProtectedRoute>
+            <ClientHubLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="dtr" replace />} />
+        <Route path="dtr" element={<ClientHubDTR />} />
+        <Route path="overtime" element={<ClientHubOT />} />
+      </Route>
+
+      {/* HR Portal — for all non-EMPLOYEE, non-CLIENT roles */}
       <Route
         path="/"
         element={
           <ProtectedRoute>
-            {isEmployee ? <Navigate to="/hub" replace /> : <Layout />}
+            {isEmployee ? <Navigate to="/hub" replace /> : isClient ? <Navigate to="/client-hub" replace /> : <Layout />}
           </ProtectedRoute>
         }
       >

@@ -1,7 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
-import { authenticate } from '../middleware/authenticate';
+import { authenticate, requireRole } from '../middleware/authenticate';
 
 const router = Router();
 router.use(authenticate);
@@ -230,6 +231,107 @@ router.patch('/:clientId/employees/:employeeId/branch', async (req: Request, res
       data: { branchId },
     });
     res.json(employee);
+  } catch (err) { next(err); }
+});
+
+// ── Client User Access Management ─────────────────────────────────────────────
+
+// GET /api/clients/:id/access — check if client has a login user
+router.get('/:id/access', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const client = await prisma.client.findUnique({
+      where: { id: req.params.id },
+      include: {
+        clientUser: {
+          select: { id: true, name: true, email: true, isActive: true, createdAt: true },
+        },
+      },
+    });
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    res.json({ user: client.clientUser ?? null });
+  } catch (err) { next(err); }
+});
+
+// POST /api/clients/:id/access — create or reset client login (uses contactEmail)
+router.post('/:id/access', requireRole('SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { password } = z.object({ password: z.string().min(8) }).parse(req.body);
+
+    const client = await prisma.client.findUnique({
+      where: { id: req.params.id },
+      include: { clientUser: true },
+    });
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!client.contactEmail) {
+      return res.status(422).json({ error: 'Client has no contact email. Add a contact email before granting access.' });
+    }
+
+    const hashed = await bcrypt.hash(password, 12);
+
+    if (client.clientUser) {
+      // Reset password on existing user and reactivate
+      const updated = await prisma.user.update({
+        where: { id: client.clientUser.id },
+        data: { password: hashed, isActive: true },
+        select: { id: true, name: true, email: true, isActive: true },
+      });
+      return res.json({ user: updated, created: false });
+    }
+
+    // Create new CLIENT user
+    const existing = await prisma.user.findUnique({ where: { email: client.contactEmail } });
+    if (existing) {
+      return res.status(409).json({ error: `Email ${client.contactEmail} is already registered to another account.` });
+    }
+
+    const newUser = await prisma.user.create({
+      data: {
+        name: client.contactName ?? client.name,
+        email: client.contactEmail,
+        password: hashed,
+        role: 'CLIENT' as any,
+        clientId: client.id,
+      },
+      select: { id: true, name: true, email: true, isActive: true },
+    });
+    res.status(201).json({ user: newUser, created: true });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/clients/:id/access — revoke (set isActive = false)
+router.delete('/:id/access', requireRole('SUPER_ADMIN', 'HR_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const client = await prisma.client.findUnique({
+      where: { id: req.params.id },
+      include: { clientUser: true },
+    });
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!client.clientUser) return res.status(404).json({ error: 'No login account for this client' });
+
+    await prisma.user.update({
+      where: { id: client.clientUser.id },
+      data: { isActive: false },
+    });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/clients/:id/access/restore — re-enable (set isActive = true)
+router.post('/:id/access/restore', requireRole('SUPER_ADMIN', 'HR_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const client = await prisma.client.findUnique({
+      where: { id: req.params.id },
+      include: { clientUser: true },
+    });
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!client.clientUser) return res.status(404).json({ error: 'No login account for this client' });
+
+    const updated = await prisma.user.update({
+      where: { id: client.clientUser.id },
+      data: { isActive: true },
+      select: { id: true, name: true, email: true, isActive: true },
+    });
+    res.json({ user: updated });
   } catch (err) { next(err); }
 });
 

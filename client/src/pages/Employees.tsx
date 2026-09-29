@@ -637,6 +637,37 @@ function EmployeeModal({
     }
   };
 
+  const handleRevokeAccess = async () => {
+    if (!confirm('Revoke this employee\'s login access? They will not be able to log in until access is restored.')) return;
+    setAccountAction('loading'); setAccountError('');
+    try {
+      await api.post(`/employees/${initial!.id}/access/revoke`);
+      setAccountAction('idle');
+      toast('success', 'Access revoked');
+      onSaved();
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to revoke access';
+      setAccountError(msg);
+      toast('error', msg);
+      setAccountAction('idle');
+    }
+  };
+
+  const handleRestoreAccess = async () => {
+    setAccountAction('loading'); setAccountError('');
+    try {
+      await api.post(`/employees/${initial!.id}/access/restore`);
+      setAccountAction('idle');
+      toast('success', 'Access restored');
+      onSaved();
+    } catch (err: unknown) {
+      const msg = (err as any)?.response?.data?.error ?? 'Failed to restore access';
+      setAccountError(msg);
+      toast('error', msg);
+      setAccountAction('idle');
+    }
+  };
+
   const set = (k: keyof EmployeeFormData, v: unknown) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1347,22 +1378,49 @@ function EmployeeModal({
                     <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>⚠️ Share this with the employee now — it won't be shown again.</div>
                   </div>
                 ) : initial?.user ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 14px' }}>
-                    <div>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 1 }}>Login email</div>
-                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{initial.user.email}</div>
-                      <div style={{ fontSize: 11.5, color: initial.user.isActive ? 'var(--color-success)' : 'var(--color-danger)', marginTop: 2 }}>
-                        {initial.user.isActive ? '● Active' : '● Inactive'}
+                  <div style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 1 }}>Login email</div>
+                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{initial.user.email}</div>
+                        <div style={{ fontSize: 11.5, color: initial.user.isActive ? 'var(--color-success)' : 'var(--color-danger)', marginTop: 2 }}>
+                          {initial.user.isActive ? '● Active' : '● Inactive'}
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={accountAction === 'loading'}
+                        onClick={handleResetPassword}
+                      >
+                        {accountAction === 'loading' ? 'Resetting…' : '🔑 Reset Password'}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      disabled={accountAction === 'loading'}
-                      onClick={handleResetPassword}
-                    >
-                      {accountAction === 'loading' ? 'Resetting…' : '🔑 Reset Password'}
-                    </button>
+                    {(['SUPER_ADMIN', 'HR_MANAGER'] as const).includes(authUser?.role as any) && (
+                      <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 8 }}>
+                        {initial.user.isActive ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', fontSize: 12 }}
+                            disabled={accountAction === 'loading'}
+                            onClick={handleRevokeAccess}
+                          >
+                            🚫 Revoke Access
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #86efac', fontSize: 12 }}
+                            disabled={accountAction === 'loading'}
+                            onClick={handleRestoreAccess}
+                          >
+                            ✅ Restore Access
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-surface-2)', border: '1px dashed var(--color-border)', borderRadius: 8, padding: '10px 14px' }}>

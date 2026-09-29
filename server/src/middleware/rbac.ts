@@ -15,7 +15,8 @@ export type RbacModule =
   | 'import'
   | 'overtime'
   | 'companies'
-  | 'lastPay';
+  | 'lastPay'
+  | 'clientHub';
 
 // ── Permission matrix ─────────────────────────────────────────────────────────
 //
@@ -31,15 +32,17 @@ export type RbacModule =
 // EMPLOYEE           | /me only  | hub only   | hub   | hub     | none    | none    | none    | none   | hub      | none
 
 const ROLE_ACCESS: Record<string, Record<RbacModule, Access>> = {
-  SUPER_ADMIN:        { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'full' },
-  HR_MANAGER:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'full' },
-  HR_STAFF:           { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'full' },
-  EMPLOYEE_RELATIONS: { employees: 'full', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'read', reports: 'none', import: 'none', overtime: 'none', companies: 'none', lastPay: 'none' },
-  ACCOUNTS_MANAGEMENT:{ employees: 'read', attendance: 'full', leave: 'full', payroll: 'full', billing: 'none', clients: 'read', reports: 'full', import: 'none', overtime: 'full', companies: 'none', lastPay: 'none' },
-  BILLING_COLLECTION: { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'none' },
-  ACCOUNTING:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'none' },
+  SUPER_ADMIN:        { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'full', clientHub: 'none' },
+  HR_MANAGER:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'full', clientHub: 'none' },
+  HR_STAFF:           { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'full', clientHub: 'none' },
+  EMPLOYEE_RELATIONS: { employees: 'full', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'read', reports: 'none', import: 'none', overtime: 'none', companies: 'none', lastPay: 'none', clientHub: 'none' },
+  ACCOUNTS_MANAGEMENT:{ employees: 'read', attendance: 'full', leave: 'full', payroll: 'full', billing: 'none', clients: 'read', reports: 'full', import: 'none', overtime: 'full', companies: 'none', lastPay: 'none', clientHub: 'none' },
+  BILLING_COLLECTION: { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'none', clientHub: 'none' },
+  ACCOUNTING:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'none', clientHub: 'none' },
   // EMPLOYEE: handled by self-service bypass below — matrix values not consulted
-  EMPLOYEE:           { employees: 'none', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'none', reports: 'none', import: 'none', overtime: 'none', companies: 'none', lastPay: 'none' },
+  EMPLOYEE:           { employees: 'none', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'none', reports: 'none', import: 'none', overtime: 'none', companies: 'none', lastPay: 'none', clientHub: 'none' },
+  // CLIENT: only clientHub module access; all other modules are blocked
+  CLIENT:             { employees: 'none', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'none', reports: 'none', import: 'none', overtime: 'none', companies: 'none', lastPay: 'none', clientHub: 'full' },
 };
 
 // ── Middleware factory ────────────────────────────────────────────────────────
@@ -58,6 +61,12 @@ export function rbacGuard(module: RbacModule) {
   return (req: Request, res: Response, next: NextFunction) => {
     const role = req.user?.role;
     if (!role) return res.status(401).json({ error: 'Unauthorized' });
+
+    // ── CLIENT hub bypass ─────────────────────────────────────────────────────
+    if (role === 'CLIENT') {
+      if (module === 'clientHub') return next();
+      return res.status(403).json({ error: 'Access denied: client accounts can only access the client hub' });
+    }
 
     // ── EMPLOYEE self-service bypass ──────────────────────────────────────────
     if (role === 'EMPLOYEE') {
