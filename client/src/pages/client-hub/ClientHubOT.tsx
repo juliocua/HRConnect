@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 
 interface Employee {
@@ -44,20 +44,20 @@ function statusBadge(s: string) {
 
 export default function ClientHubOT() {
   const qc = useQueryClient();
-  const { toast } = useToast();
+  const toast = useToast();
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
   const { data: pending = [], isLoading } = useQuery<OTRequest[]>({
     queryKey: ['client-hub-ot'],
-    queryFn: () => api.get('/client-hub/overtime').then(r => r.data),
+    queryFn: () => api.get('/client-hub/overtime').then((r: { data: any }) => r.data),
     enabled: tab === 'pending',
   });
 
   const { data: history = [], isLoading: histLoading } = useQuery<OTRequest[]>({
     queryKey: ['client-hub-ot-history'],
-    queryFn: () => api.get('/client-hub/overtime/history').then(r => r.data),
+    queryFn: () => api.get('/client-hub/overtime/history').then((r: { data: any }) => r.data),
     enabled: tab === 'history',
   });
 

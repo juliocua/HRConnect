@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 import { useToast } from '@/lib/toast';
 
 interface Employee {
@@ -51,20 +51,20 @@ function statusBadge(s: string) {
 
 export default function ClientHubDTR() {
   const qc = useQueryClient();
-  const { toast } = useToast();
+  const toast = useToast();
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
   const { data: pending = [], isLoading } = useQuery<DTRRequest[]>({
     queryKey: ['client-hub-dtr'],
-    queryFn: () => api.get('/client-hub/dtr').then(r => r.data),
+    queryFn: () => api.get('/client-hub/dtr').then((r: { data: any }) => r.data),
     enabled: tab === 'pending',
   });
 
   const { data: history = [], isLoading: histLoading } = useQuery<DTRRequest[]>({
     queryKey: ['client-hub-dtr-history'],
-    queryFn: () => api.get('/client-hub/dtr/history').then(r => r.data),
+    queryFn: () => api.get('/client-hub/dtr/history').then((r: { data: any }) => r.data),
     enabled: tab === 'history',
   });
 

@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 
 interface ClientInfo {
   id: string;
@@ -17,7 +17,7 @@ export default function ClientHubLayout() {
 
   const { data: client } = useQuery<ClientInfo>({
     queryKey: ['client-hub-me'],
-    queryFn: () => api.get('/client-hub/me').then(r => r.data),
+    queryFn: () => api.get('/client-hub/me').then((r: { data: any }) => r.data),
   });
 
   function handleLogout() {
