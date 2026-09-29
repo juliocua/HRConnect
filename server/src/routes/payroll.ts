@@ -829,9 +829,9 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         // Outstanding loans
         const loans = await (prisma as any).employeeLoan.findMany({
           where: { employeeId: emp.id, status: 'ACTIVE' },
-          select: { monthlyDeduction: true },
+          select: { balance: true },
         });
-        const loanTotal = loans.reduce((s: number, l: any) => s + (l.monthlyDeduction ?? 0), 0);
+        const loanTotal = loans.reduce((s: number, l: any) => s + (l.balance ?? 0), 0);
 
         const grossPay = remainingSalary + proRated13th + silConversion;
         const totalDeductions = loanTotal;
