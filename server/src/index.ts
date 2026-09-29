@@ -98,7 +98,7 @@ app.use('/api/expenses', authenticate, expensesRouter);
 app.use('/api/bir', birRoutes);
 app.use('/api/holidays',    authenticate, rbacGuard('payroll'),    holidayRoutes);
 app.use('/api/deductions', authenticate, rbacGuard('payroll'),    deductionsRoutes);
-app.use('/api/last-pay', authenticate, lastPayRoutes);
+app.use('/api/last-pay', authenticate, rbacGuard('lastPay'), lastPayRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV }));

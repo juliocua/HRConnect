@@ -1,13 +1,12 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { requireRole } from '../middleware/rbac';
 
 const router = Router();
 const prisma = new PrismaClient();
 
 // ── GET /api/last-pay/clearance-items ──────────────────────────────────────
 // List all clearance items (master list)
-router.get('/clearance-items', requireRole('SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/clearance-items', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const items = await (prisma as any).clearanceItem.findMany({
       orderBy: { order: 'asc' },
@@ -20,8 +19,9 @@ router.get('/clearance-items', requireRole('SUPER_ADMIN', 'HR_MANAGER', 'HR_STAF
 
 // ── POST /api/last-pay/clearance-items ────────────────────────────────────
 // Create a new clearance item
-router.post('/clearance-items', requireRole('SUPER_ADMIN', 'HR_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/clearance-items', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!['SUPER_ADMIN', 'HR_MANAGER'].includes(req.user!.role)) return res.status(403).json({ error: 'HR Manager or above required' });
     const { name, order } = req.body;
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(422).json({ error: 'name is required' });
@@ -51,8 +51,9 @@ router.post('/clearance-items', requireRole('SUPER_ADMIN', 'HR_MANAGER'), async 
 
 // ── PUT /api/last-pay/clearance-items/:id ────────────────────────────────
 // Update a clearance item (name, order, isActive)
-router.put('/clearance-items/:id', requireRole('SUPER_ADMIN', 'HR_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/clearance-items/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!['SUPER_ADMIN', 'HR_MANAGER'].includes(req.user!.role)) return res.status(403).json({ error: 'HR Manager or above required' });
     const { name, order, isActive } = req.body;
     const data: any = {};
     if (name !== undefined) data.name = String(name).trim();
@@ -70,8 +71,9 @@ router.put('/clearance-items/:id', requireRole('SUPER_ADMIN', 'HR_MANAGER'), asy
 });
 
 // ── DELETE /api/last-pay/clearance-items/:id ─────────────────────────────
-router.delete('/clearance-items/:id', requireRole('SUPER_ADMIN', 'HR_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/clearance-items/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!['SUPER_ADMIN', 'HR_MANAGER'].includes(req.user!.role)) return res.status(403).json({ error: 'HR Manager or above required' });
     await (prisma as any).employeeClearance.deleteMany({ where: { clearanceItemId: req.params.id } });
     await (prisma as any).clearanceItem.delete({ where: { id: req.params.id } });
     res.json({ ok: true });
@@ -82,7 +84,7 @@ router.delete('/clearance-items/:id', requireRole('SUPER_ADMIN', 'HR_MANAGER'), 
 
 // ── GET /api/last-pay/employees ──────────────────────────────────────────
 // List employees being tracked (those with any EmployeeClearance record)
-router.get('/employees', requireRole('SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/employees', async (req: Request, res: Response, next: NextFunction) => {
   try {
     // Find employees in any last-pay payroll run
     const runRecords = await prisma.payrollRecord.findMany({
@@ -108,7 +110,7 @@ router.get('/employees', requireRole('SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'), a
         client: { select: { id: true, name: true } },
         leaveBalances: {
           where: { leaveType: { code: 'SIL' } },
-          select: { balance: true },
+          select: { totalDays: true, usedDays: true, pendingDays: true },
         },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
@@ -127,7 +129,7 @@ router.get('/employees', requireRole('SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'), a
         orderBy: { payrollRun: { periodEnd: 'desc' } },
         select: {
           id: true,
-          basicPay: true,
+          basicSalary: true,
           netPay: true,
           sssContrib: true,
           philhealthContrib: true,
@@ -140,7 +142,7 @@ router.get('/employees', requireRole('SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'), a
       });
       return {
         ...emp,
-        leaveBalance: emp.leaveBalances[0]?.balance ?? 0,
+        leaveBalance: (emp.leaveBalances[0]?.totalDays ?? 0) - (emp.leaveBalances[0]?.usedDays ?? 0) - (emp.leaveBalances[0]?.pendingDays ?? 0),
         clearances,
         lastPayRecord: lastPayRecord ?? null,
       };
@@ -154,7 +156,7 @@ router.get('/employees', requireRole('SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'), a
 
 // ── PUT /api/last-pay/clearances/:clearanceId ────────────────────────────
 // Toggle a single clearance item (isCleared)
-router.put('/clearances/:clearanceId', requireRole('SUPER_ADMIN', 'HR_MANAGER', 'HR_STAFF'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/clearances/:clearanceId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { isCleared } = req.body;
     const data: any = { isCleared: Boolean(isCleared) };

@@ -403,7 +403,7 @@ function EmployeeTrackingTab({ isWriter }: { isWriter: boolean }) {
 
 function LastPayBreakdown({ record }: { record: NonNullable<LastPayEmployee['lastPayRecord']> }) {
   const rows: { label: string; value: number; type: 'earning' | 'deduction' | 'net' }[] = [
-    { label: 'Remaining Salary Days', value: record.basicPay, type: 'earning' },
+    { label: 'Remaining Salary Days', value: record.basicSalary, type: 'earning' },
     { label: 'Pro-rated 13th Month', value: record.thirteenthMonthPay ?? 0, type: 'earning' },
     { label: 'SIL Conversion', value: record.silConversion ?? 0, type: 'earning' },
     { label: 'SSS Deduction', value: record.sssContrib, type: 'deduction' },

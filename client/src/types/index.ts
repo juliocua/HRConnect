@@ -609,7 +609,7 @@ export interface EmployeeClearance {
 
 export interface LastPayRecord {
   id: string;
-  basicPay: number;
+  basicSalary: number;
   netPay: number;
   sssContrib: number;
   philhealthContrib: number;

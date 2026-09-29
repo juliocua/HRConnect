@@ -14,7 +14,8 @@ export type RbacModule =
   | 'reports'
   | 'import'
   | 'overtime'
-  | 'companies';
+  | 'companies'
+  | 'lastPay';
 
 // ── Permission matrix ─────────────────────────────────────────────────────────
 //
@@ -30,15 +31,15 @@ export type RbacModule =
 // EMPLOYEE           | /me only  | hub only   | hub   | hub     | none    | none    | none    | none   | hub      | none
 
 const ROLE_ACCESS: Record<string, Record<RbacModule, Access>> = {
-  SUPER_ADMIN:        { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
-  HR_MANAGER:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
-  HR_STAFF:           { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
-  EMPLOYEE_RELATIONS: { employees: 'full', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'read', reports: 'none', import: 'none', overtime: 'none', companies: 'none' },
-  ACCOUNTS_MANAGEMENT:{ employees: 'read', attendance: 'full', leave: 'full', payroll: 'full', billing: 'none', clients: 'read', reports: 'full', import: 'none', overtime: 'full', companies: 'none' },
-  BILLING_COLLECTION: { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
-  ACCOUNTING:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full' },
+  SUPER_ADMIN:        { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'full' },
+  HR_MANAGER:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'full' },
+  HR_STAFF:           { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'full' },
+  EMPLOYEE_RELATIONS: { employees: 'full', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'read', reports: 'none', import: 'none', overtime: 'none', companies: 'none', lastPay: 'none' },
+  ACCOUNTS_MANAGEMENT:{ employees: 'read', attendance: 'full', leave: 'full', payroll: 'full', billing: 'none', clients: 'read', reports: 'full', import: 'none', overtime: 'full', companies: 'none', lastPay: 'none' },
+  BILLING_COLLECTION: { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'none' },
+  ACCOUNTING:         { employees: 'full', attendance: 'full', leave: 'full', payroll: 'full', billing: 'full', clients: 'full', reports: 'full', import: 'full', overtime: 'full', companies: 'full', lastPay: 'none' },
   // EMPLOYEE: handled by self-service bypass below — matrix values not consulted
-  EMPLOYEE:           { employees: 'none', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'none', reports: 'none', import: 'none', overtime: 'none', companies: 'none' },
+  EMPLOYEE:           { employees: 'none', attendance: 'none', leave: 'none', payroll: 'none', billing: 'none', clients: 'none', reports: 'none', import: 'none', overtime: 'none', companies: 'none', lastPay: 'none' },
 };
 
 // ── Middleware factory ────────────────────────────────────────────────────────
