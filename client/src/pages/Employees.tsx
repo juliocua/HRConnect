@@ -883,6 +883,9 @@ function EmployeeModal({
                     <div style={{ marginTop: 14, textAlign: 'left' }}>
                       <InfoRow label="Emp. No." value={initial!.employeeNo} mono />
                       <InfoRow label="Hire Date" value={formatDate(initial!.hireDate)} />
+                      {initial!.separationDate && (
+                        <InfoRow label="Separation Date" value={formatDate(initial!.separationDate)} />
+                      )}
                       <InfoRow label="Basic Salary" value={`₱${initial!.basicSalary.toLocaleString('en-PH')}`} />
                       {initial!.useDailyRate && (
                         <InfoRow label="Daily Rate" value={initial!.dailyRate != null ? `₱${Number(initial!.dailyRate).toLocaleString('en-PH')}` : '—'} />
@@ -1939,6 +1942,9 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
               <div style={{ marginTop: 14, textAlign: 'left' }}>
                 <InfoRow label="Emp. No." value={e.employeeNo} mono />
                 <InfoRow label="Hire Date" value={formatDate(e.hireDate)} />
+                {e.separationDate && (
+                  <InfoRow label="Separation Date" value={formatDate(e.separationDate)} />
+                )}
                 <InfoRow label="Basic Salary" value={`₱${e.basicSalary.toLocaleString('en-PH')}`} />
               </div>
             </div>
@@ -1967,6 +1973,9 @@ function EmployeeDetailModal({ employee: e, onClose, onEdit }: {
               )}
               <InfoRow label="Status" value={STATUS_LABELS[e.status as EmployeeStatus]} />
               <InfoRow label="Hire Date" value={formatDate(e.hireDate)} />
+              {e.separationDate && (
+                <InfoRow label="Separation Date" value={formatDate(e.separationDate)} />
+              )}
               <InfoRow label="Basic Salary" value={e.basicSalary != null ? `₱${Number(e.basicSalary).toLocaleString('en-PH')}` : '—'} />
               <InfoRow label="Employee No." value={e.employeeNo ?? '—'} mono />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 14 }}>

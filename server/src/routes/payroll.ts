@@ -654,11 +654,10 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
 
     let employees: any[];
     if (isLastPay) {
-      // Last Pay: find employees with separationDate in the period
+      // Last Pay: find employees with separationDate in the period (any status)
       employees = await prisma.employee.findMany({
         where: {
           separationDate: { gte: periodStart, lte: periodEnd },
-          status: { in: ['INACTIVE', 'TERMINATED'] },
         },
       });
     } else {
@@ -822,10 +821,9 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         // SIL conversion: leaveBalance × dailyRate
         const silBalance = await prisma.leaveBalance.findFirst({
           where: { employeeId: emp.id, leaveType: { code: 'SIL' } },
-          select: { totalDays: true, usedDays: true, pendingDays: true },
+          select: { balance: true },
         });
-        const silAvailable = (silBalance?.totalDays ?? 0) - (silBalance?.usedDays ?? 0) - (silBalance?.pendingDays ?? 0);
-        const silConversion = Math.round((silAvailable * dailyRate) * 100) / 100;
+        const silConversion = Math.round(((silBalance?.balance ?? 0) * dailyRate) * 100) / 100;
 
         // Outstanding loans
         const loans = await (prisma as any).employeeLoan.findMany({
