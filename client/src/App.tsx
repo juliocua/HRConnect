@@ -31,6 +31,7 @@ import BIRReports from '@/pages/BIRReports';
 import HubBIR from '@/pages/hub/HubBIR';
 import Holidays from '@/pages/Holidays';
 import Deductions from '@/pages/Deductions';
+import LastPay from '@/pages/LastPay';
 
 // Handles /auth/callback?token=xxx from OAuth redirects
 function OAuthCallback() {
@@ -184,6 +185,10 @@ function AppRoutes() {
         <Route
           path="deductions"
           element={<ModuleRoute module="payroll"><Deductions /></ModuleRoute>}
+        />
+        <Route
+          path="last-pay"
+          element={<ModuleRoute module="lastPay"><LastPay /></ModuleRoute>}
         />
       </Route>
 

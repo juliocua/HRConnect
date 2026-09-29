@@ -33,6 +33,7 @@ const NAV_ITEMS: Array<{
       { to: '/expenses',    label: 'Expenses',          icon: IconExpenses,    module: 'expenses' },
       { to: '/billing',     label: 'Client Billing',   icon: IconBilling,     module: 'billing', clientsOnly: true },
       { to: '/bir',         label: 'BIR Reports',      icon: IconBIR,         module: 'bir'      },
+      { to: '/last-pay',    label: 'Last Pay',         icon: IconLastPay,     module: 'lastPay'  },
     ],
   },
   {
@@ -297,6 +298,17 @@ function IconHoliday() {
       <line x1="12" y1="15" x2="12" y2="15" strokeWidth="3" strokeLinecap="round"/>
       <line x1="8" y1="15" x2="8" y2="15" strokeWidth="3" strokeLinecap="round"/>
       <line x1="16" y1="15" x2="16" y2="15" strokeWidth="3" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function IconLastPay() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <line x1="23" y1="11" x2="17" y2="11"/>
+      <line x1="20" y1="8" x2="20" y2="14"/>
     </svg>
   );
 }

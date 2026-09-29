@@ -141,6 +141,8 @@ model Employee {
   expenseRequests         ExpenseRequest[]
   approvedExpenses        ExpenseRequest[]       @relation("ExpenseApprovals")
   loans                   EmployeeLoan[]
+  separationDate          DateTime?          @db.Date
+  clearances              EmployeeClearance[]
 
   @@map("employees")
 }
@@ -565,10 +567,41 @@ model PayrollRecord {
   nightDifferential   Float      @default(0)
   nightDiffHours      Float      @default(0)
   silPay              Float      @default(0)
+  thirteenthMonthPay  Float      @default(0)
+  silConversion       Float      @default(0)
   expenses            ExpenseRequest[]
 
   @@unique([payrollRunId, employeeId])
   @@map("payroll_records")
+}
+
+// ── Clearance Items (for Last Pay) ───────────────────────────────────────────
+
+model ClearanceItem {
+  id          String              @id @default(cuid())
+  name        String
+  order       Int                 @default(0)
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  clearances  EmployeeClearance[]
+  @@map("clearance_items")
+}
+
+model EmployeeClearance {
+  id              String        @id @default(cuid())
+  employeeId      String
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  clearanceItemId String
+  clearanceItem   ClearanceItem @relation(fields: [clearanceItemId], references: [id])
+  name            String
+  isCleared       Boolean       @default(false)
+  clearedById     String?
+  clearedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  @@unique([employeeId, clearanceItemId])
+  @@map("employee_clearances")
 }
 
 // ── Holidays ──────────────────────────────────────────────────────────────────

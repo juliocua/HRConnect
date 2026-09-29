@@ -72,6 +72,7 @@ export interface Employee {
   gender?: EmployeeGender | null;
   avatarColor: string;
   photoUrl?: string | null;
+  separationDate?: string | null;
   address?: string | null;
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
@@ -259,6 +260,8 @@ export interface PayrollRecord {
   priorPeriodDeduction?: number;
   absenceCarryForward?: number;
   expenseReimbursement?: number;
+  thirteenthMonthPay?: number;
+  silConversion?: number;
 }
 
 // ── Global Setup ──────────────────────────────────────────────────────────────
@@ -580,4 +583,56 @@ export interface OtherDeductionRecord {
     periodStart: string;
     periodEnd: string;
   };
+}
+
+export interface ClearanceItem {
+  id: string;
+  name: string;
+  order: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmployeeClearance {
+  id: string;
+  employeeId: string;
+  clearanceItemId: string;
+  clearanceItem?: ClearanceItem;
+  name: string;
+  isCleared: boolean;
+  clearedById?: string | null;
+  clearedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LastPayRecord {
+  id: string;
+  basicPay: number;
+  netPay: number;
+  sssContrib: number;
+  philhealthContrib: number;
+  pagibigContrib: number;
+  withholdingTax: number;
+  thirteenthMonthPay?: number;
+  silConversion?: number;
+  otherDeductions?: number;
+}
+
+export interface LastPayEmployee {
+  id: string;
+  employeeNo: string;
+  firstName: string;
+  lastName: string;
+  position: string;
+  avatarColor: string;
+  separationDate?: string | null;
+  basicSalary: number;
+  dailyRate?: number | null;
+  useDailyRate: boolean;
+  leaveBalance?: number;
+  client?: { id: string; name: string };
+  clearances: EmployeeClearance[];
+  lastPayRecord?: LastPayRecord | null;
 }
