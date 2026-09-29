@@ -904,7 +904,7 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
 }) {
   const [year, setYear] = useState(defaultYear);
   const [month, setMonth] = useState(defaultMonth);
-  // selectedOption: 'co_<cutOffPeriodId>' | '7' | '9'
+  // selectedOption: 'co_<cutOffPeriodId>' | '7' | '9' | '10'
   const [selectedOption, setSelectedOption] = useState<string>('');
   const [description, setDescription] = useState('');
   const [periodStart, setPeriodStart] = useState('');
@@ -928,6 +928,7 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
   const { payPeriodType, cutOffPeriodId } = useMemo(() => {
     if (selectedOption === '7') return { payPeriodType: 7, cutOffPeriodId: undefined };
     if (selectedOption === '9') return { payPeriodType: 9, cutOffPeriodId: undefined };
+    if (selectedOption === '10') return { payPeriodType: 10, cutOffPeriodId: undefined };
     if (selectedOption.startsWith('co_')) {
       const id = selectedOption.slice(3);
       const idx = cutOffPeriods.findIndex(p => p.id === id);
@@ -954,7 +955,7 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
     };
   }, [cutOffPeriodId, cutOffPeriods, month, year]);
 
-  const isAdHoc = payPeriodType === 7 || payPeriodType === 9;
+  const isAdHoc = payPeriodType === 7 || payPeriodType === 9 || payPeriodType === 10;
 
   const runMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.post('/payroll/run', body).then(r => r.data),
@@ -1021,6 +1022,7 @@ function RunPayrollModal({ onClose, onSuccess, defaultYear, defaultMonth }: {
                   <optgroup label="Special Runs">
                     <option value="7">Special Pay (ad-hoc date)</option>
                     <option value="9">13th Month Pay (full year)</option>
+                    <option value="10">Last Pay (separated employees)</option>
                   </optgroup>
                 </select>
               </div>

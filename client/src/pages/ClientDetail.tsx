@@ -68,6 +68,7 @@ export default function ClientDetail() {
   const [markPaidBillingId, setMarkPaidBillingId] = useState<string | null>(null);
   const [expandedBillingId, setExpandedBillingId] = useState<string | null>(null);
   const [showBranchModal, setShowBranchModal] = useState(false);
+  const [showDeductionBasisModal, setShowDeductionBasisModal] = useState(false);
   const [editingBranch, setEditingBranch] = useState<{ id: string; name: string; address?: string | null } | null>(null);
 
   const { data: client, isLoading } = useQuery<Client>({
@@ -321,7 +322,9 @@ export default function ClientDetail() {
       {tab === 'policies' && (() => {
         const shiftPolicy = (client.policies ?? []).find(p => p.type === 'EMPLOYEE_SHIFT');
         const shiftTimes = parseShiftValue(shiftPolicy?.value);
-        const regularPolicies = (client.policies ?? []).filter(p => p.type !== 'EMPLOYEE_SHIFT');
+        const regularPolicies = (client.policies ?? []).filter(p => p.type !== 'EMPLOYEE_SHIFT' && p.type !== 'DEDUCTION_BASIS');
+        const deductionBasisPolicy = (client.policies ?? []).find(p => p.type === 'DEDUCTION_BASIS');
+        const currentBasis = deductionBasisPolicy?.value === 'BASIC' ? 'BASIC' : 'GROSS';
         return (
           <div>
             {/* Shift Configuration Card */}
@@ -347,6 +350,31 @@ export default function ClientDetail() {
                   onClick={() => setShowShiftModal(true)}
                 >
                   {shiftPolicy ? 'Edit Shift' : 'Configure'}
+                </button>
+              </div>
+            </div>
+
+            {/* Deduction Basis Card */}
+            <div className="card" style={{ padding: '16px 20px', marginBottom: 16, marginTop: 16, borderLeft: '4px solid #7C3AED' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>📊 Mandatory Deduction Basis</span>
+                    <span className={`badge ${currentBasis === 'BASIC' ? 'badge-blue' : 'badge-green'}`} style={{ fontSize: 11 }}>
+                      {currentBasis}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                    {currentBasis === 'BASIC'
+                      ? 'SSS, PhilHealth & Pag-IBIG brackets use basic salary as the lookup basis'
+                      : 'SSS, PhilHealth & Pag-IBIG brackets use gross pay (basic + OT + ND) as the lookup basis (default)'}
+                  </div>
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowDeductionBasisModal(true)}
+                >
+                  Change
                 </button>
               </div>
             </div>
@@ -537,6 +565,15 @@ export default function ClientDetail() {
           billingId={markPaidBillingId}
           onClose={() => setMarkPaidBillingId(null)}
           onSaved={() => { setMarkPaidBillingId(null); invalidate(); }}
+        />
+      )}
+
+      {showDeductionBasisModal && (
+        <DeductionBasisModal
+          clientId={client.id}
+          policy={(client.policies ?? []).find(p => p.type === 'DEDUCTION_BASIS') ?? null}
+          onClose={() => setShowDeductionBasisModal(false)}
+          onSaved={() => { setShowDeductionBasisModal(false); invalidate(); }}
         />
       )}
 
@@ -791,6 +828,105 @@ function ShiftPolicyModal({ clientId, policy, onClose, onSaved }: {
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving…' : policy ? 'Save Changes' : 'Set Shift'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Deduction Basis Modal ────────────────────────────────────────────────────
+
+function DeductionBasisModal({ clientId, policy, onClose, onSaved }: {
+  clientId: string;
+  policy: ClientPolicy | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [basis, setBasis] = useState<'BASIC' | 'GROSS'>(
+    policy?.value === 'BASIC' ? 'BASIC' : 'GROSS'
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setError('');
+    try {
+      const payload = {
+        type: 'DEDUCTION_BASIS',
+        title: 'Mandatory Deduction Basis',
+        description: basis === 'BASIC'
+          ? 'SSS, PhilHealth & Pag-IBIG brackets use basic salary as the lookup basis'
+          : 'SSS, PhilHealth & Pag-IBIG brackets use gross pay as the lookup basis',
+        value: basis,
+      };
+      if (policy) {
+        await api.put(`/clients/${clientId}/policies/${policy.id}`, payload);
+      } else {
+        await api.post(`/clients/${clientId}/policies`, payload);
+      }
+      onSaved();
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 440 }}>
+        <div className="modal-header">
+          <h2 className="modal-title">Mandatory Deduction Basis</h2>
+          <button className="icon-btn" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            {error && <div className="error-msg" style={{ marginBottom: 12 }}>{error}</div>}
+            <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
+              Choose which salary figure is used to look up SSS, PhilHealth, and Pag-IBIG contribution brackets. This does not affect withholding tax or billing computations.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {([
+                { value: 'GROSS', label: 'Gross Pay (default)', desc: 'Basic salary + overtime + night differential. Higher bracket lookup.' },
+                { value: 'BASIC', label: 'Basic Salary', desc: 'Basic salary only, excluding OT and ND allowances.' },
+              ] as { value: 'BASIC' | 'GROSS'; label: string; desc: string }[]).map(opt => (
+                <label
+                  key={opt.value}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    padding: '12px 16px',
+                    borderRadius: 8,
+                    border: `2px solid ${basis === opt.value ? '#7C3AED' : 'var(--color-border)'}`,
+                    background: basis === opt.value ? 'rgba(124,58,237,0.06)' : 'var(--color-surface)',
+                    cursor: 'pointer',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="deductionBasis"
+                    value={opt.value}
+                    checked={basis === opt.value}
+                    onChange={() => setBasis(opt.value)}
+                    style={{ marginTop: 2, accentColor: '#7C3AED' }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{opt.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </form>

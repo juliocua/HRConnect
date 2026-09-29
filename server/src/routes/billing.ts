@@ -170,6 +170,7 @@ async function computeBillingGrossBill(
   periodStart: Date,
   periodEnd: Date,
   otRate: number,
+  deductionBasis: 'BASIC' | 'GROSS' = 'GROSS',
 ): Promise<number> {
   const empIds = employees.map((e: any) => e.id);
   if (!empIds.length) return 0;
@@ -209,6 +210,21 @@ async function computeBillingGrossBill(
     empTotalBP.set(empId, (empTotalBP.get(empId) ?? 0) + Math.round(s.daysWorked * dr * 100) / 100);
   }
 
+  // Total earned gross (basic + OT + ND) per employee — used when deductionBasis === 'GROSS'
+  const empTotalGrossP = new Map<string, number>();
+  for (const [key, s] of sMap) {
+    const [empId] = key.split('::');
+    const emp = empLookup.get(empId);
+    if (!emp) continue;
+    const bs = emp.basicSalary ?? 0;
+    const dr = emp.useDailyRate && emp.dailyRate ? emp.dailyRate : bs / 22;
+    const hr = dr / 8;
+    const otAmt = Math.round(s.otHours * hr * otRate * 100) / 100;
+    const ndAmt = Math.round(s.ndHours * hr * 1.1 * 100) / 100;
+    const bp = Math.round(s.daysWorked * dr * 100) / 100;
+    empTotalGrossP.set(empId, (empTotalGrossP.get(empId) ?? 0) + bp + otAmt + ndAmt);
+  }
+
   // Govt benefits appear only once per employee (on first branch row)
   const seenEmpIds = new Set<string>();
   let total = 0;
@@ -228,7 +244,9 @@ async function computeBillingGrossBill(
 
     const isFirst   = !seenEmpIds.has(empId);
     seenEmpIds.add(empId);
-    const govtBasis = empTotalBP.get(empId) ?? bs;
+    const govtBasis = deductionBasis === 'GROSS'
+      ? (empTotalGrossP.get(empId) ?? (empTotalBP.get(empId) ?? bs))
+      : (empTotalBP.get(empId) ?? bs);
     const sss       = isFirst ? computeSSS(govtBasis) : 0;
     const ec        = isFirst ? 15 : 0;
     const ph        = isFirst ? computePhilHealth(govtBasis) : 0;
@@ -353,7 +371,12 @@ router.get('/clients-due', async (req: Request, res: Response, next: NextFunctio
     const billableClientsWithGross = await Promise.all(
       billableClients.map(async c => {
         const { periodStart: cStart, periodEnd: cEnd } = cutoffPeriod(today, (c as any).billingDate as number | null);
-        const expectedGrossBill = await computeBillingGrossBill(c.employees, cStart, cEnd, otRateForDue);
+        const basisPol = await prisma.clientPolicy.findFirst({
+          where: { clientId: c.id, type: 'DEDUCTION_BASIS' },
+          select: { value: true },
+        });
+        const deductionBasis = (basisPol?.value === 'BASIC' ? 'BASIC' : 'GROSS') as 'BASIC' | 'GROSS';
+        const expectedGrossBill = await computeBillingGrossBill(c.employees, cStart, cEnd, otRateForDue, deductionBasis);
         return { ...c, expectedGrossBill };
       })
     );
@@ -472,11 +495,17 @@ router.post(
           const { periodStart: gbPeriodStart, periodEnd: gbPeriodEnd } = cutoffPeriod(date, (client as any).billingDate as number | null);
           const csForBilling  = await getCompanySettings();
           const otRate        = (csForBilling as any)?.overtimeRate ?? 1.25;
+          const gbBasisPol = await prisma.clientPolicy.findFirst({
+            where: { clientId: client.id, type: 'DEDUCTION_BASIS' },
+            select: { value: true },
+          });
+          const gbDeductionBasis = (gbBasisPol?.value === 'BASIC' ? 'BASIC' : 'GROSS') as 'BASIC' | 'GROSS';
           const computedGross = await computeBillingGrossBill(
             client.employees,
             gbPeriodStart,
             gbPeriodEnd,
             otRate,
+            gbDeductionBasis,
           );
           if (computedGross > 0) {
             await prisma.billing.update({

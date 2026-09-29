@@ -579,8 +579,8 @@ function compute13thMonthRecord(basicSalary: number, paidDays: number) {
 const RunSchema = z.object({
   year: z.number().int(),
   month: z.number().int().min(1).max(12).optional(),
-  payPeriodType: z.number().int().refine(v => [1, 2, 7, 9].includes(v), {
-    message: 'payPeriodType must be 1, 2, 7, or 9',
+  payPeriodType: z.number().int().refine(v => [1, 2, 7, 9, 10].includes(v), {
+    message: 'payPeriodType must be 1, 2, 7, 9, or 10',
   }),
   cutOffPeriodId: z.string().optional(), // links to GlobalSetup CutOffPeriod for date computation
   description: z.string().optional(),
@@ -593,15 +593,19 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
     const body = RunSchema.parse(req.body);
     const { year, payPeriodType } = body;
     const is13th = payPeriodType === 9;
+    const isLastPay = payPeriodType === 10;
 
     const month = is13th ? 12 : body.month;
     const description = is13th ? `13th Month Pay ${year}` : body.description;
 
-    if (!is13th) {
+    if (!is13th && !isLastPay) {
       if (!month) return res.status(422).json({ error: 'month is required for this pay period type' });
       if (payPeriodType === 7 && !description) {
         return res.status(422).json({ error: 'description is required for payPeriodType 7' });
       }
+    }
+    if (isLastPay && (!body.periodStart || !body.periodEnd)) {
+      return res.status(422).json({ error: 'periodStart and periodEnd are required for Last Pay (type 10)' });
     }
 
     // Fetch cut-off period config from Global Setup if provided
@@ -634,8 +638,11 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
     const ND_RATE  = companySettings?.nightDifferentialRate ?? 0.10;
 
     // ── Employee filter ───────────────────────────────────────────────────────
-    const employeeWhere: any = { status: { in: ['ACTIVE', 'ON_LEAVE'] } };
-    if (payPeriodType === 1 || payPeriodType === 2) {
+    // Type 10 — Last Pay: filter by separationDate within the period (handled separately below)
+    const employeeWhere: any = isLastPay
+      ? {}
+      : { status: { in: ['ACTIVE', 'ON_LEAVE'] } };
+    if (!isLastPay && (payPeriodType === 1 || payPeriodType === 2)) {
       const payFrequencies = payPeriodType === 1 ? ['SEMI_MONTHLY'] : ['SEMI_MONTHLY', 'MONTHLY'];
       const matchingPolicies = await prisma.clientPolicy.findMany({
         where: { type: 'EMPLOYEE_PAY_PERIOD', value: { in: payFrequencies } },
@@ -645,7 +652,18 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       employeeWhere.clientId = clientIds.length > 0 ? { in: clientIds } : { in: [] };
     }
 
-    const employees = await prisma.employee.findMany({ where: employeeWhere });
+    let employees: any[];
+    if (isLastPay) {
+      // Last Pay: find employees with separationDate in the period
+      employees = await prisma.employee.findMany({
+        where: {
+          separationDate: { gte: periodStart, lte: periodEnd },
+          status: { in: ['INACTIVE', 'TERMINATED'] },
+        },
+      });
+    } else {
+      employees = await prisma.employee.findMany({ where: employeeWhere });
+    }
 
     const payrollRun = existing
       ? await prisma.payrollRun.update({
@@ -661,7 +679,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
     // ── Expense reimbursements (regular runs only) ─────────────────────────────
     let pendingExpensesForStamp: Array<{ id: string; employeeId: string }> = [];
     const expenseMap = new Map<string, { ids: string[]; total: number }>();
-    if (!is13th) {
+    if (!is13th && !isLastPay) {
       const rawExpenses = await (prisma as any).expenseRequest.findMany({
         where: {
           employeeId: { in: employees.map((e: any) => e.id) },
@@ -750,6 +768,100 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           ...compute13thMonthRecord(emp.basicSalary, paidDays),
         };
       });
+    } else if (isLastPay) {
+      // ── Type 10 — Last Pay ─────────────────────────────────────────────────
+      // Initialize clearances for employees that don't have them yet
+      const clearanceItems = await (prisma as any).clearanceItem.findMany({
+        where: { isActive: true },
+        orderBy: { order: 'asc' },
+      });
+
+      for (const emp of employees) {
+        for (const item of clearanceItems) {
+          await (prisma as any).employeeClearance.upsert({
+            where: { employeeId_clearanceItemId: { employeeId: emp.id, clearanceItemId: item.id } },
+            update: {},
+            create: {
+              employeeId: emp.id,
+              clearanceItemId: item.id,
+              name: item.name,
+              isCleared: false,
+            },
+          });
+        }
+      }
+
+      // Compute last pay for each separated employee
+      records = await Promise.all(employees.map(async (emp: any) => {
+        const useDailyRate = emp.useDailyRate && emp.dailyRate > 0;
+        const dailyRate = useDailyRate ? (emp.dailyRate as number) : (emp.basicSalary / 22);
+
+        // Remaining salary: attendance-based days worked in the period
+        const attRecs = await prisma.attendance.findMany({
+          where: { employeeId: emp.id, date: { gte: periodStart, lte: periodEnd }, status: { in: ['PRESENT', 'LATE', 'HALF_DAY'] } },
+          select: { status: true },
+        });
+        const daysWorked = attRecs.reduce((s: number, a: any) => s + (a.status === 'HALF_DAY' ? 0.5 : 1), 0);
+        const remainingSalary = Math.round(daysWorked * dailyRate * 100) / 100;
+
+        // Pro-rated 13th month: sum of basicPay from payroll history for the current year / 12
+        const priorRecords = await prisma.payrollRecord.findMany({
+          where: {
+            employeeId: emp.id,
+            payrollRun: {
+              year: periodEnd.getFullYear(),
+              payPeriodType: { in: [1, 2] },
+              status: { in: ['POSTED', 'PAID'] },
+            },
+          },
+          select: { grossPay: true },
+        });
+        const totalGrossYTD = priorRecords.reduce((s: number, r: any) => s + r.grossPay, 0);
+        const proRated13th = Math.round((totalGrossYTD / 12) * 100) / 100;
+
+        // SIL conversion: leaveBalance × dailyRate
+        const silBalance = await prisma.leaveBalance.findFirst({
+          where: { employeeId: emp.id, leaveType: { code: 'SIL' } },
+          select: { balance: true },
+        });
+        const silConversion = Math.round(((silBalance?.balance ?? 0) * dailyRate) * 100) / 100;
+
+        // Outstanding loans
+        const loans = await (prisma as any).employeeLoan.findMany({
+          where: { employeeId: emp.id, status: 'ACTIVE' },
+          select: { monthlyDeduction: true },
+        });
+        const loanTotal = loans.reduce((s: number, l: any) => s + (l.monthlyDeduction ?? 0), 0);
+
+        const grossPay = remainingSalary + proRated13th + silConversion;
+        const totalDeductions = loanTotal;
+        const netPay = grossPay - totalDeductions;
+
+        return {
+          payrollRunId: payrollRun.id,
+          employeeId: emp.id,
+          basicSalary: emp.basicSalary,
+          daysWorked,
+          grossPay,
+          silPay: 0,
+          overtimePay: 0,
+          allowances: 0,
+          otherDeductions: loanTotal,
+          lateDeduction: 0,
+          holidayPay: 0,
+          nightDifferential: 0,
+          nightDiffHours: 0,
+          sssContrib: 0,
+          philhealthContrib: 0,
+          pagibigContrib: 0,
+          taxableIncome: grossPay,
+          withholdingTax: 0,
+          totalDeductions,
+          netPay,
+          thirteenthMonthPay: proRated13th,
+          silConversion,
+        };
+      }));
     } else {
       // Fetch all attendance in the period (including ABSENT so holiday pay for absent-on-regular-holiday works)
       const allAttendanceRaw = await prisma.attendance.findMany({
@@ -857,6 +969,18 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
       }
       const isSemiMonthly = payPeriodType === 1 || payPeriodType === 2;
 
+      // ── Deduction basis per client (BASIC vs GROSS) ─────────────────────────
+      const deductionBasisPols = uniqueClientIds.length > 0
+        ? await prisma.clientPolicy.findMany({
+            where: { clientId: { in: uniqueClientIds as string[] }, type: 'DEDUCTION_BASIS' },
+            select: { clientId: true, value: true },
+          })
+        : [];
+      const clientBasisMap = new Map<string, 'BASIC' | 'GROSS'>();
+      for (const pol of deductionBasisPols) {
+        clientBasisMap.set(pol.clientId, pol.value === 'BASIC' ? 'BASIC' : 'GROSS');
+      }
+
       // Include employees with attendance OR SIL leave in this period
       records = employees
         .filter((emp: any) => (attendanceMap.get(emp.id)?.daysWorked ?? 0) > 0 || (silDaysMap.get(emp.id) ?? 0) > 0)
@@ -903,9 +1027,11 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           // Statutory contributions — optionally split 50/50 across semi-monthly cutoffs
           // Per-client override takes priority; falls back to global splitHalf setting
           const clientSplit = clientSplitMap.get(emp.clientId) ?? globalSplit;
-          const sssContrib = Math.round(computeSSS(emp.basicSalary) * (clientSplit.sss && isSemiMonthly ? 0.5 : 1));
-          const philhealthContrib = Math.round(computePhilHealth(emp.basicSalary) * (clientSplit.phic && isSemiMonthly ? 0.5 : 1));
-          const pagibigContrib = Math.round(computePagIBIG(emp.basicSalary) * (clientSplit.hdmf && isSemiMonthly ? 0.5 : 1));
+          const deductionBasis = clientBasisMap.get(emp.clientId) ?? 'GROSS';
+          const mandatoryBasis = deductionBasis === 'GROSS' ? grossPay : emp.basicSalary;
+          const sssContrib = Math.round(computeSSS(mandatoryBasis) * (clientSplit.sss && isSemiMonthly ? 0.5 : 1));
+          const philhealthContrib = Math.round(computePhilHealth(mandatoryBasis) * (clientSplit.phic && isSemiMonthly ? 0.5 : 1));
+          const pagibigContrib = Math.round(computePagIBIG(mandatoryBasis) * (clientSplit.hdmf && isSemiMonthly ? 0.5 : 1));
           const taxableIncome = Math.max(0, grossPay - sssContrib - philhealthContrib - pagibigContrib);
           const withholdingTax = computeWithholdingTax(taxableIncome);
           const totalDeductions = sssContrib + philhealthContrib + pagibigContrib + withholdingTax;
@@ -1015,6 +1141,18 @@ router.put('/:runId/paid', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req:
     if (!run) return res.status(404).json({ error: 'Payroll run not found' });
     if (run.status !== 'POSTED') {
       return res.status(422).json({ error: `Only POSTED payroll runs can be marked as PAID. Current status: ${run.status}` });
+    }
+
+    // Type 10: all clearances must be completed before marking PAID
+    if (run.payPeriodType === 10) {
+      const runRecords = await prisma.payrollRecord.findMany({ where: { payrollRunId: run.id }, select: { employeeId: true } });
+      const empIds = runRecords.map((r: any) => r.employeeId);
+      const uncleared = await (prisma as any).employeeClearance.count({
+        where: { employeeId: { in: empIds }, isCleared: false },
+      });
+      if (uncleared > 0) {
+        return res.status(422).json({ error: `${uncleared} clearance item(s) not yet completed. All items must be cleared before marking as PAID.` });
+      }
     }
 
     const updated = await prisma.payrollRun.update({
