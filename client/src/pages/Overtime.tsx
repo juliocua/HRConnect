@@ -1,8 +1,7 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import api from '@/lib/api';
-import { useToast } from '@/lib/toast';
 import { DataTable } from '@/components/DataTable';
 import { EmployeeCombobox } from '@/components/EmployeeCombobox';
 import type { Employee } from '@/types';
@@ -37,7 +36,6 @@ export default function Overtime() {
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [empFilter, setEmpFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [rejModal, setRejModal] = useState<OvertimeRequest | null>(null);
 
   const { data: requests = [], isLoading } = useQuery<OvertimeRequest[]>({
     queryKey: ['overtime', statusFilter, empFilter],
@@ -52,19 +50,6 @@ export default function Overtime() {
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['employees'],
     queryFn: () => api.get('/employees?status=ACTIVE').then(r => r.data),
-  });
-
-  const approveMutation = useMutation({
-    mutationFn: (id: string) => api.put(`/overtime/${id}/approve`),
-    onSuccess: () => { toast('success', 'Overtime approved'); qc.invalidateQueries({ queryKey: ['overtime'] }); },
-    onError: () => toast('error', 'Failed to approve overtime'),
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: ({ id, note }: { id: string; note: string }) =>
-      api.put(`/overtime/${id}/reject`, { note }),
-    onSuccess: () => { toast('success', 'Overtime rejected'); qc.invalidateQueries({ queryKey: ['overtime'] }); setRejModal(null); },
-    onError: () => toast('error', 'Failed to reject overtime'),
   });
 
   const pending = requests.filter(r => r.status === 'PENDING').length;
@@ -122,31 +107,7 @@ export default function Overtime() {
         </div>
       ),
     },
-    {
-      id: 'actions',
-      header: '',
-      enableSorting: false,
-      cell: ({ row: { original: r } }) =>
-        r.status === 'PENDING' ? (
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              className="btn btn-success btn-sm"
-              disabled={approveMutation.isPending}
-              onClick={() => approveMutation.mutate(r.id)}
-            >
-              Approve
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{ color: 'var(--color-danger)' }}
-              onClick={() => setRejModal(r)}
-            >
-              Reject
-            </button>
-          </div>
-        ) : null,
-    },
-  ], [approveMutation]);
+  ], []);
 
   return (
     <div>
@@ -205,14 +166,6 @@ export default function Overtime() {
         />
       )}
 
-      {rejModal && (
-        <RejectModal
-          request={rejModal}
-          onClose={() => setRejModal(null)}
-          onReject={note => rejectMutation.mutate({ id: rejModal.id, note })}
-          loading={rejectMutation.isPending}
-        />
-      )}
     </div>
   );
 }
@@ -292,36 +245,3 @@ function OTModal({ employees, onClose, onSaved }: {
   );
 }
 
-function RejectModal({ request: r, onClose, onReject, loading }: {
-  request: OvertimeRequest;
-  onClose: () => void;
-  onReject: (note: string) => void;
-  loading: boolean;
-}) {
-  const [note, setNote] = useState('');
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 420 }}>
-        <div className="modal-header">
-          <h2 className="modal-title">Reject OT Request</h2>
-          <button className="icon-btn" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          <p style={{ fontSize: 13.5, color: 'var(--color-text-secondary)', marginBottom: 12 }}>
-            Rejecting <strong>{r.employee?.firstName} {r.employee?.lastName}</strong>'s {r.hours}hr OT on {fmtDate(r.date)}.
-          </p>
-          <div className="form-group">
-            <label>Rejection Note (optional)</label>
-            <textarea className="form-control" rows={3} placeholder="Reason for rejection…" value={note} onChange={e => setNote(e.target.value)} style={{ resize: 'vertical' }} />
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-danger" disabled={loading} onClick={() => onReject(note)}>
-            {loading ? 'Rejecting…' : 'Reject Request'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
