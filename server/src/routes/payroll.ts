@@ -821,9 +821,10 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         // SIL conversion: leaveBalance × dailyRate
         const silBalance = await prisma.leaveBalance.findFirst({
           where: { employeeId: emp.id, leaveType: { code: 'SIL' } },
-          select: { balance: true },
+          select: { totalDays: true, usedDays: true },
         });
-        const silConversion = Math.round(((silBalance?.balance ?? 0) * dailyRate) * 100) / 100;
+        const silAvailable = (silBalance?.totalDays ?? 0) - (silBalance?.usedDays ?? 0);
+        const silConversion = Math.round((silAvailable * dailyRate) * 100) / 100;
 
         // Outstanding loans
         const loans = await (prisma as any).employeeLoan.findMany({
