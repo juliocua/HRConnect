@@ -73,9 +73,9 @@ export default function ClientHubDTR() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['client-hub-dtr'] });
       qc.invalidateQueries({ queryKey: ['client-hub-dtr-history'] });
-      toast('DTR request approved', 'success');
+      toast('success', 'DTR request approved');
     },
-    onError: (err: any) => toast(err?.response?.data?.error ?? 'Failed to approve', 'error'),
+    onError: (err: any) => toast('error', err?.response?.data?.error ?? 'Failed to approve'),
   });
 
   const rejectMutation = useMutation({
@@ -86,9 +86,9 @@ export default function ClientHubDTR() {
       qc.invalidateQueries({ queryKey: ['client-hub-dtr-history'] });
       setRejectId(null);
       setRejectReason('');
-      toast('DTR request rejected', 'success');
+      toast('success', 'DTR request rejected');
     },
-    onError: (err: any) => toast(err?.response?.data?.error ?? 'Failed to reject', 'error'),
+    onError: (err: any) => toast('error', err?.response?.data?.error ?? 'Failed to reject'),
   });
 
   const records = tab === 'pending' ? pending : history;

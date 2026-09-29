@@ -66,9 +66,9 @@ export default function ClientHubOT() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['client-hub-ot'] });
       qc.invalidateQueries({ queryKey: ['client-hub-ot-history'] });
-      toast('OT request approved', 'success');
+      toast('success', 'OT request approved');
     },
-    onError: (err: any) => toast(err?.response?.data?.error ?? 'Failed to approve', 'error'),
+    onError: (err: any) => toast('error', err?.response?.data?.error ?? 'Failed to approve'),
   });
 
   const rejectMutation = useMutation({
@@ -79,9 +79,9 @@ export default function ClientHubOT() {
       qc.invalidateQueries({ queryKey: ['client-hub-ot-history'] });
       setRejectId(null);
       setRejectReason('');
-      toast('OT request rejected', 'success');
+      toast('success', 'OT request rejected');
     },
-    onError: (err: any) => toast(err?.response?.data?.error ?? 'Failed to reject', 'error'),
+    onError: (err: any) => toast('error', err?.response?.data?.error ?? 'Failed to reject'),
   });
 
   const records = tab === 'pending' ? pending : history;
