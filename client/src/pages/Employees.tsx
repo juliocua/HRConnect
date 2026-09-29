@@ -597,6 +597,9 @@ function EmployeeModal({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [tempPassword, setTempPassword] = useState('');
+  const [separationDate, setSeparationDate] = useState<string>(
+    initial?.separationDate ? initial.separationDate.slice(0, 10) : ''
+  );
 
   // Login account management (edit mode only)
   const [accountInfo, setAccountInfo] = useState<{ email: string; tempPassword: string } | null>(null);
@@ -695,7 +698,7 @@ function EmployeeModal({
     };
     try {
       if (isEdit) {
-        await api.put(`/employees/${initial!.id}`, { ...submitForm, userRole });
+        await api.put(`/employees/${initial!.id}`, { ...submitForm, userRole, separationDate: separationDate || null });
         toast('success', 'Employee saved');
         onSaved();
       } else {
@@ -959,6 +962,20 @@ function EmployeeModal({
                     <label>Hire Date *</label>
                     <input type="date" className="form-control" required value={form.hireDate} onChange={e => set('hireDate', e.target.value)} />
                   </div>
+                  {isEdit && (
+                    <div className="form-group">
+                      <label>Separation Date</label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={separationDate}
+                        onChange={e => setSeparationDate(e.target.value)}
+                      />
+                      <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>
+                        Official last day of employment. Used as the anchor for last pay computation.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-grid form-grid-2">

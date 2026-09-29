@@ -97,6 +97,7 @@ const EmployeeSchema = z.object({
   address: z.string().optional().nullable(),
   emergencyContactName: z.string().optional().nullable(),
   emergencyContactPhone: z.string().optional().nullable(),
+  separationDate: z.string().transform(d => new Date(d)).optional().nullable(),
 });
 
 // GET /api/employees
@@ -834,44 +835,6 @@ router.post('/:id/assignments', async (req: Request, res: Response, next: NextFu
       include: { client: { select: { id: true, name: true } } },
     });
     res.status(201).json(assignment);
-  } catch (err) { next(err); }
-});
-
-// ── Employee Login Access Management ─────────────────────────────────────────
-
-// POST /api/employees/:id/access/revoke — set isActive = false on linked user
-router.post('/:id/access/revoke', requireRole('SUPER_ADMIN', 'HR_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const employee = await prisma.employee.findUnique({
-      where: { id: req.params.id },
-      include: { user: { select: { id: true, isActive: true } } },
-    });
-    if (!employee) return res.status(404).json({ error: 'Employee not found' });
-    if (!employee.user) return res.status(404).json({ error: 'Employee has no login account' });
-
-    await prisma.user.update({
-      where: { id: employee.user.id },
-      data: { isActive: false },
-    });
-    res.json({ ok: true, isActive: false });
-  } catch (err) { next(err); }
-});
-
-// POST /api/employees/:id/access/restore — set isActive = true on linked user
-router.post('/:id/access/restore', requireRole('SUPER_ADMIN', 'HR_MANAGER'), async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const employee = await prisma.employee.findUnique({
-      where: { id: req.params.id },
-      include: { user: { select: { id: true, isActive: true } } },
-    });
-    if (!employee) return res.status(404).json({ error: 'Employee not found' });
-    if (!employee.user) return res.status(404).json({ error: 'Employee has no login account' });
-
-    await prisma.user.update({
-      where: { id: employee.user.id },
-      data: { isActive: true },
-    });
-    res.json({ ok: true, isActive: true });
   } catch (err) { next(err); }
 });
 
