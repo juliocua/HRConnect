@@ -798,10 +798,13 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         // Remaining salary: attendance-based days worked in the period
         const attRecs = await prisma.attendance.findMany({
           where: { employeeId: emp.id, date: { gte: periodStart, lte: periodEnd }, status: { in: ['PRESENT', 'LATE', 'HALF_DAY'] } },
-          select: { status: true },
+          select: { status: true, overtimeHrs: true },
         });
         const daysWorked = attRecs.reduce((s: number, a: any) => s + (a.status === 'HALF_DAY' ? 0.5 : 1), 0);
         const remainingSalary = Math.round(daysWorked * dailyRate * 100) / 100;
+        const totalOTHours = attRecs.reduce((s: number, a: any) => s + (a.overtimeHrs ?? 0), 0);
+        const hourlyRate = dailyRate / 8;
+        const overtimePay = Math.round(totalOTHours * hourlyRate * 1.25 * 100) / 100;
 
         // Pro-rated 13th month: sum of basicPay from payroll history for the current year / 12
         const priorRecords = await prisma.payrollRecord.findMany({
@@ -833,7 +836,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
         });
         const loanTotal = loans.reduce((s: number, l: any) => s + (l.balance ?? 0), 0);
 
-        const grossPay = remainingSalary + proRated13th + silConversion;
+        const grossPay = remainingSalary + overtimePay + proRated13th + silConversion;
         const totalDeductions = loanTotal;
         const netPay = grossPay - totalDeductions;
 
@@ -844,7 +847,7 @@ router.post('/run', requireRole('HR_MANAGER', 'SUPER_ADMIN'), async (req: Reques
           daysWorked,
           grossPay,
           silPay: 0,
-          overtimePay: 0,
+          overtimePay,
           allowances: 0,
           otherDeductions: loanTotal,
           lateDeduction: 0,
