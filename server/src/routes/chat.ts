@@ -34,11 +34,11 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       pendingOvertime,
       latestPayroll,
     ] = await Promise.all([
-      prisma.employee.count({ where: { isActive: true } }),
+      (prisma as any).employee.count({ where: { isActive: true } }),
       (prisma as any).client?.count({ where: { isActive: true } }).catch(() => 0),
-      prisma.leaveRequest.count({ where: { status: 'PENDING' } }),
-      prisma.overtimeRequest.count({ where: { status: 'PENDING' } }),
-      prisma.payrollRun.findFirst({ orderBy: { createdAt: 'desc' } }),
+      (prisma as any).leaveRequest.count({ where: { status: 'PENDING' } }),
+      (prisma as any).overtimeRequest.count({ where: { status: 'PENDING' } }),
+      (prisma as any).payrollRun.findFirst({ orderBy: { createdAt: 'desc' } }),
     ]);
 
     const systemInstruction = `You are HRConnect AI — an intelligent assistant embedded in HRConnect, an HR Information System for Philippine-based companies managed by NuageCG.

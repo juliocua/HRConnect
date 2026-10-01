@@ -1,0 +1,82 @@
+version: '3.9'
+
+# HRConnect — on-prem Docker Compose stack
+# Access via Caddy reverse proxy on port 80/443 (see Caddyfile)
+# Or directly on port 8080 if running without Caddy (set in client service below)
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       hrconnect
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"     # exposed for local seeding / dev access
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ── Express API ─────────────────────────────────────────────────────────────
+  server:
+    build:
+      context:    .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/hrconnect
+      JWT_SECRET:   ${JWT_SECRET}
+      JWT_EXPIRES_IN: 7d
+      SESSION_SECRET: ${SESSION_SECRET}
+      SERVER_URL:   ${SERVER_URL}       # e.g. https://hris.clientname.com  (used in photo URLs)
+      CLIENT_URL:   ${SERVER_URL}       # CORS origin — same as the public URL
+      NODE_ENV:     production
+      PORT:         3000
+    volumes:
+      - uploads_data:/app/uploads       # photo uploads persist across restarts
+
+  # ── React frontend (nginx) ──────────────────────────────────────────────────
+  client:
+    build:
+      context:    .
+      dockerfile: client/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - server
+    # Expose directly on 8080 as a fallback. When Caddy is used (recommended),
+    # remove the ports block — Caddy talks to this container over the internal network.
+    ports:
+      - "8080:80"
+
+  # ── Caddy reverse proxy (HTTPS + domain) ───────────────────────────────────
+  # Handles TLS automatically via Let's Encrypt for public domains, or serves
+  # plain HTTP for internal/intranet domains ending in .local / .internal.
+  # Comment out this service if you're testing on localhost only.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - client
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data             # stores TLS certs
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  uploads_data:
+  caddy_data:
+  caddy_config:
