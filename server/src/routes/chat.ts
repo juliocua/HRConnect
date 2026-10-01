@@ -34,8 +34,8 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       pendingOvertime,
       latestPayroll,
     ] = await Promise.all([
-      (prisma as any).employee.count({ where: { isActive: true } }),
-      (prisma as any).client?.count({ where: { isActive: true } }).catch(() => 0),
+      (prisma as any).employee.count({ where: { status: 'ACTIVE' } }),
+      (prisma as any).client.count({ where: { activeContract: true } }).catch(() => 0),
       (prisma as any).leaveRequest.count({ where: { status: 'PENDING' } }),
       (prisma as any).overtimeRequest.count({ where: { status: 'PENDING' } }),
       (prisma as any).payrollRun.findFirst({ orderBy: { id: 'desc' } }),
