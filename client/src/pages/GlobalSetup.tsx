@@ -67,6 +67,157 @@ function OtpSettingsContent() {
   );
 }
 
+// ── AI Setup sub-component ────────────────────────────────────────────────────
+
+function AiSetupContent() {
+  const [apiKey, setApiKey] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isSet, setIsSet] = useState(false);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [showKey, setShowKey] = useState(false);
+
+  useEffect(() => {
+    api.get<Record<string, string>>('/settings')
+      .then(res => {
+        if (res.data.geminiApiKey) {
+          setIsSet(true);
+          setApiKey(res.data.geminiApiKey);
+        }
+      })
+      .catch(() => setError('Failed to load AI settings'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true); setError(''); setSuccessMsg('');
+    try {
+      await api.put('/settings', { geminiApiKey: apiKey.trim() });
+      setIsSet(true);
+      setSuccessMsg('Gemini API key saved. The AI assistant is now active for all users.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch { setError('Failed to save AI settings.'); }
+    finally { setSaving(false); }
+  };
+
+  const handleClear = async () => {
+    if (!window.confirm('Remove the Gemini API key? The AI assistant will be disabled for all users.')) return;
+    setSaving(true); setError(''); setSuccessMsg('');
+    try {
+      await api.put('/settings', { geminiApiKey: '' });
+      setIsSet(false);
+      setApiKey('');
+      setSuccessMsg('API key cleared. The AI assistant has been disabled.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch { setError('Failed to clear API key.'); }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-secondary)' }}>Loading…</div>;
+
+  return (
+    <div style={{ maxWidth: 580 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>AI Assistant — Gemini Setup</h3>
+      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 20, lineHeight: 1.6 }}>
+        Configure a Google Gemini API key to enable the HRConnect AI assistant for all users.
+        The chatbot uses live system data (employees, payroll, leave) as context and can answer
+        Philippine HR, payroll, and compliance questions.
+        Get a free key at{' '}
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)' }}>
+          aistudio.google.com
+        </a>.
+      </p>
+
+      {error && <div className="error-msg" style={{ marginBottom: 16 }}>{error}</div>}
+
+      {successMsg && (
+        <div style={{ background: 'var(--color-success-bg, #d1fae5)', color: 'var(--color-success, #065f46)', border: '1px solid var(--color-success-border, #6ee7b7)', borderRadius: 6, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+          {successMsg}
+        </div>
+      )}
+
+      {isSet && !successMsg && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '8px 14px', background: 'var(--color-success-bg, #d1fae5)', border: '1px solid var(--color-success-border, #6ee7b7)', borderRadius: 6, fontSize: 13, color: 'var(--color-success, #065f46)' }}>
+          <span style={{ fontSize: 15 }}>✓</span>
+          <span>Gemini API key is configured — AI assistant is active for all users</span>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+          Gemini API Key
+        </label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type={showKey ? 'text' : 'password'}
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            placeholder="AIza…"
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              border: '1px solid var(--color-border)',
+              borderRadius: 6,
+              fontSize: 13,
+              background: 'var(--color-surface)',
+              color: 'var(--color-text-primary)',
+              outline: 'none',
+              fontFamily: showKey ? 'monospace' : 'inherit',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey(s => !s)}
+            style={{
+              padding: '8px 14px',
+              border: '1px solid var(--color-border)',
+              borderRadius: 6,
+              background: 'var(--color-surface)',
+              cursor: 'pointer',
+              fontSize: 12,
+              color: 'var(--color-text-secondary)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {showKey ? 'Hide' : 'Show'}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          className="btn btn-primary"
+          onClick={handleSave}
+          disabled={saving || !apiKey.trim()}
+        >
+          {saving ? 'Saving…' : isSet ? 'Update API Key' : 'Save API Key'}
+        </button>
+        {isSet && (
+          <button
+            className="btn btn-danger-outline"
+            onClick={handleClear}
+            disabled={saving}
+          >
+            Remove Key
+          </button>
+        )}
+      </div>
+
+      <div style={{ marginTop: 24, padding: '14px 18px', background: 'var(--color-surface-2)', borderRadius: 10, border: '1px solid var(--color-border)', fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.7 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 8 }}>About this integration</div>
+        <div><strong>Model:</strong> gemini-1.5-flash (free tier)</div>
+        <div><strong>Free limits:</strong> 15 requests/min · 1,500 requests/day · 1M tokens/day</div>
+        <div><strong>Context sent per request:</strong> Live counts for employees, clients, pending leaves, pending OT, and the latest payroll run</div>
+        <div><strong>Knowledge base:</strong> Philippine Labor Code, SSS/PhilHealth/Pag-IBIG contribution tables, BIR withholding tax schedules, DOLE regulations</div>
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)' }}>
+          The API key is stored securely in the database and is never exposed in the browser except to Super Admins on this settings page.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Tab Bar ───────────────────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }: {
   tabs: string[];
@@ -1046,8 +1197,6 @@ function ExpenseCategoriesContent() {
   );
 }
 
-// ── Main GlobalSetup page ─────────────────────────────────────────────────────
-
 // ── Modules Settings sub-component ────────────────────────────────────────────
 
 function ModulesSettingsContent() {
@@ -1108,6 +1257,8 @@ function ModulesSettingsContent() {
   );
 }
 
+// ── Main GlobalSetup page ─────────────────────────────────────────────────────
+
 export default function GlobalSetup() {
   const [outerTab, setOuterTab] = useState('Company');
 
@@ -1116,13 +1267,13 @@ export default function GlobalSetup() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Global Setup</h1>
-          <p className="page-subtitle">Configure company info, leave types, and payroll cut-off periods</p>
+          <p className="page-subtitle">Configure company info, leave types, payroll cut-off periods, and AI assistant</p>
         </div>
       </div>
 
       <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
         <div style={{ padding: '12px 20px 0', background: 'var(--color-surface-2)', borderBottom: '1px solid var(--color-border)' }}>
-          <TabBar tabs={['Company', 'Shift', 'Leave', 'Payroll', 'Expenses', 'Modules', 'OTP']} active={outerTab} onChange={setOuterTab} />
+          <TabBar tabs={['Company', 'Shift', 'Leave', 'Payroll', 'Expenses', 'Modules', 'OTP', 'AI']} active={outerTab} onChange={setOuterTab} />
         </div>
         <div style={{ padding: 24 }}>
           {outerTab === 'Company' && <CompanySettingsContent />}
@@ -1132,6 +1283,7 @@ export default function GlobalSetup() {
           {outerTab === 'Expenses' && <ExpenseCategoriesContent />}
           {outerTab === 'OTP' && <OtpSettingsContent />}
           {outerTab === 'Modules' && <ModulesSettingsContent />}
+          {outerTab === 'AI' && <AiSetupContent />}
         </div>
       </div>
     </div>

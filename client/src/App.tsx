@@ -35,6 +35,7 @@ import HubBIR from '@/pages/hub/HubBIR';
 import Holidays from '@/pages/Holidays';
 import Deductions from '@/pages/Deductions';
 import LastPay from '@/pages/LastPay';
+import ChatBubble from '@/components/ChatBubble';
 
 // Handles /auth/callback?token=xxx from OAuth redirects
 function OAuthCallback() {
@@ -82,6 +83,13 @@ function ModuleRoute({ module, children }: { module: Module; children: React.Rea
   const { user } = useAuth();
   if (!canAccess(user?.role, module)) return <Navigate to="/" replace />;
   return <>{children}</>;
+}
+
+/** Renders the floating AI chat bubble for all authenticated users. */
+function ChatBubbleWrapper() {
+  const { user } = useAuth();
+  if (!user) return null;
+  return <ChatBubble />;
 }
 
 function AppRoutes() {
@@ -221,6 +229,7 @@ export default function App() {
       <AppSettingsProvider>
         <ToastProvider>
           <AppRoutes />
+          <ChatBubbleWrapper />
         </ToastProvider>
       </AppSettingsProvider>
     </AuthProvider>

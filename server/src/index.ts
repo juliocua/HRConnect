@@ -29,6 +29,7 @@ import holidayRoutes from './routes/holidays';
 import deductionsRoutes from './routes/deductions';
 import lastPayRoutes from './routes/last-pay';
 import clientHubRoutes from './routes/client-hub';
+import chatRoutes from './routes/chat';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -95,6 +96,7 @@ app.use('/api/overtime',   authenticate, rbacGuard('overtime'),   overtimeRoutes
 app.use('/api/companies',  authenticate, rbacGuard('companies'),  companiesRoutes);
 app.use('/api/global-setup', authenticate, globalSetupRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/chat',       authenticate, chatRoutes);
 app.use('/api/expenses', authenticate, expensesRouter);
 app.use('/api/bir', birRoutes);
 app.use('/api/holidays',    authenticate, rbacGuard('payroll'),    holidayRoutes);

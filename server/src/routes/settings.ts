@@ -31,6 +31,7 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
 const SettingsSchema = z.object({
   requireOtp: z.boolean().optional(),
   useClientsModule: z.boolean().optional(),
+  geminiApiKey: z.string().optional(),
 });
 
 router.put('/', async (req: Request, res: Response, next: NextFunction) => {
@@ -56,6 +57,23 @@ router.put('/', async (req: Request, res: Response, next: NextFunction) => {
           create: { key: 'useClientsModule', value: String(body.useClientsModule) },
         })
       );
+    }
+
+    if (body.geminiApiKey !== undefined) {
+      if (body.geminiApiKey === '') {
+        // Clear the key — delete the row entirely
+        ops.push(
+          (prisma as any).appSetting.deleteMany({ where: { key: 'geminiApiKey' } })
+        );
+      } else {
+        ops.push(
+          (prisma as any).appSetting.upsert({
+            where: { key: 'geminiApiKey' },
+            update: { value: body.geminiApiKey },
+            create: { key: 'geminiApiKey', value: body.geminiApiKey },
+          })
+        );
+      }
     }
 
     await Promise.all(ops);
