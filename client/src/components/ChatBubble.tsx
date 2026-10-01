@@ -97,13 +97,17 @@ export default function ChatBubble() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   // Don't render if not logged in
   if (!user) return null;
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setShowScrollBtn(false);
   }, []);
 
   useEffect(() => {
@@ -114,6 +118,18 @@ export default function ChatBubble() {
     if (mode !== 'closed') {
       setTimeout(() => inputRef.current?.focus(), 50);
     }
+  }, [mode]);
+
+  // Track scroll position to show/hide scroll-to-bottom button
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBtn(distFromBottom > 120);
+    };
+    el.addEventListener('scroll', onScroll);
+    return () => el.removeEventListener('scroll', onScroll);
   }, [mode]);
 
   // Close on Escape
@@ -171,6 +187,13 @@ export default function ChatBubble() {
 
   const clearChat = () => {
     setMessages([]);
+  };
+
+  const copyMessage = (id: string, content: string) => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(() => {});
   };
 
   // ── Panel dimensions ────────────────────────────────────────────────────────
@@ -386,6 +409,7 @@ export default function ChatBubble() {
 
         {/* ── Messages ────────────────────────────────────────────────────── */}
         <div
+          ref={messagesContainerRef}
           style={{
             flex: 1,
             overflowY: 'auto',
@@ -393,6 +417,7 @@ export default function ChatBubble() {
             display: 'flex',
             flexDirection: 'column',
             gap: 12,
+            position: 'relative',
           }}
         >
           {messages.length === 0 && (
@@ -452,9 +477,12 @@ export default function ChatBubble() {
           {messages.map(msg => (
             <div
               key={msg.id}
+              className="chat-msg-row"
               style={{
                 display: 'flex',
                 justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                alignItems: 'flex-end',
+                gap: 6,
               }}
             >
               <div
@@ -478,6 +506,39 @@ export default function ChatBubble() {
               >
                 {renderContent(msg.content)}
               </div>
+              {/* Copy button — shown on row hover, for both roles */}
+              <button
+                className="chat-copy-btn"
+                onClick={() => copyMessage(msg.id, msg.content)}
+                title={copiedId === msg.id ? 'Copied!' : 'Copy'}
+                style={{
+                  flexShrink: 0,
+                  background: 'var(--color-surface-2, #f1f5f9)',
+                  border: '1px solid var(--color-border, #e2e8f0)',
+                  borderRadius: 6,
+                  width: 26,
+                  height: 26,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: 0,
+                  transition: 'opacity 0.15s',
+                  color: copiedId === msg.id ? '#22c55e' : 'var(--color-text-muted, #94a3b8)',
+                  order: msg.role === 'user' ? -1 : 1,
+                }}
+              >
+                {copiedId === msg.id ? (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </button>
             </div>
           ))}
 
@@ -510,6 +571,36 @@ export default function ChatBubble() {
           )}
 
           <div ref={messagesEndRef} />
+
+          {/* Scroll to bottom button */}
+          {showScrollBtn && (
+            <button
+              onClick={scrollToBottom}
+              title="Scroll to bottom"
+              style={{
+                position: 'sticky',
+                bottom: 8,
+                alignSelf: 'center',
+                background: 'var(--color-surface, #fff)',
+                border: '1px solid var(--color-border, #e2e8f0)',
+                borderRadius: '50%',
+                width: 32,
+                height: 32,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                color: 'var(--color-text-secondary, #64748b)',
+                zIndex: 1,
+                flexShrink: 0,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* ── Input ───────────────────────────────────────────────────────── */}
@@ -611,6 +702,7 @@ export default function ChatBubble() {
           0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
           40% { transform: scale(1); opacity: 1; }
         }
+        .chat-msg-row:hover .chat-copy-btn { opacity: 1 !important; }
       `}</style>
     </>
   );

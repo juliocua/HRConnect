@@ -38,7 +38,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       (prisma as any).client?.count({ where: { isActive: true } }).catch(() => 0),
       (prisma as any).leaveRequest.count({ where: { status: 'PENDING' } }),
       (prisma as any).overtimeRequest.count({ where: { status: 'PENDING' } }),
-      (prisma as any).payrollRun.findFirst({ orderBy: { createdAt: 'desc' } }),
+      (prisma as any).payrollRun.findFirst({ orderBy: { id: 'desc' } }),
     ]);
 
     const systemInstruction = `You are HRConnect AI — an intelligent assistant embedded in HRConnect, an HR Information System for Philippine-based companies managed by NuageCG.
