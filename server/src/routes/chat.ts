@@ -73,14 +73,31 @@ Be concise, friendly, and accurate. Use Philippine peso (₱) for amounts. Cite 
       },
     };
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(geminiPayload),
+    // Abort after 20 s so Railway never sees a 502 from a hung connection
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    let geminiRes: globalThis.Response;
+    try {
+      geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(geminiPayload),
+          signal: controller.signal,
+        }
+      );
+    } catch (fetchErr: any) {
+      clearTimeout(timeoutId);
+      if (fetchErr.name === 'AbortError') {
+        return res.status(504).json({
+          error: 'AI service timed out. Gemini is experiencing high load — please try again in a moment.',
+        });
       }
-    );
+      throw fetchErr;
+    }
+    clearTimeout(timeoutId);
 
     if (!geminiRes.ok) {
       const errBody = await geminiRes.json().catch(() => ({}));
