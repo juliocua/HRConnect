@@ -47,6 +47,8 @@ app.use(cors({
   origin: (origin, cb) => {
     // allow server-to-server (no origin) and listed origins
     if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    // allow any ngrok tunnel (local demo / tunneling access)
+    if (origin && /https?:\/\/[^.]+\.ngrok(-free)?\.dev$/.test(origin)) return cb(null, true);
     console.warn('[CORS] Blocked origin:', origin);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
