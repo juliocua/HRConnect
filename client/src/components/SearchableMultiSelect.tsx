@@ -172,10 +172,10 @@ export function SearchableMultiSelect({
               filtered.map(o => {
                 const checked = selected.includes(o.id);
                 return (
-                  <label
+                  <div
                     key={o.id}
                     onMouseDown={e => e.preventDefault()}
-                    onClick={e => { e.preventDefault(); toggle(o.id); }}
+                    onClick={() => toggle(o.id)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '8px 14px', cursor: 'pointer', fontSize: 13.5,
@@ -188,8 +188,8 @@ export function SearchableMultiSelect({
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => toggle(o.id)}
-                      onClick={e => e.stopPropagation()}
+                      onChange={() => {}}
+                      onClick={e => { e.stopPropagation(); toggle(o.id); }}
                       style={{ accentColor: 'var(--color-primary)', flexShrink: 0 }}
                     />
                     {o.avatarColor && (
@@ -208,7 +208,7 @@ export function SearchableMultiSelect({
                         <div style={{ fontSize: 11.5, color: 'var(--color-text-muted)', fontWeight: 400 }}>{o.subtitle}</div>
                       )}
                     </div>
-                  </label>
+                  </div>
                 );
               })
             )}
