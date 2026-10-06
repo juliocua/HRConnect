@@ -174,7 +174,8 @@ export function SearchableMultiSelect({
                 return (
                   <label
                     key={o.id}
-                    onMouseDown={e => { e.preventDefault(); toggle(o.id); }}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={e => { e.preventDefault(); toggle(o.id); }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '8px 14px', cursor: 'pointer', fontSize: 13.5,
