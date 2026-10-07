@@ -174,8 +174,7 @@ export function SearchableMultiSelect({
                 return (
                   <div
                     key={o.id}
-                    onMouseDown={e => e.preventDefault()}
-                    onClick={() => toggle(o.id)}
+                    onMouseDown={e => { e.preventDefault(); toggle(o.id); }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '8px 14px', cursor: 'pointer', fontSize: 13.5,
@@ -189,8 +188,7 @@ export function SearchableMultiSelect({
                       type="checkbox"
                       checked={checked}
                       onChange={() => {}}
-                      onClick={e => { e.stopPropagation(); toggle(o.id); }}
-                      style={{ accentColor: 'var(--color-primary)', flexShrink: 0 }}
+                      style={{ accentColor: 'var(--color-primary)', flexShrink: 0, pointerEvents: 'none' }}
                     />
                     {o.avatarColor && (
                       <div style={{
